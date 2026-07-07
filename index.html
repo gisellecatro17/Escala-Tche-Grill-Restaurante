@@ -1,0 +1,1745 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Escala – Tche Grill</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+<style>
+:root { --tg-red:#c0392b; --tg-dark:#1c1c2e; }
+body { background:#f4f6f9; font-family:'Segoe UI',sans-serif; }
+
+/* ---- LOGIN ---- */
+#loginScreen {
+  position:fixed; inset:0; z-index:9999;
+  background:linear-gradient(135deg,#1c1c2e 0%,#2d1b1b 60%,#3a1010 100%);
+  display:flex; align-items:center; justify-content:center;
+}
+#loginScreen .card {
+  width:100%; max-width:400px;
+  border:none; border-radius:16px;
+  box-shadow:0 20px 60px rgba(0,0,0,.5);
+}
+#loginScreen .card-header {
+  background:var(--tg-dark); color:#fff;
+  border-radius:16px 16px 0 0; text-align:center; padding:28px 20px 20px;
+}
+#loginScreen .brand-icon { font-size:3rem; color:#c0392b; }
+#loginScreen .brand-name { font-size:1.6rem; font-weight:700; letter-spacing:2px; margin:6px 0 2px; }
+#loginScreen .brand-sub  { font-size:.8rem; color:#aaa; }
+.login-error { display:none; }
+
+/* ---- APP ---- */
+#appScreen { display:none; }
+
+.app-header { background:var(--tg-dark); color:#fff; padding:10px 20px; }
+.app-header h1 { font-size:1.3rem; margin:0; letter-spacing:1px; }
+
+.nav-tabs .nav-link { color:#555; font-weight:500; border:none; padding:8px 14px; }
+.nav-tabs .nav-link.active { color:var(--tg-red); border-bottom:3px solid var(--tg-red); font-weight:700; background:none; }
+.nav-tabs { border-bottom:2px solid #dee2e6; }
+
+.escala-table  { font-size:0.72rem; border-collapse:collapse; }
+.escala-table th, .escala-table td { padding:3px 4px; text-align:center; vertical-align:middle; }
+.nome-col { text-align:left!important; white-space:nowrap; min-width:160px; max-width:190px; }
+.cell-T { background:#d4edda; color:#155724; font-weight:700; }
+.cell-F { background:#e2e3e5; color:#6c757d; font-weight:700; }
+.cell-C { background:#cce5ff; color:#004085; font-weight:700; }
+.cell-D { background:#fff3cd; color:#856404; font-weight:700; }
+.cell-V { background:#e8d5f5; color:#6f42c1; font-weight:700; }
+.col-dom { background:#fef9e7; }
+.sep-row td { font-weight:700; color:#fff; padding:4px 8px; font-size:0.78rem; }
+.dept-btns .btn { border-radius:20px; font-size:0.78rem; margin:2px; }
+.color-swatch { width:22px; height:22px; border-radius:4px; display:inline-block; border:1px solid #ccc; vertical-align:middle; }
+
+@media print {
+  #loginScreen { display:none!important; }
+  .no-print { display:none!important; }
+  body { background:#fff; font-size:9px; }
+  .escala-table { font-size:7px; }
+  .app-header { background:#1c1c2e!important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  .cell-T,.cell-F,.cell-C,.cell-V { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  .sep-row td { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  .print-header { display:block!important; text-align:center; margin-bottom:8px; }
+}
+.print-header { display:none; }
+
+/* ---- MÓDULO DE PONTO ---- */
+.ponto-relogio { font-size:3.5rem; font-weight:800; letter-spacing:4px; color:var(--tg-dark); font-variant-numeric:tabular-nums; }
+.ponto-data    { font-size:1rem; color:#888; letter-spacing:1px; }
+.emp-card {
+  cursor:pointer; border:2px solid #e0e0e0; border-radius:12px;
+  padding:12px 8px; text-align:center; transition:all .2s;
+  background:#fff;
+}
+.emp-card:hover { border-color:var(--tg-red); transform:translateY(-2px); box-shadow:0 4px 12px rgba(192,57,43,.15); }
+.emp-card.selected { border-color:var(--tg-red); background:#fff5f5; }
+.emp-avatar {
+  width:52px; height:52px; border-radius:50%; margin:0 auto 8px;
+  display:flex; align-items:center; justify-content:center;
+  font-size:1.2rem; font-weight:700; color:#fff;
+}
+.emp-card .emp-nome  { font-size:.78rem; font-weight:700; line-height:1.2; }
+.emp-card .emp-func  { font-size:.65rem; color:#888; }
+.btn-ponto-entrada { min-width:160px; padding:20px 30px; font-size:1.2rem; font-weight:700; border-radius:16px; }
+.btn-ponto-saida   { min-width:160px; padding:20px 30px; font-size:1.2rem; font-weight:700; border-radius:16px; }
+.ponto-confirm { border-radius:16px; padding:30px; animation:fadeIn .3s ease; }
+@keyframes fadeIn { from{opacity:0;transform:scale(.95)} to{opacity:1;transform:scale(1)} }
+.registro-linha { display:flex; align-items:center; gap:8px; padding:6px 10px; border-radius:8px; margin-bottom:4px; font-size:.85rem; }
+.reg-entrada { background:#d4edda; color:#155724; }
+.reg-saida   { background:#f8d7da; color:#721c24; }
+</style>
+</head>
+<body>
+
+<!-- ==================== TELA DE LOGIN ==================== -->
+<div id="loginScreen">
+  <div class="card">
+    <div class="card-header">
+      <div class="brand-icon"><i class="bi bi-fire"></i></div>
+      <div class="brand-name">TCHE GRILL</div>
+      <div class="brand-sub">Sistema de Controle de Escalas</div>
+    </div>
+    <div class="card-body p-4">
+      <div class="alert alert-danger login-error" id="loginErro">
+        <i class="bi bi-x-circle-fill"></i> <span id="loginErroMsg">Usuário ou senha incorretos.</span>
+      </div>
+      <div class="mb-3">
+        <label class="form-label fw-bold text-muted" style="font-size:.85rem">USUÁRIO</label>
+        <div class="input-group">
+          <span class="input-group-text"><i class="bi bi-person-fill"></i></span>
+          <input type="text" class="form-control" id="loginUser" placeholder="Digite seu usuário"
+            onkeydown="if(event.key==='Enter') document.getElementById('loginSenha').focus()">
+        </div>
+      </div>
+      <div class="mb-4">
+        <label class="form-label fw-bold text-muted" style="font-size:.85rem">SENHA</label>
+        <div class="input-group">
+          <span class="input-group-text"><i class="bi bi-lock-fill"></i></span>
+          <input type="password" class="form-control" id="loginSenha" placeholder="Digite sua senha"
+            onkeydown="if(event.key==='Enter') fazerLogin()">
+          <button class="btn btn-outline-secondary" type="button" onclick="toggleSenha('loginSenha',this)">
+            <i class="bi bi-eye"></i>
+          </button>
+        </div>
+      </div>
+      <button class="btn btn-danger w-100 py-2 fw-bold" onclick="fazerLogin()" id="btnLogin">
+        <i class="bi bi-box-arrow-in-right"></i> Entrar
+      </button>
+      <div class="text-center mt-3">
+        <small class="text-muted">Credenciais padrão: <strong>admin</strong> / <strong>tche2026</strong></small>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== APP PRINCIPAL ==================== -->
+<div id="appScreen">
+
+<div class="app-header no-print">
+  <div class="d-flex align-items-center justify-content-between">
+    <div>
+      <h1><i class="bi bi-fire text-danger"></i> TCHE GRILL</h1>
+      <small class="text-secondary">Sistema de Controle de Escalas</small>
+    </div>
+    <div class="d-flex align-items-center gap-3">
+      <small class="text-secondary" id="clock"></small>
+      <small class="text-secondary"><i class="bi bi-person-circle"></i> <span id="userLogado"></span></small>
+      <a href="ponto.html" class="btn btn-sm btn-outline-light" title="Módulo de Ponto">
+        <i class="bi bi-clock-fill"></i> Ponto
+      </a>
+      <button class="btn btn-sm btn-outline-light" onclick="abrirModalSenha()" title="Alterar senha">
+        <i class="bi bi-key-fill"></i>
+      </button>
+      <button class="btn btn-sm btn-outline-danger" onclick="fazerLogout()" title="Sair">
+        <i class="bi bi-box-arrow-right"></i> Sair
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="container-fluid py-3 px-3">
+
+  <ul class="nav nav-tabs mb-3 no-print" id="mainTabs">
+    <li class="nav-item"><button class="nav-link active" data-tab="funcionarios"><i class="bi bi-people-fill"></i> Funcionários</button></li>
+    <li class="nav-item"><button class="nav-link" data-tab="departamentos"><i class="bi bi-diagram-3-fill"></i> Departamentos</button></li>
+    <li class="nav-item"><button class="nav-link" data-tab="escala"><i class="bi bi-calendar3"></i> Escala</button></li>
+    <li class="nav-item"><button class="nav-link" data-tab="domingos"><i class="bi bi-calendar-check"></i> Domingos de Folga</button></li>
+    <li class="nav-item"><button class="nav-link" data-tab="alertas"><i class="bi bi-exclamation-triangle-fill"></i> Alertas <span id="alertBadge" class="badge bg-danger ms-1"></span></button></li>
+    <li class="nav-item"><button class="nav-link" data-tab="resumo"><i class="bi bi-bar-chart-fill"></i> Resumo</button></li>
+    <li class="nav-item"><button class="nav-link" data-tab="ponto"><i class="bi bi-clock-fill"></i> Ponto</button></li>
+    <li class="nav-item"><button class="nav-link" data-tab="relatorio"><i class="bi bi-table"></i> Rel. Ponto</button></li>
+  </ul>
+
+  <!-- TAB: FUNCIONÁRIOS -->
+  <div id="tab-funcionarios" class="tab-pane">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h5 class="mb-0 fw-bold">Cadastro de Funcionários</h5>
+      <button class="btn btn-danger btn-sm no-print" onclick="abrirModalFunc()">
+        <i class="bi bi-plus-lg"></i> Novo Funcionário
+      </button>
+    </div>
+    <!-- Filtros -->
+    <div class="row g-2 mb-2 no-print">
+      <div class="col-md-4">
+        <div class="input-group input-group-sm">
+          <span class="input-group-text"><i class="bi bi-search"></i></span>
+          <input type="text" class="form-control" id="funcSearch" placeholder="Buscar nome, função, departamento..." oninput="renderFuncionarios()">
+        </div>
+      </div>
+      <div class="col-md-2">
+        <select class="form-select form-select-sm" id="filtroStatus" onchange="renderFuncionarios()">
+          <option value="">Todos os status</option>
+          <option value="ativo">Ativo</option>
+          <option value="ferias">Férias</option>
+          <option value="contratar">A contratar</option>
+          <option value="afastado">Afastado</option>
+          <option value="inativo">Inativo</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <select class="form-select form-select-sm" id="filtroFolga" onchange="renderFuncionarios()">
+          <option value="">Qualquer folga fixa</option>
+          <option value="domingo">Domingo</option>
+          <option value="segunda">Segunda-feira</option>
+          <option value="terça">Terça-feira</option>
+          <option value="quarta">Quarta-feira</option>
+          <option value="quinta">Quinta-feira</option>
+          <option value="sexta">Sexta-feira</option>
+          <option value="sábado">Sábado</option>
+          <option value="_sem">Sem folga fixa</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <select class="form-select form-select-sm" id="filtroFolguista" onchange="renderFuncionarios()">
+          <option value="">Todos (folguista ou não)</option>
+          <option value="1">Somente folguistas</option>
+          <option value="0">Não folguistas</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <button class="btn btn-sm btn-outline-secondary w-100" onclick="limparFiltros()">
+          <i class="bi bi-x-circle"></i> Limpar filtros
+        </button>
+      </div>
+    </div>
+    <!-- Filtro por departamento -->
+    <div class="d-flex align-items-center flex-wrap dept-btns mb-2 no-print" id="filtroFuncDepts"></div>
+
+    <div class="table-responsive">
+      <table class="table table-sm table-hover align-middle">
+        <thead class="table-dark">
+          <tr><th>ID</th><th>Nome</th><th>Função</th><th>Departamento</th><th>Horário</th><th>Folga Fixa</th><th>Folguista</th><th>Status</th><th class="no-print">Ações</th></tr>
+        </thead>
+        <tbody id="funcBody"></tbody>
+      </table>
+    </div>
+    <small class="text-muted no-print" id="funcCount"></small>
+  </div>
+
+  <!-- TAB: DEPARTAMENTOS -->
+  <div id="tab-departamentos" class="tab-pane d-none">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h5 class="mb-0 fw-bold">Cadastro de Departamentos</h5>
+      <button class="btn btn-danger btn-sm no-print" onclick="abrirModalDept()">
+        <i class="bi bi-plus-lg"></i> Novo Departamento
+      </button>
+    </div>
+    <p class="text-muted no-print" style="font-size:.85rem">
+      Os departamentos criados aqui aparecem automaticamente no formulário de funcionários e nos filtros da escala.
+    </p>
+    <div class="table-responsive">
+      <table class="table table-sm table-hover align-middle">
+        <thead class="table-dark">
+          <tr><th>ID</th><th>Cor</th><th>Nome</th><th>Descrição</th><th>Funcionários</th><th class="no-print">Ações</th></tr>
+        </thead>
+        <tbody id="deptBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- TAB: ESCALA -->
+  <div id="tab-escala" class="tab-pane d-none">
+    <div class="print-header">
+      <h3 style="margin:0">TCHE GRILL – ESCALA MENSAL</h3>
+      <p id="printTitle" style="font-size:1.1rem;font-weight:bold;margin:4px 0 0"></p>
+    </div>
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3 no-print">
+      <select class="form-select form-select-sm" id="selMes" style="width:145px" onchange="gerarEscala()">
+        <option value="6">Julho 2026</option>
+        <option value="7">Agosto 2026</option>
+        <option value="8">Setembro 2026</option>
+        <option value="9">Outubro 2026</option>
+        <option value="10">Novembro 2026</option>
+        <option value="11">Dezembro 2026</option>
+        <option value="0_2027">Janeiro 2027</option>
+        <option value="1_2027">Fevereiro 2027</option>
+        <option value="2_2027">Março 2027</option>
+      </select>
+      <div class="d-flex align-items-center gap-1 flex-wrap dept-btns" id="filtroEscalaDepts"></div>
+      <div class="d-flex gap-2">
+        <button class="btn btn-sm btn-primary" onclick="window.print()"><i class="bi bi-printer"></i> Imprimir</button>
+        <button class="btn btn-sm btn-success" onclick="exportarCSV()"><i class="bi bi-file-earmark-excel"></i> Exportar CSV</button>
+      </div>
+    </div>
+    <div class="d-flex gap-2 mb-2 no-print flex-wrap" style="font-size:.72rem">
+      <span class="px-2 py-1 rounded cell-T">T = Trabalha</span>
+      <span class="px-2 py-1 rounded cell-F">F = Folga</span>
+      <span class="px-2 py-1 rounded cell-C">C = Cobre folga</span>
+      <span class="px-2 py-1 rounded cell-D">D = Disponível</span>
+      <span class="px-2 py-1 rounded cell-V">V = Férias</span>
+      <span class="px-2 py-1 rounded" style="background:#fef9e7;color:#856404">Dom. = domingo</span>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-bordered escala-table">
+        <thead id="escalaHead"></thead>
+        <tbody id="escalaBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- TAB: DOMINGOS -->
+  <div id="tab-domingos" class="tab-pane d-none">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h5 class="mb-0 fw-bold">Domingos de Folga <small class="text-muted fs-6" id="domMesLabel"></small></h5>
+      <button class="btn btn-sm btn-danger no-print" onclick="autoDistribuirDomingos()">
+        <i class="bi bi-arrow-repeat"></i> Auto-distribuir
+      </button>
+    </div>
+    <p class="text-muted no-print" style="font-size:.85rem">
+      Regra: cada funcionário deve folgar pelo menos <strong>1 domingo por mês</strong>.
+    </p>
+    <div class="table-responsive">
+      <table class="table table-sm table-hover align-middle">
+        <thead class="table-dark">
+          <tr><th>Funcionário</th><th>Função</th><th>Departamento</th><th>Domingo de Folga</th><th>Status</th></tr>
+        </thead>
+        <tbody id="domingoBody"></tbody>
+      </table>
+    </div>
+    <div class="mt-2 no-print">
+      <button class="btn btn-danger btn-sm" onclick="salvarDomingos()"><i class="bi bi-check-lg"></i> Salvar e Atualizar Escala</button>
+    </div>
+  </div>
+
+  <!-- TAB: ALERTAS -->
+  <div id="tab-alertas" class="tab-pane d-none">
+    <h5 class="mb-3 fw-bold"><i class="bi bi-exclamation-triangle-fill text-danger"></i> Alertas de Cobertura</h5>
+    <div id="alertasBody"></div>
+  </div>
+
+  <!-- TAB: RESUMO -->
+  <div id="tab-resumo" class="tab-pane d-none">
+    <h5 class="mb-3 fw-bold">Resumo por Funcionário <small class="text-muted fs-6" id="resumoMesLabel"></small></h5>
+    <div class="table-responsive">
+      <table class="table table-sm table-hover align-middle">
+        <thead class="table-dark">
+          <tr><th>Funcionário</th><th>Função</th><th>Depto.</th><th>Horário</th><th>Folgas no Mês</th><th>Dom. de Folga</th><th>Dom. Trabalhados</th><th>Regra Dom.</th></tr>
+        </thead>
+        <tbody id="resumoBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ==================== TAB: PONTO ==================== -->
+  <div id="tab-ponto" class="tab-pane d-none">
+
+    <!-- Relógio -->
+    <div class="text-center mb-4 py-3" style="background:#fff;border-radius:16px;box-shadow:0 2px 8px rgba(0,0,0,.06)">
+      <div class="ponto-relogio" id="pontoRelogio">00:00:00</div>
+      <div class="ponto-data" id="pontoDataHoje"></div>
+    </div>
+
+    <!-- STEP 1 – Selecionar funcionário -->
+    <div id="pontoStep1">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h6 class="mb-0 fw-bold">Selecione o funcionário para registrar ponto:</h6>
+        <div class="input-group input-group-sm" style="max-width:220px">
+          <span class="input-group-text"><i class="bi bi-search"></i></span>
+          <input type="text" class="form-control" id="pontoSearch" placeholder="Buscar..." oninput="renderGradeEmp()">
+        </div>
+      </div>
+      <!-- Filtro por departamento -->
+      <div class="d-flex flex-wrap gap-1 mb-3 dept-btns" id="pontoDeptFiltro"></div>
+      <!-- Grade de funcionários -->
+      <div class="row g-2" id="pontoGrade"></div>
+    </div>
+
+    <!-- STEP 2 – Bater ponto -->
+    <div id="pontoStep2" class="d-none">
+      <div class="text-center mb-4 p-4" style="background:#fff;border-radius:16px;box-shadow:0 2px 8px rgba(0,0,0,.06)">
+        <div class="emp-avatar mx-auto mb-2" id="pontoAvatar" style="width:72px;height:72px;font-size:1.6rem"></div>
+        <h5 class="fw-bold mb-0" id="pontoEmpNome"></h5>
+        <small class="text-muted" id="pontoEmpFunc"></small>
+        <div class="mt-2" id="pontoUltimoReg"></div>
+      </div>
+
+      <div class="d-flex justify-content-center gap-4 mb-4">
+        <button class="btn btn-success btn-ponto-entrada" onclick="registrarPonto('entrada')">
+          <i class="bi bi-box-arrow-in-right d-block mb-1" style="font-size:1.6rem"></i>
+          ENTRADA
+        </button>
+        <button class="btn btn-danger btn-ponto-saida" onclick="registrarPonto('saida')">
+          <i class="bi bi-box-arrow-left d-block mb-1" style="font-size:1.6rem"></i>
+          SAÍDA
+        </button>
+      </div>
+
+      <div class="text-center mb-4">
+        <button class="btn btn-link text-muted" onclick="voltarSelecao()">
+          <i class="bi bi-arrow-left"></i> Trocar funcionário
+        </button>
+      </div>
+
+      <!-- Registros de hoje deste funcionário -->
+      <div style="max-width:480px;margin:0 auto">
+        <h6 class="fw-bold mb-2"><i class="bi bi-list-check"></i> Registros de hoje</h6>
+        <div id="pontoRegistrosHoje"></div>
+      </div>
+    </div>
+
+    <!-- STEP 3 – Confirmação -->
+    <div id="pontoStep3" class="d-none text-center">
+      <div class="ponto-confirm" id="pontoConfirmBox" style="max-width:380px;margin:0 auto">
+        <div style="font-size:4rem" id="pontoConfirmIcon"></div>
+        <h4 class="fw-bold mt-2" id="pontoConfirmTipo"></h4>
+        <p class="mb-1" id="pontoConfirmNome"></p>
+        <p class="display-6 fw-bold" id="pontoConfirmHora"></p>
+        <p class="text-muted" id="pontoConfirmData"></p>
+        <div class="mt-3">
+          <div class="progress" style="height:6px">
+            <div class="progress-bar bg-success" id="pontoProgressBar" style="width:100%;transition:width 3s linear"></div>
+          </div>
+          <small class="text-muted">Voltando em 3 segundos...</small>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /tab-ponto -->
+
+  <!-- ==================== TAB: RELATÓRIO DE PONTO ==================== -->
+  <div id="tab-relatorio" class="tab-pane d-none">
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h5 class="mb-0 fw-bold">Relatório de Ponto</h5>
+      <div class="d-flex gap-2 no-print">
+        <button class="btn btn-sm btn-primary" onclick="window.print()"><i class="bi bi-printer"></i> Imprimir</button>
+        <button class="btn btn-sm btn-success" onclick="exportarPontoCSV()"><i class="bi bi-file-earmark-excel"></i> Exportar CSV</button>
+        <button class="btn btn-sm btn-outline-danger" onclick="confirmarLimparPonto()"><i class="bi bi-trash"></i> Limpar registros</button>
+      </div>
+    </div>
+
+    <!-- Filtros -->
+    <div class="row g-2 mb-3 no-print">
+      <div class="col-md-3">
+        <label class="form-label fw-bold" style="font-size:.8rem">Funcionário</label>
+        <select class="form-select form-select-sm" id="relEmp" onchange="renderRelatorio()">
+          <option value="">Todos</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label fw-bold" style="font-size:.8rem">Departamento</label>
+        <select class="form-select form-select-sm" id="relDept" onchange="renderRelatorio()">
+          <option value="">Todos</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label fw-bold" style="font-size:.8rem">Data inicial</label>
+        <input type="date" class="form-control form-control-sm" id="relDe" onchange="renderRelatorio()">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label fw-bold" style="font-size:.8rem">Data final</label>
+        <input type="date" class="form-control form-control-sm" id="relAte" onchange="renderRelatorio()">
+      </div>
+      <div class="col-md-3 d-flex align-items-end gap-2">
+        <button class="btn btn-sm btn-outline-secondary" onclick="relHoje()">Hoje</button>
+        <button class="btn btn-sm btn-outline-secondary" onclick="relSemana()">Esta semana</button>
+        <button class="btn btn-sm btn-outline-secondary" onclick="relMes()">Este mês</button>
+      </div>
+    </div>
+
+    <!-- Cards de resumo -->
+    <div class="row g-3 mb-3" id="relCards"></div>
+
+    <!-- Tabela -->
+    <div class="table-responsive">
+      <table class="table table-sm table-hover align-middle">
+        <thead class="table-dark">
+          <tr>
+            <th>Data</th><th>Dia</th><th>Funcionário</th><th>Função</th><th>Depto.</th>
+            <th>Entrada</th><th>Saída</th><th>Horas Trabalhadas</th><th class="no-print">Ações</th>
+          </tr>
+        </thead>
+        <tbody id="relBody"></tbody>
+      </table>
+    </div>
+    <small class="text-muted" id="relCount"></small>
+
+  </div><!-- /tab-relatorio -->
+
+</div><!-- /container -->
+</div><!-- /appScreen -->
+
+<!-- MODAL: FUNCIONÁRIO -->
+<div class="modal fade" id="modalFunc" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header" style="background:var(--tg-dark);color:#fff">
+        <h5 class="modal-title" id="modalFuncTitulo">Novo Funcionário</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="fId">
+        <div class="row g-3">
+          <div class="col-12">
+            <label class="form-label fw-bold">Nome Completo *</label>
+            <input type="text" class="form-control" id="fNome" placeholder="Ex: JOÃO SILVA SANTOS">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-bold">Função *</label>
+            <input type="text" class="form-control" id="fFuncao" list="funcaoSugestoes" placeholder="Ex: caixa manhã">
+            <datalist id="funcaoSugestoes">
+              <option value="cozinheira chefe"><option value="auxiliar de cozinha"><option value="folguista cozinha">
+              <option value="auxiliar de limpeza"><option value="estoquista"><option value="caixa manhã">
+              <option value="caixa noite"><option value="balcão manhã"><option value="balcão noite">
+              <option value="garçom (almoço)"><option value="garçom noite"><option value="folguista salão">
+              <option value="churrasqueiro"><option value="auxiliar churrasco noite"><option value="atendente">
+            </datalist>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-bold">Departamento *</label>
+            <select class="form-select" id="fDept"></select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-bold">Horário de Trabalho</label>
+            <input type="text" class="form-control" id="fHorario" placeholder="Ex: 06 às 14">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-bold">Folga Fixa Semanal</label>
+            <select class="form-select" id="fFolgaFixa">
+              <option value="">— Sem folga fixa definida —</option>
+              <option value="domingo">Domingo</option>
+              <option value="segunda">Segunda-feira</option>
+              <option value="terça">Terça-feira</option>
+              <option value="quarta">Quarta-feira</option>
+              <option value="quinta">Quinta-feira</option>
+              <option value="sexta">Sexta-feira</option>
+              <option value="sábado">Sábado</option>
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-bold">É Folguista?</label>
+            <select class="form-select" id="fFolguista">
+              <option value="0">Não</option>
+              <option value="1">Sim – cobre folgas do depto.</option>
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-bold">Status</label>
+            <select class="form-select" id="fStatus">
+              <option value="ativo">Ativo</option>
+              <option value="ferias">Férias</option>
+              <option value="contratar">A contratar</option>
+              <option value="afastado">Afastado</option>
+              <option value="inativo">Inativo</option>
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-bold">Observação</label>
+            <input type="text" class="form-control" id="fObs" placeholder="Opcional">
+          </div>
+          <!-- Campos trabalhistas -->
+          <div class="col-12"><hr class="my-1"><small class="text-muted fw-bold">DADOS TRABALHISTAS</small></div>
+          <div class="col-md-4">
+            <label class="form-label fw-bold">CPF</label>
+            <input type="text" class="form-control" id="fCpf" placeholder="000.000.000-00" maxlength="14">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-bold">CTPS</label>
+            <input type="text" class="form-control" id="fCtps" placeholder="Nº da Carteira">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-bold">Nº Folha</label>
+            <input type="text" class="form-control" id="fNrFolha" placeholder="Ex: 19">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-bold">Data de Admissão</label>
+            <input type="date" class="form-control" id="fAdmissao">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-bold">Carga Diária</label>
+            <input type="text" class="form-control" id="fCarga" placeholder="07:20" value="07:20">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-bold">Data de Desligamento</label>
+            <input type="date" class="form-control" id="fDesligamento">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button class="btn btn-danger" onclick="salvarFuncionario()"><i class="bi bi-check-lg"></i> Salvar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: DEPARTAMENTO -->
+<div class="modal fade" id="modalDept" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header" style="background:var(--tg-dark);color:#fff">
+        <h5 class="modal-title" id="modalDeptTitulo">Novo Departamento</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="dId">
+        <div class="row g-3">
+          <div class="col-8">
+            <label class="form-label fw-bold">Nome *</label>
+            <input type="text" class="form-control" id="dNome" placeholder="Ex: Cozinha, Salão...">
+          </div>
+          <div class="col-4">
+            <label class="form-label fw-bold">Cor</label>
+            <input type="color" class="form-control form-control-color w-100" id="dCor" value="#888888">
+          </div>
+          <div class="col-12">
+            <label class="form-label fw-bold">Descrição <small class="text-muted">(opcional)</small></label>
+            <input type="text" class="form-control" id="dDesc" placeholder="Descrição do departamento">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button class="btn btn-danger" onclick="salvarDepartamento()"><i class="bi bi-check-lg"></i> Salvar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: ALTERAR SENHA -->
+<div class="modal fade" id="modalSenha" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header" style="background:var(--tg-dark);color:#fff">
+        <h5 class="modal-title"><i class="bi bi-key-fill"></i> Alterar Senha</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-danger d-none" id="senhaErro"></div>
+        <div class="alert alert-success d-none" id="senhaOk">Senha alterada com sucesso!</div>
+        <div class="mb-3">
+          <label class="form-label fw-bold">Senha Atual *</label>
+          <div class="input-group">
+            <input type="password" class="form-control" id="senhaAtual">
+            <button class="btn btn-outline-secondary" type="button" onclick="toggleSenha('senhaAtual',this)"><i class="bi bi-eye"></i></button>
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-bold">Nova Senha *</label>
+          <div class="input-group">
+            <input type="password" class="form-control" id="senhaNova">
+            <button class="btn btn-outline-secondary" type="button" onclick="toggleSenha('senhaNova',this)"><i class="bi bi-eye"></i></button>
+          </div>
+          <small class="text-muted">Mínimo 6 caracteres.</small>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-bold">Confirmar Nova Senha *</label>
+          <div class="input-group">
+            <input type="password" class="form-control" id="senhaConfirm">
+            <button class="btn btn-outline-secondary" type="button" onclick="toggleSenha('senhaConfirm',this)"><i class="bi bi-eye"></i></button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button class="btn btn-danger" onclick="alterarSenha()"><i class="bi bi-check-lg"></i> Alterar Senha</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+// ===================================================================
+// AUTH – LOGIN / LOGOUT / SENHA
+// ===================================================================
+async function sha256(text) {
+  const buf  = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+
+const CRED_KEY    = 'tche_cred';
+const SESSION_KEY = 'tche_session';
+const DEFAULT_USER= 'admin';
+const DEFAULT_PASS= 'tche2026';
+
+async function initAuth() {
+  // Cria credenciais padrão se for a primeira vez
+  if (!localStorage.getItem(CRED_KEY)) {
+    const hash = await sha256(DEFAULT_PASS);
+    localStorage.setItem(CRED_KEY, JSON.stringify({ user: DEFAULT_USER, hash }));
+  }
+  // Verifica sessão ativa
+  if (sessionStorage.getItem(SESSION_KEY)) {
+    mostrarApp(sessionStorage.getItem(SESSION_KEY));
+  }
+}
+
+async function fazerLogin() {
+  const user  = document.getElementById('loginUser').value.trim();
+  const senha = document.getElementById('loginSenha').value;
+  const cred  = JSON.parse(localStorage.getItem(CRED_KEY)||'{}');
+  const hash  = await sha256(senha);
+  const erroEl= document.getElementById('loginErro');
+  const btn   = document.getElementById('btnLogin');
+
+  btn.disabled = true;
+  btn.innerHTML= '<span class="spinner-border spinner-border-sm"></span> Verificando...';
+
+  setTimeout(async () => {
+    if (user === cred.user && hash === cred.hash) {
+      erroEl.style.display = 'none';
+      sessionStorage.setItem(SESSION_KEY, user);
+      mostrarApp(user);
+    } else {
+      erroEl.style.display = 'block';
+      document.getElementById('loginErroMsg').textContent =
+        !user || !senha ? 'Preencha usuário e senha.' : 'Usuário ou senha incorretos.';
+      document.getElementById('loginSenha').value = '';
+    }
+    btn.disabled = false;
+    btn.innerHTML= '<i class="bi bi-box-arrow-in-right"></i> Entrar';
+  }, 500); // pequeno delay para UX
+}
+
+function fazerLogout() {
+  if (!confirm('Deseja sair do sistema?')) return;
+  sessionStorage.removeItem(SESSION_KEY);
+  document.getElementById('appScreen').style.display  = 'none';
+  document.getElementById('loginScreen').style.display= 'flex';
+  document.getElementById('loginUser').value  = '';
+  document.getElementById('loginSenha').value = '';
+  document.getElementById('loginErro').style.display = 'none';
+}
+
+function mostrarApp(user) {
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('appScreen').style.display   = 'block';
+  document.getElementById('userLogado').textContent    = user;
+  init();
+}
+
+function abrirModalSenha() {
+  document.getElementById('senhaAtual').value  = '';
+  document.getElementById('senhaNova').value   = '';
+  document.getElementById('senhaConfirm').value= '';
+  document.getElementById('senhaErro').classList.add('d-none');
+  document.getElementById('senhaOk').classList.add('d-none');
+  new bootstrap.Modal(document.getElementById('modalSenha')).show();
+}
+
+async function alterarSenha() {
+  const atual   = document.getElementById('senhaAtual').value;
+  const nova    = document.getElementById('senhaNova').value;
+  const confirm = document.getElementById('senhaConfirm').value;
+  const erroEl  = document.getElementById('senhaErro');
+  const okEl    = document.getElementById('senhaOk');
+  erroEl.classList.add('d-none');
+  okEl.classList.add('d-none');
+
+  const cred = JSON.parse(localStorage.getItem(CRED_KEY)||'{}');
+  const hashAtual = await sha256(atual);
+
+  if (hashAtual !== cred.hash) {
+    erroEl.textContent='Senha atual incorreta.'; erroEl.classList.remove('d-none'); return;
+  }
+  if (nova.length < 6) {
+    erroEl.textContent='A nova senha deve ter pelo menos 6 caracteres.'; erroEl.classList.remove('d-none'); return;
+  }
+  if (nova !== confirm) {
+    erroEl.textContent='A confirmação não confere com a nova senha.'; erroEl.classList.remove('d-none'); return;
+  }
+  const hashNova = await sha256(nova);
+  cred.hash = hashNova;
+  localStorage.setItem(CRED_KEY, JSON.stringify(cred));
+  okEl.classList.remove('d-none');
+  setTimeout(()=>bootstrap.Modal.getInstance(document.getElementById('modalSenha')).hide(), 1500);
+}
+
+function toggleSenha(inputId, btn) {
+  const inp = document.getElementById(inputId);
+  const mostrando = inp.type === 'text';
+  inp.type = mostrando ? 'password' : 'text';
+  btn.innerHTML = mostrando ? '<i class="bi bi-eye"></i>' : '<i class="bi bi-eye-slash"></i>';
+}
+
+// ===================================================================
+// CONSTANTES DO APP
+// ===================================================================
+const DIAS_PT   = ['domingo','segunda','terça','quarta','quinta','sexta','sábado'];
+const DIAS_ABREV= ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+const DIA_NUM   = {domingo:0,segunda:1,'segunda-feira':1,terça:2,'terça-feira':2,quarta:3,'quarta-feira':3,quinta:4,'quinta-feira':4,sexta:5,'sexta-feira':5,sábado:6,sabado:6};
+const MESES_PT  = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+
+const STATUS_LABEL = { ativo:'Ativo', ferias:'Férias', contratar:'A contratar', afastado:'Afastado', inativo:'Inativo' };
+
+const DEPTS_INIT = [
+  {id:1,nome:'cozinha',   cor:'#c0392b',desc:'Preparo de pratos e limpeza da cozinha'},
+  {id:2,nome:'salão',     cor:'#e67e22',desc:'Atendimento, caixa e balcão'},
+  {id:3,nome:'churrasco', cor:'#27ae60',desc:'Churrasqueiros e auxiliares'},
+  {id:4,nome:'pousada',   cor:'#2980b9',desc:'Atendimento da pousada'},
+];
+
+const REGRAS = [
+  {label:'Cozinha – Responsável',     match:e=>e.departamento==='cozinha'  &&e.funcao.includes('cozinheira'),         min:1},
+  {label:'Cozinha – Auxiliares',      match:e=>e.departamento==='cozinha'  &&e.funcao.includes('auxiliar de cozinha'),min:2},
+  {label:'Cozinha – Limpeza',         match:e=>e.departamento==='cozinha'  &&e.funcao.includes('limpeza'),            min:1},
+  {label:'Salão – Caixa Manhã',       match:e=>e.departamento==='salão'    &&e.funcao==='caixa manhã',               min:1},
+  {label:'Salão – Caixa Noite',       match:e=>e.departamento==='salão'    &&e.funcao==='caixa noite',               min:1},
+  {label:'Salão – Balcão Manhã',      match:e=>e.departamento==='salão'    &&e.funcao==='balcão manhã',              min:1},
+  {label:'Salão – Balcão Noite',      match:e=>e.departamento==='salão'    &&e.funcao==='balcão noite',              min:1},
+  {label:'Salão – Garçons Almoço',    match:e=>e.departamento==='salão'    &&e.funcao.includes('garçom')&&e.funcao.includes('almoço'),min:2},
+  {label:'Salão – Garçom Noite',      match:e=>e.departamento==='salão'    &&e.funcao.includes('garçom noite'),      min:1},
+  {label:'Churrasco – Churrasqueiro', match:e=>e.departamento==='churrasco'&&e.funcao.includes('churrasqueiro'),     min:1},
+];
+
+const EMPLOYEES_INIT = [
+  {id:1, nome:'DAMARIS SOARES DE SOUZA',          funcao:'cozinheira chefe',        departamento:'cozinha',   horario:'05 às 13',    folga_fixa:'sexta',   folguista:false,status:'ativo',    obs:''},
+  {id:2, nome:'JUSSIMARA ALVES DE OLIVEIRA',       funcao:'auxiliar de cozinha 1',   departamento:'cozinha',   horario:'06 às 14',    folga_fixa:'segunda', folguista:false,status:'ativo',    obs:''},
+  {id:3, nome:'JAISLANE CARDOSO DA SILVA',         funcao:'auxiliar de cozinha 2',   departamento:'cozinha',   horario:'06 às 14',    folga_fixa:'terça',   folguista:false,status:'ativo',    obs:''},
+  {id:4, nome:'TANIA REGINA SAO PEDRO QUEIRO',     funcao:'auxiliar de cozinha 3',   departamento:'cozinha',   horario:'15 às 23',    folga_fixa:'segunda', folguista:false,status:'ativo',    obs:''},
+  {id:5, nome:'MONICA SANTANA FIUZA DA SILVA',     funcao:'folguista cozinha',       departamento:'cozinha',   horario:'variável',    folga_fixa:'terça',   folguista:true, status:'ativo',    obs:'Cobre folgas da cozinha'},
+  {id:6, nome:'A CONTRATAR',                       funcao:'auxiliar de limpeza',     departamento:'cozinha',   horario:'8 às 16:40',  folga_fixa:'quarta',  folguista:false,status:'contratar',obs:''},
+  {id:7, nome:'MAILANE NASCIMENTO FERREIRA',       funcao:'estoquista',              departamento:'salão',     horario:'8 às 16:40',  folga_fixa:'segunda', folguista:false,status:'ativo',    obs:''},
+  {id:8, nome:'PATRICIA RIBEIRO DE OLIVEIRA',      funcao:'caixa manhã',             departamento:'salão',     horario:'06 às 14',    folga_fixa:'terça',   folguista:false,status:'ativo',    obs:''},
+  {id:9, nome:'LAIANE FERREIRA DA CONCEICAO',      funcao:'caixa noite',             departamento:'salão',     horario:'14 às 22',    folga_fixa:'quarta',  folguista:false,status:'ativo',    obs:''},
+  {id:10,nome:'MALU CARDOSO DE ASSIS',             funcao:'balcão manhã',            departamento:'salão',     horario:'06 às 14',    folga_fixa:'quinta',  folguista:false,status:'ativo',    obs:''},
+  {id:11,nome:'EDUARDA DA SILVA SOARES',           funcao:'balcão noite',            departamento:'salão',     horario:'14 às 22',    folga_fixa:'sexta',   folguista:false,status:'ativo',    obs:''},
+  {id:12,nome:'A CONTRATAR',                       funcao:'garçom 1 (almoço)',       departamento:'salão',     horario:'11 às 15',    folga_fixa:'sábado',  folguista:false,status:'contratar',obs:''},
+  {id:13,nome:'A CONTRATAR',                       funcao:'garçom 2 (almoço)',       departamento:'salão',     horario:'11 às 15',    folga_fixa:'segunda', folguista:false,status:'contratar',obs:''},
+  {id:14,nome:'A CONTRATAR',                       funcao:'garçom 3 (almoço)',       departamento:'salão',     horario:'11 às 15',    folga_fixa:'terça',   folguista:false,status:'contratar',obs:''},
+  {id:15,nome:'LÍVIA ALMEIDA COSTA',               funcao:'garçom noite 1',          departamento:'salão',     horario:'15:20 às 23', folga_fixa:'quarta',  folguista:false,status:'ativo',    obs:''},
+  {id:16,nome:'Cauã',                              funcao:'garçom noite 2',          departamento:'salão',     horario:'15:20 às 23', folga_fixa:'quinta',  folguista:false,status:'ativo',    obs:''},
+  {id:17,nome:'DINAMARA GOMES DOS SANTOS',         funcao:'folguista salão',         departamento:'salão',     horario:'variável',    folga_fixa:'sexta',   folguista:true, status:'ativo',    obs:'Cobre folgas do salão'},
+  {id:18,nome:'EDNA RITA AMORIM DOS SANTOS',       funcao:'auxiliar de limpeza',     departamento:'salão',     horario:'07 às 15',    folga_fixa:'sábado',  folguista:false,status:'ativo',    obs:''},
+  {id:19,nome:'DAVI DA SILVA DOS SANTOS MEDI',     funcao:'churrasqueiro 1',         departamento:'churrasco', horario:'07 às 15',    folga_fixa:'segunda', folguista:false,status:'ativo',    obs:''},
+  {id:20,nome:'MATHEUS DO NASCIMENTO CARDOSO',     funcao:'churrasqueiro 2',         departamento:'churrasco', horario:'07 às 15',    folga_fixa:'terça',   folguista:false,status:'ativo',    obs:''},
+  {id:21,nome:'A CONTRATAR',                       funcao:'auxiliar churrasco noite',departamento:'churrasco', horario:'15:20 às 23', folga_fixa:'quarta',  folguista:false,status:'contratar',obs:''},
+  {id:22,nome:'JUCILENE CONCEIÇÃO COSTA',          funcao:'atendente',               departamento:'pousada',   horario:'',            folga_fixa:'',        folguista:false,status:'ativo',    obs:''},
+  {id:23,nome:'SILVANO RIBEIRO DA SILVA',          funcao:'atendente',               departamento:'pousada',   horario:'',            folga_fixa:'',        folguista:false,status:'ativo',    obs:''},
+  {id:24,nome:'SUELY PEREIRA SANTOS',              funcao:'cozinheira',              departamento:'salão',     horario:'',            folga_fixa:'',        folguista:false,status:'ativo',    obs:''},
+];
+
+// ===================================================================
+// ESTADO
+// ===================================================================
+let employees=[], departments=[], domingosFolga={}, overrides={};
+let nextEmpId=100, nextDeptId=10;
+let deptFiltroFunc='todos', deptFiltroEscala='todos';
+let modalFunc, modalDept;
+
+// ===================================================================
+// HELPERS
+// ===================================================================
+function cap(s){return s?s.charAt(0).toUpperCase()+s.slice(1):'';}
+function primeiroNome(n){const p=n.split(' ');return p.length>=2?p[0]+' '+p[1]:p[0];}
+function getDeptCor(nome){return(departments.find(d=>d.nome===nome)||{}).cor||'#888';}
+function getMesAno(){
+  const val=document.getElementById('selMes').value;
+  if(val.includes('_')){const p=val.split('_');return{mes:parseInt(p[0]),ano:parseInt(p[1])};}
+  return{mes:parseInt(val),ano:2026};
+}
+function diasDoMes(ano,mes){return new Date(ano,mes+1,0).getDate();}
+function domingosDoMes(ano,mes){
+  const r=[],t=diasDoMes(ano,mes);
+  for(let d=1;d<=t;d++) if(new Date(ano,mes,d).getDay()===0)r.push(d);
+  return r;
+}
+function toDateStr(ano,mes,dia){return`${ano}-${String(mes+1).padStart(2,'0')}-${String(dia).padStart(2,'0')}`;}
+function chaveMes(ano,mes){return`${ano}-${mes}`;}
+
+function statusBadgeHTML(st){
+  const cores={ativo:'background:#198754',ferias:'background:#6f42c1',contratar:'background:#ffc107;color:#333',afastado:'background:#6c757d',inativo:'background:#212529'};
+  const cor=cores[st]||'background:#888';
+  return`<span class="badge" style="${cor};color:${st==='contratar'?'#333':'#fff'}">${STATUS_LABEL[st]||st}</span>`;
+}
+
+// ===================================================================
+// INIT (chamado após login)
+// ===================================================================
+function init(){
+  const se=localStorage.getItem('tche_emps');
+  employees=se?JSON.parse(se):JSON.parse(JSON.stringify(EMPLOYEES_INIT));
+  if(!se) salvarEmps(); // garante que ponto.html enxerga os dados
+  const sd=localStorage.getItem('tche_depts');
+  departments=sd?JSON.parse(sd):JSON.parse(JSON.stringify(DEPTS_INIT));
+  if(!sd) salvarDepts();
+  const sdom=localStorage.getItem('tche_domingos');
+  domingosFolga=sdom?JSON.parse(sdom):{};
+  const so=localStorage.getItem('tche_overrides');
+  overrides=so?JSON.parse(so):{};
+  nextEmpId =Math.max(...employees.map(e=>e.id),99)+1;
+  nextDeptId=Math.max(...departments.map(d=>d.id),9)+1;
+
+  modalFunc=new bootstrap.Modal(document.getElementById('modalFunc'));
+  modalDept=new bootstrap.Modal(document.getElementById('modalDept'));
+
+  document.querySelectorAll('[data-tab]').forEach(b=>
+    b.addEventListener('click',()=>mudarTab(b.dataset.tab))
+  );
+
+  renderFiltrosDepts();
+  renderFuncionarios();
+  gerarEscala();
+
+  setInterval(()=>{
+    const n=new Date();
+    document.getElementById('clock').textContent=n.toLocaleDateString('pt-BR')+'  '+n.toLocaleTimeString('pt-BR');
+  },1000);
+}
+
+// ===================================================================
+// TABS
+// ===================================================================
+function mudarTab(tab){
+  document.querySelectorAll('.tab-pane').forEach(t=>t.classList.add('d-none'));
+  document.getElementById('tab-'+tab).classList.remove('d-none');
+  document.querySelectorAll('[data-tab]').forEach(b=>b.classList.remove('active'));
+  document.querySelector('[data-tab="'+tab+'"]').classList.add('active');
+  if(tab==='alertas')       renderAlertas();
+  if(tab==='resumo')        renderResumo();
+  if(tab==='domingos')      renderDomingos();
+  if(tab==='departamentos') renderDepartamentos();
+  if(tab==='ponto'){
+    iniciarRelogio();
+    renderPontoDeptFiltro();
+    renderGradeEmp();
+    voltarSelecao();
+  }
+  if(tab==='relatorio'){
+    iniciarRelatorio();
+  }
+}
+
+// ===================================================================
+// FILTROS DINÂMICOS
+// ===================================================================
+function renderFiltrosDepts(){
+  const mkBtn=(attr,val,label,cor)=>{
+    const active=val==='todos'?'active':'';
+    const style=val!=='todos'?`style="border-color:${cor};color:${cor}"`:'';
+    return`<button class="btn btn-sm btn-outline-secondary ${active}" ${attr}="${val}" ${style} onclick="${attr==='data-fdept'?'filtrarFuncDept':'filtrarEscalaDept'}(this)">${label}</button>`;
+  };
+  const base=mkBtn('data-fdept','todos','Todos','');
+  const btns=departments.map(d=>mkBtn('data-fdept',d.nome,cap(d.nome),d.cor)).join('');
+  const el=document.getElementById('filtroFuncDepts');
+  if(el) el.innerHTML=base+btns;
+
+  const base2=mkBtn('data-edept','todos','Todos','');
+  const btns2=departments.map(d=>mkBtn('data-edept',d.nome,cap(d.nome),d.cor)).join('');
+  const el2=document.getElementById('filtroEscalaDepts');
+  if(el2) el2.innerHTML=base2+btns2;
+}
+
+function filtrarFuncDept(btn){
+  document.querySelectorAll('[data-fdept]').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active'); deptFiltroFunc=btn.dataset.fdept; renderFuncionarios();
+}
+function filtrarEscalaDept(btn){
+  document.querySelectorAll('[data-edept]').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active'); deptFiltroEscala=btn.dataset.edept; renderEscala();
+}
+
+// ===================================================================
+// DEPARTAMENTOS
+// ===================================================================
+function salvarDepts(){localStorage.setItem('tche_depts',JSON.stringify(departments));}
+
+function renderDepartamentos(){
+  document.getElementById('deptBody').innerHTML=departments.map((d,i)=>{
+    const qtd=employees.filter(e=>e.departamento===d.nome).length;
+    return`<tr>
+      <td class="text-muted fw-bold">${d.id}</td>
+      <td><span class="color-swatch" style="background:${d.cor}"></span></td>
+      <td><strong>${cap(d.nome)}</strong></td>
+      <td>${d.desc||'—'}</td>
+      <td class="text-center"><span class="badge bg-secondary">${qtd} func.</span></td>
+      <td class="no-print">
+        <button class="btn btn-sm btn-outline-primary" onclick="abrirModalDept(${d.id})"><i class="bi bi-pencil"></i></button>
+        <button class="btn btn-sm btn-outline-danger ms-1" onclick="excluirDept(${d.id})"><i class="bi bi-trash"></i></button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function abrirModalDept(id){
+  document.getElementById('modalDeptTitulo').textContent=id?'Editar Departamento':'Novo Departamento';
+  const d=id?departments.find(x=>x.id===id):null;
+  document.getElementById('dId').value  =d?d.id:'';
+  document.getElementById('dNome').value=d?d.nome:'';
+  document.getElementById('dCor').value =d?d.cor:'#888888';
+  document.getElementById('dDesc').value=d?d.desc:'';
+  modalDept.show();
+}
+
+function salvarDepartamento(){
+  const idVal=document.getElementById('dId').value;
+  const id=idVal?parseInt(idVal):null;
+  const nome=document.getElementById('dNome').value.trim().toLowerCase();
+  if(!nome){alert('Nome do departamento é obrigatório.');return;}
+  const obj={id:id||nextDeptId++,nome,cor:document.getElementById('dCor').value,desc:document.getElementById('dDesc').value.trim()};
+  if(id){const i=departments.findIndex(d=>d.id===id);departments[i]=obj;}
+  else departments.push(obj);
+  salvarDepts(); modalDept.hide();
+  renderDepartamentos(); renderFiltrosDepts(); renderFuncionarios(); renderEscala();
+}
+
+function excluirDept(id){
+  const d=departments.find(x=>x.id===id);
+  const qtd=employees.filter(e=>e.departamento===d.nome).length;
+  if(qtd>0){alert(`Não é possível excluir "${cap(d.nome)}" — há ${qtd} funcionário(s) vinculado(s).`);return;}
+  if(!confirm(`Excluir o departamento "${cap(d.nome)}"?`))return;
+  departments=departments.filter(x=>x.id!==id);
+  salvarDepts(); renderDepartamentos(); renderFiltrosDepts();
+}
+
+// ===================================================================
+// STATUS POR DIA
+// ===================================================================
+function getStatus(emp,ano,mes,dia){
+  if(emp.status==='ferias') return 'V';
+  const dt=new Date(ano,mes,dia),dow=dt.getDay(),ds=toDateStr(ano,mes,dia),mk=chaveMes(ano,mes);
+  if(overrides[ds]&&overrides[ds][emp.id]!==undefined) return overrides[ds][emp.id];
+  if(dow===0&&domingosFolga[mk]&&domingosFolga[mk][emp.id]===ds) return 'F';
+  if(emp.folga_fixa&&DIA_NUM[emp.folga_fixa]!==undefined&&dow===DIA_NUM[emp.folga_fixa]) return 'F';
+  if(emp.folguista){
+    const naFolga=employees.filter(e=>!e.folguista&&e.departamento===emp.departamento&&e.status!=='inativo'&&e.status!=='ferias'&&getStatus(e,ano,mes,dia)==='F');
+    return naFolga.length>0?'C':'D';
+  }
+  return 'T';
+}
+
+// ===================================================================
+// FUNCIONÁRIOS
+// ===================================================================
+function salvarEmps(){localStorage.setItem('tche_emps',JSON.stringify(employees));}
+
+function popularSelectDept(val){
+  document.getElementById('fDept').innerHTML=departments.map(d=>
+    `<option value="${d.nome}"${d.nome===val?' selected':''}>${cap(d.nome)}</option>`
+  ).join('');
+}
+
+function limparFiltros(){
+  document.getElementById('funcSearch').value='';
+  document.getElementById('filtroStatus').value='';
+  document.getElementById('filtroFolga').value='';
+  document.getElementById('filtroFolguista').value='';
+  deptFiltroFunc='todos';
+  document.querySelectorAll('[data-fdept]').forEach(b=>b.classList.toggle('active',b.dataset.fdept==='todos'));
+  renderFuncionarios();
+}
+
+function renderFuncionarios(){
+  const q          =(document.getElementById('funcSearch')?.value||'').toLowerCase();
+  const filtStatus =(document.getElementById('filtroStatus')?.value||'');
+  const filtFolga  =(document.getElementById('filtroFolga')?.value||'');
+  const filtFolg   =(document.getElementById('filtroFolguista')?.value||'');
+
+  const lista=employees.filter(e=>{
+    const busca  =e.nome.toLowerCase().includes(q)||e.funcao.toLowerCase().includes(q)||e.departamento.toLowerCase().includes(q);
+    const dept   =deptFiltroFunc==='todos'||e.departamento===deptFiltroFunc;
+    const status =!filtStatus||e.status===filtStatus;
+    const folga  =!filtFolga||(filtFolga==='_sem'?!e.folga_fixa:e.folga_fixa===filtFolga);
+    const folguist=!filtFolg||(filtFolg==='1'?e.folguista===true:e.folguista===false);
+    return busca&&dept&&status&&folga&&folguist;
+  });
+
+  // Mostra aviso se filtros estão ativos
+  const filtrosAtivos=q||filtStatus||filtFolga||filtFolg||deptFiltroFunc!=='todos';
+
+  document.getElementById('funcBody').innerHTML=lista.length===0
+    ? `<tr><td colspan="9" class="text-center text-muted py-4"><i class="bi bi-search"></i> Nenhum funcionário encontrado com os filtros aplicados.<br><small><a href="#" onclick="limparFiltros();return false;">Limpar filtros</a></small></td></tr>`
+    : lista.map(e=>`
+    <tr>
+      <td class="text-muted fw-bold">${e.id}</td>
+      <td>
+        <strong>${e.nome}</strong>
+        ${e.folguista?'<span class="badge bg-info text-dark ms-1" style="font-size:.6rem">FOLGUISTA</span>':''}
+        ${e.obs?`<br><small class="text-muted">${e.obs}</small>`:''}
+      </td>
+      <td>${e.funcao}</td>
+      <td><span class="badge" style="background:${getDeptCor(e.departamento)}">${cap(e.departamento)}</span></td>
+      <td>${e.horario||'—'}</td>
+      <td>${e.folga_fixa?cap(e.folga_fixa):'—'}</td>
+      <td class="text-center">${e.folguista?'<i class="bi bi-check-circle-fill text-success"></i>':''}</td>
+      <td>${statusBadgeHTML(e.status)}</td>
+      <td class="no-print">
+        <button class="btn btn-sm btn-outline-primary" onclick="abrirModalFunc(${e.id})"><i class="bi bi-pencil"></i></button>
+        <button class="btn btn-sm btn-outline-danger ms-1" onclick="excluirFunc(${e.id})"><i class="bi bi-trash"></i></button>
+      </td>
+    </tr>`).join('');
+  const total=employees.length;
+  const msg=filtrosAtivos
+    ? `Exibindo ${lista.length} de ${total} funcionários (filtros ativos)`
+    : `Total: ${total} funcionários cadastrados`;
+  document.getElementById('funcCount').textContent=msg;
+}
+
+function abrirModalFunc(id){
+  document.getElementById('modalFuncTitulo').textContent=id?'Editar Funcionário':'Novo Funcionário';
+  const e=id?employees.find(x=>x.id===id):null;
+  document.getElementById('fId').value          =e?e.id:'';
+  document.getElementById('fNome').value        =e?e.nome:'';
+  document.getElementById('fFuncao').value      =e?e.funcao:'';
+  document.getElementById('fHorario').value     =e?e.horario:'';
+  document.getElementById('fFolgaFixa').value   =e?e.folga_fixa:'';
+  document.getElementById('fFolguista').value   =e&&e.folguista?'1':'0';
+  document.getElementById('fStatus').value      =e?e.status:'ativo';
+  document.getElementById('fObs').value         =e?e.obs:'';
+  document.getElementById('fCpf').value         =e?e.cpf||'':'';
+  document.getElementById('fCtps').value        =e?e.ctps||'':'';
+  document.getElementById('fNrFolha').value     =e?e.nr_folha||'':'';
+  document.getElementById('fAdmissao').value    =e?e.admissao||'':'';
+  document.getElementById('fCarga').value       =e?e.carga_diaria||'07:20':'07:20';
+  document.getElementById('fDesligamento').value=e?e.desligamento||'':'';
+  popularSelectDept(e?e.departamento:(departments[0]?.nome||''));
+  modalFunc.show();
+}
+
+function salvarFuncionario(){
+  const idVal=document.getElementById('fId').value;
+  const id=idVal?parseInt(idVal):null;
+  const nome=document.getElementById('fNome').value.trim().toUpperCase();
+  const funcao=document.getElementById('fFuncao').value.trim();
+  if(!nome||!funcao){alert('Nome e Função são obrigatórios.');return;}
+  const obj={
+    id:id||nextEmpId++,nome,funcao,
+    departamento:  document.getElementById('fDept').value,
+    horario:       document.getElementById('fHorario').value.trim(),
+    folga_fixa:    document.getElementById('fFolgaFixa').value,
+    folguista:     document.getElementById('fFolguista').value==='1',
+    status:        document.getElementById('fStatus').value,
+    obs:           document.getElementById('fObs').value.trim(),
+    cpf:           document.getElementById('fCpf').value.trim(),
+    ctps:          document.getElementById('fCtps').value.trim(),
+    nr_folha:      document.getElementById('fNrFolha').value.trim(),
+    admissao:      document.getElementById('fAdmissao').value,
+    carga_diaria:  document.getElementById('fCarga').value.trim()||'07:20',
+    desligamento:  document.getElementById('fDesligamento').value,
+  };
+  if(id){const i=employees.findIndex(e=>e.id===id);employees[i]=obj;}
+  else employees.push(obj);
+  salvarEmps(); modalFunc.hide(); renderFuncionarios(); renderEscala(); updateAlertBadge();
+}
+
+function excluirFunc(id){
+  if(!confirm('Remover este funcionário?'))return;
+  employees=employees.filter(e=>e.id!==id);
+  salvarEmps(); renderFuncionarios(); renderEscala(); updateAlertBadge();
+}
+
+// ===================================================================
+// ESCALA
+// ===================================================================
+function gerarEscala(){
+  const{mes,ano}=getMesAno();
+  if(!domingosFolga[chaveMes(ano,mes)]) autoDistribuirDomingosSilencioso(ano,mes);
+  renderEscala(); updateAlertBadge();
+}
+
+function renderEscala(){
+  const{mes,ano}=getMesAno();
+  const total=diasDoMes(ano,mes);
+  const dias=Array.from({length:total},(_,i)=>{const dt=new Date(ano,mes,i+1);return{d:i+1,dow:dt.getDay(),isDOM:dt.getDay()===0};});
+  document.getElementById('escalaHead').innerHTML=`<tr>
+    <th class="nome-col" style="min-width:165px">Funcionário / Função</th>
+    ${dias.map(d=>`<th class="${d.isDOM?'col-dom':''}" title="${cap(DIAS_PT[d.dow])}">${d.d}<br><small>${DIAS_ABREV[d.dow]}</small></th>`).join('')}
+  </tr>`;
+  const depts=deptFiltroEscala==='todos'?departments.map(d=>d.nome):[deptFiltroEscala];
+  const visiveis=employees.filter(e=>e.status!=='inativo');
+  let rows='';
+  depts.forEach(dept=>{
+    const grp=visiveis.filter(e=>e.departamento===dept);
+    if(!grp.length)return;
+    rows+=`<tr class="sep-row"><td colspan="${total+1}" style="background:${getDeptCor(dept)}">${dept.toUpperCase()}</td></tr>`;
+    [...grp].sort((a,b)=>(a.folguista?1:0)-(b.folguista?1:0)).forEach(emp=>{
+      const cells=dias.map(({d,isDOM})=>{
+        const s=getStatus(emp,ano,mes,d);
+        const tip=s==='C'?'Cobrindo folga':s==='D'?'Disponível':s==='V'?'Férias':'';
+        return`<td class="cell-${s}${isDOM?' col-dom':''}" title="${tip}">${s}</td>`;
+      }).join('');
+      const badge=emp.status==='contratar'?' <span style="font-size:.58rem;color:#e67e22" title="A contratar">●</span>':emp.status==='ferias'?' <span style="font-size:.58rem;color:#6f42c1" title="Férias">★</span>':'';
+      rows+=`<tr>
+        <td class="nome-col">
+          <div style="font-size:.68rem;color:#888">${emp.funcao}</div>
+          <div style="font-size:.78rem;font-weight:600">${primeiroNome(emp.nome)}${badge}</div>
+          <div style="font-size:.62rem;color:#aaa">${emp.horario||''}</div>
+        </td>${cells}</tr>`;
+    });
+  });
+  document.getElementById('escalaBody').innerHTML=rows;
+  document.getElementById('printTitle').textContent=`${MESES_PT[mes]} / ${ano}`;
+}
+
+// ===================================================================
+// DOMINGOS
+// ===================================================================
+function autoDistribuirDomingosSilencioso(ano,mes){
+  const mk=chaveMes(ano,mes);
+  const doms=domingosDoMes(ano,mes).map(d=>toDateStr(ano,mes,d));
+  const emps=employees.filter(e=>e.status!=='inativo'&&e.status!=='ferias');
+  const asgn={};
+  emps.forEach((emp,i)=>{asgn[emp.id]=doms[i%doms.length];});
+  domingosFolga[mk]=asgn;
+  localStorage.setItem('tche_domingos',JSON.stringify(domingosFolga));
+}
+
+function autoDistribuirDomingos(){
+  const{mes,ano}=getMesAno();
+  autoDistribuirDomingosSilencioso(ano,mes);
+  renderDomingos(); renderEscala(); updateAlertBadge();
+}
+
+function renderDomingos(){
+  const{mes,ano}=getMesAno();
+  const mk=chaveMes(ano,mes);
+  const doms=domingosDoMes(ano,mes);
+  document.getElementById('domMesLabel').textContent=`– ${MESES_PT[mes]} ${ano}`;
+  const emps=employees.filter(e=>e.status!=='inativo');
+  const asgn=domingosFolga[mk]||{};
+  const opts=doms.map(d=>{const ds=toDateStr(ano,mes,d);return`<option value="${ds}">${String(d).padStart(2,'0')}/${String(mes+1).padStart(2,'0')} (domingo)</option>`;}).join('');
+  const optsFull=`<option value="">— Trabalha todos os domingos —</option>`+opts;
+  document.getElementById('domingoBody').innerHTML=emps.map(emp=>`
+    <tr>
+      <td><strong>${emp.nome.split(' ').slice(0,3).join(' ')}</strong></td>
+      <td>${emp.funcao}</td>
+      <td><span class="badge" style="background:${getDeptCor(emp.departamento)}">${cap(emp.departamento)}</span></td>
+      <td>${emp.status==='ferias'
+        ?'<span class="badge" style="background:#6f42c1">Em férias – folga o mês todo</span>'
+        :`<select class="form-select form-select-sm" id="dom_${emp.id}" style="min-width:195px">${optsFull}</select>`}
+      </td>
+      <td>${statusBadgeHTML(emp.status)}</td>
+    </tr>`).join('');
+  emps.forEach(emp=>{const sel=document.getElementById('dom_'+emp.id);if(sel&&asgn[emp.id])sel.value=asgn[emp.id];});
+}
+
+function salvarDomingos(){
+  const{mes,ano}=getMesAno();
+  const mk=chaveMes(ano,mes);
+  const emps=employees.filter(e=>e.status!=='inativo'&&e.status!=='ferias');
+  const asgn={};
+  emps.forEach(emp=>{const sel=document.getElementById('dom_'+emp.id);if(sel&&sel.value)asgn[emp.id]=sel.value;});
+  domingosFolga[mk]=asgn;
+  localStorage.setItem('tche_domingos',JSON.stringify(domingosFolga));
+  renderEscala(); updateAlertBadge();
+  alert('Domingos salvos! Escala atualizada.');
+}
+
+// ===================================================================
+// ALERTAS
+// ===================================================================
+function calcAlertas(){
+  const{mes,ano}=getMesAno();
+  const total=diasDoMes(ano,mes);
+  const alertas=[];
+  for(let d=1;d<=total;d++){
+    const dt=new Date(ano,mes,d),dow=dt.getDay();
+    const ds=`${String(d).padStart(2,'0')}/${String(mes+1).padStart(2,'0')}/${ano}`;
+    REGRAS.forEach(r=>{
+      const cands=employees.filter(e=>e.status!=='inativo'&&r.match(e));
+      const trab=cands.filter(e=>getStatus(e,ano,mes,d)==='T').length;
+      const cobr=employees.filter(e=>e.folguista&&e.status!=='inativo'&&cands.some(c=>c.departamento===e.departamento)&&getStatus(e,ano,mes,d)==='C').length;
+      if(trab<r.min) alertas.push({ds,dia:cap(DIAS_PT[dow]),label:r.label,atual:trab+cobr,min:r.min,critico:(trab+cobr)===0});
+    });
+  }
+  const{mes:m2,ano:a2}=getMesAno();
+  const mk=chaveMes(a2,m2);
+  const asgn=domingosFolga[mk]||{};
+  employees.filter(e=>e.status!=='inativo'&&e.status!=='ferias').forEach(emp=>{
+    if(!asgn[emp.id]) alertas.push({ds:'—',dia:'—',label:`Sem domingo de folga: ${primeiroNome(emp.nome)} (${emp.funcao})`,atual:0,min:1,critico:false});
+  });
+  return alertas;
+}
+
+function updateAlertBadge(){
+  const n=calcAlertas().length;
+  const b=document.getElementById('alertBadge');
+  b.textContent=n>0?n:''; b.style.display=n>0?'':'none';
+}
+
+function renderAlertas(){
+  const{mes,ano}=getMesAno();
+  const alertas=calcAlertas();
+  const cont=document.getElementById('alertasBody');
+  if(!alertas.length){cont.innerHTML=`<div class="alert alert-success"><i class="bi bi-check-circle-fill"></i> Nenhum alerta em <strong>${MESES_PT[mes]}/${ano}</strong>.</div>`;return;}
+  const criticos=alertas.filter(a=>a.critico).length,atencao=alertas.filter(a=>!a.critico).length;
+  cont.innerHTML=`
+    <div class="alert alert-danger mb-3"><strong><i class="bi bi-exclamation-octagon-fill"></i> ${alertas.length} alertas</strong> em ${MESES_PT[mes]}/${ano} — ${criticos} críticos, ${atencao} de atenção</div>
+    <div class="table-responsive"><table class="table table-sm table-hover">
+      <thead class="table-dark"><tr><th>Data</th><th>Dia</th><th>Posição/Regra</th><th>Cobertura</th><th>Mínimo</th><th>Gravidade</th></tr></thead>
+      <tbody>${alertas.map(a=>`<tr class="${a.critico?'table-danger':'table-warning'}">
+        <td>${a.ds}</td><td>${a.dia}</td><td>${a.label}</td>
+        <td class="text-center">${a.atual}</td><td class="text-center">${a.min}</td>
+        <td><span class="badge bg-${a.critico?'danger':'warning'} text-${a.critico?'white':'dark'}">${a.critico?'CRÍTICO':'ATENÇÃO'}</span></td>
+      </tr>`).join('')}</tbody>
+    </table></div>`;
+}
+
+// ===================================================================
+// RESUMO
+// ===================================================================
+function renderResumo(){
+  const{mes,ano}=getMesAno();
+  const total=diasDoMes(ano,mes);
+  document.getElementById('resumoMesLabel').textContent=`– ${MESES_PT[mes]} ${ano}`;
+  document.getElementById('resumoBody').innerHTML=employees.filter(e=>e.status!=='inativo').map(emp=>{
+    let folgas=0,domFolga=0,domTrab=0;
+    for(let d=1;d<=total;d++){
+      const dt=new Date(ano,mes,d),s=getStatus(emp,ano,mes,d);
+      if(s==='F'||s==='V') folgas++;
+      if(dt.getDay()===0){if(s==='F'||s==='V') domFolga++; else domTrab++;}
+    }
+    const emFerias=emp.status==='ferias',regOK=emFerias||domFolga>=1;
+    return`<tr>
+      <td><strong>${emp.nome.split(' ').slice(0,3).join(' ')}</strong></td>
+      <td>${emp.funcao}</td>
+      <td><span class="badge" style="background:${getDeptCor(emp.departamento)}">${cap(emp.departamento)}</span></td>
+      <td>${emp.horario||'—'}</td>
+      <td class="text-center"><strong>${folgas}</strong></td>
+      <td class="text-center"><span class="badge bg-${regOK?'success':'danger'}">${domFolga} dom.</span></td>
+      <td class="text-center">${domTrab}</td>
+      <td>${emFerias?'<span class="badge" style="background:#6f42c1">Férias ★</span>':`<span class="badge bg-${regOK?'success':'danger'}">${regOK?'OK ✓':'PENDENTE'}</span>`}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ===================================================================
+// EXPORTAR CSV
+// ===================================================================
+function exportarCSV(){
+  const{mes,ano}=getMesAno();
+  const total=diasDoMes(ano,mes);
+  let csv='Funcionário;Função;Departamento;Horário;Folga Fixa;Status';
+  for(let d=1;d<=total;d++) csv+=`;${String(d).padStart(2,'0')}/${String(mes+1).padStart(2,'0')}`;
+  csv+='\n';
+  employees.filter(e=>e.status!=='inativo').forEach(emp=>{
+    csv+=`${emp.nome};${emp.funcao};${emp.departamento};${emp.horario||''};${emp.folga_fixa||''};${STATUS_LABEL[emp.status]||emp.status}`;
+    for(let d=1;d<=total;d++) csv+=`;${getStatus(emp,ano,mes,d)}`;
+    csv+='\n';
+  });
+  const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download=`Escala_TcheGrill_${MESES_PT[mes]}_${ano}.csv`;
+  a.click();URL.revokeObjectURL(url);
+}
+
+// ===================================================================
+// MÓDULO DE PONTO
+// ===================================================================
+let pontoEmpSelecionado = null;
+let pontoIntervalRelogio = null;
+let pontoDeptFiltro = 'todos';
+
+function carregarPonto() {
+  try { return JSON.parse(localStorage.getItem('tche_ponto') || '[]'); } catch { return []; }
+}
+function salvarPonto(registros) {
+  localStorage.setItem('tche_ponto', JSON.stringify(registros));
+}
+
+function iniciarRelogio() {
+  if (pontoIntervalRelogio) clearInterval(pontoIntervalRelogio);
+  const atualizar = () => {
+    const agora = new Date();
+    const h = String(agora.getHours()).padStart(2,'0');
+    const m = String(agora.getMinutes()).padStart(2,'0');
+    const s = String(agora.getSeconds()).padStart(2,'0');
+    const el = document.getElementById('pontoRelogio');
+    if (el) el.textContent = `${h}:${m}:${s}`;
+    const elD = document.getElementById('pontoDataHoje');
+    if (elD) {
+      const dias = ['Domingo','Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado'];
+      elD.textContent = `${dias[agora.getDay()]}, ${agora.toLocaleDateString('pt-BR', {day:'2-digit',month:'long',year:'numeric'})}`;
+    }
+  };
+  atualizar();
+  pontoIntervalRelogio = setInterval(atualizar, 1000);
+}
+
+function renderGradeEmp() {
+  const q = (document.getElementById('pontoSearch')?.value || '').toLowerCase();
+  const lista = employees.filter(e =>
+    e.status !== 'inativo' &&
+    (pontoDeptFiltro === 'todos' || e.departamento === pontoDeptFiltro) &&
+    (e.nome.toLowerCase().includes(q) || e.funcao.toLowerCase().includes(q))
+  );
+  const grade = document.getElementById('pontoGrade');
+  if (!grade) return;
+  if (!lista.length) {
+    grade.innerHTML = '<div class="col-12 text-center text-muted py-4">Nenhum funcionário encontrado.</div>';
+    return;
+  }
+  grade.innerHTML = lista.map(e => {
+    const cor = getDeptCor(e.departamento);
+    const iniciais = e.nome.split(' ').filter(Boolean).slice(0,2).map(p=>p[0]).join('').toUpperCase();
+    return `<div class="col-6 col-sm-4 col-md-3 col-lg-2">
+      <div class="emp-card" onclick="selecionarEmp(${e.id})">
+        <div class="emp-avatar" style="background:${cor}">${iniciais}</div>
+        <div class="fw-bold" style="font-size:.78rem;line-height:1.2">${e.nome.split(' ').slice(0,2).join(' ')}</div>
+        <div class="text-muted" style="font-size:.68rem">${e.funcao}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderPontoDeptFiltro() {
+  const cont = document.getElementById('pontoDeptFiltro');
+  if (!cont) return;
+  const depts = [...new Set(employees.filter(e=>e.status!=='inativo').map(e=>e.departamento))];
+  cont.innerHTML = `<button class="btn btn-sm ${pontoDeptFiltro==='todos'?'btn-dark':'btn-outline-secondary'}" data-pdept="todos" onclick="setPontoDept('todos')">Todos</button>` +
+    depts.map(d => `<button class="btn btn-sm ${pontoDeptFiltro===d?'btn-dark':'btn-outline-secondary'}" data-pdept="${d}" onclick="setPontoDept('${d}')" style="border-color:${getDeptCor(d)};${pontoDeptFiltro===d?'background:'+getDeptCor(d)+';color:#fff;':''}">${cap(d)}</button>`).join('');
+}
+
+function setPontoDept(d) {
+  pontoDeptFiltro = d;
+  renderPontoDeptFiltro();
+  renderGradeEmp();
+}
+
+function selecionarEmp(id) {
+  pontoEmpSelecionado = employees.find(e => e.id === id);
+  if (!pontoEmpSelecionado) return;
+  document.getElementById('pontoStep1').classList.add('d-none');
+  document.getElementById('pontoStep2').classList.remove('d-none');
+  document.getElementById('pontoStep3').classList.add('d-none');
+
+  const cor = getDeptCor(pontoEmpSelecionado.departamento);
+  const iniciais = pontoEmpSelecionado.nome.split(' ').filter(Boolean).slice(0,2).map(p=>p[0]).join('').toUpperCase();
+  const av = document.getElementById('pontoAvatar');
+  av.style.background = cor;
+  av.textContent = iniciais;
+  document.getElementById('pontoEmpNome').textContent = pontoEmpSelecionado.nome;
+  document.getElementById('pontoEmpFunc').textContent = `${pontoEmpSelecionado.funcao} – ${cap(pontoEmpSelecionado.departamento)}`;
+
+  atualizarRegistrosHoje();
+}
+
+function atualizarRegistrosHoje() {
+  if (!pontoEmpSelecionado) return;
+  const hoje = new Date().toISOString().slice(0,10);
+  const registros = carregarPonto().filter(r => r.empId === pontoEmpSelecionado.id && r.data === hoje);
+
+  const cont = document.getElementById('pontoRegistrosHoje');
+  if (!cont) return;
+  if (!registros.length) {
+    cont.innerHTML = '<div class="text-muted text-center py-2" style="font-size:.85rem">Nenhum registro hoje.</div>';
+  } else {
+    cont.innerHTML = registros.map(r => `
+      <div class="registro-linha ${r.tipo==='entrada'?'reg-entrada':'reg-saida'}">
+        <i class="bi bi-${r.tipo==='entrada'?'box-arrow-in-right':'box-arrow-left'}"></i>
+        <strong>${r.tipo==='entrada'?'ENTRADA':'SAÍDA'}</strong>
+        <span class="ms-auto">${r.hora}</span>
+      </div>`).join('');
+  }
+
+  // Atualiza badge do último registro
+  const ultimo = registros[registros.length - 1];
+  const badge = document.getElementById('pontoUltimoReg');
+  if (badge) {
+    badge.innerHTML = ultimo
+      ? `<span class="badge ${ultimo.tipo==='entrada'?'bg-success':'bg-danger'}">Último: ${ultimo.tipo==='entrada'?'Entrada':'Saída'} às ${ultimo.hora}</span>`
+      : '';
+  }
+}
+
+function registrarPonto(tipo) {
+  if (!pontoEmpSelecionado) return;
+  const agora = new Date();
+  const hoje = agora.toISOString().slice(0,10);
+  const hora = agora.toTimeString().slice(0,8);
+
+  const registros = carregarPonto();
+  const doEmpHoje = registros.filter(r => r.empId === pontoEmpSelecionado.id && r.data === hoje);
+  const ultimo = doEmpHoje[doEmpHoje.length - 1];
+
+  // Validação: não permitir dois tipos iguais seguidos
+  if (ultimo && ultimo.tipo === tipo) {
+    alert(`Atenção: o último registro deste funcionário já foi uma ${tipo === 'entrada' ? 'ENTRADA' : 'SAÍDA'}. Registre a ${tipo === 'entrada' ? 'SAÍDA' : 'ENTRADA'} primeiro.`);
+    return;
+  }
+
+  const novoReg = {
+    id: Date.now(),
+    empId: pontoEmpSelecionado.id,
+    empNome: pontoEmpSelecionado.nome,
+    empFuncao: pontoEmpSelecionado.funcao,
+    empDepto: pontoEmpSelecionado.departamento,
+    data: hoje,
+    hora: hora,
+    tipo: tipo
+  };
+  registros.push(novoReg);
+  salvarPonto(registros);
+
+  // Mostra confirmação
+  document.getElementById('pontoStep2').classList.add('d-none');
+  document.getElementById('pontoStep3').classList.remove('d-none');
+
+  const box = document.getElementById('pontoConfirmBox');
+  box.style.background = tipo === 'entrada' ? '#d4edda' : '#f8d7da';
+  document.getElementById('pontoConfirmIcon').textContent = tipo === 'entrada' ? '✅' : '🏁';
+  document.getElementById('pontoConfirmTipo').textContent = tipo === 'entrada' ? 'ENTRADA REGISTRADA' : 'SAÍDA REGISTRADA';
+  document.getElementById('pontoConfirmNome').textContent = pontoEmpSelecionado.nome;
+  document.getElementById('pontoConfirmHora').textContent = hora;
+  document.getElementById('pontoConfirmData').textContent = agora.toLocaleDateString('pt-BR', {weekday:'long',day:'2-digit',month:'long',year:'numeric'});
+
+  const bar = document.getElementById('pontoProgressBar');
+  if (bar) {
+    bar.style.transition = 'none';
+    bar.style.width = '100%';
+    setTimeout(() => {
+      bar.style.transition = 'width 3s linear';
+      bar.style.width = '0%';
+    }, 50);
+  }
+
+  setTimeout(() => voltarSelecao(), 3000);
+}
+
+function voltarSelecao() {
+  pontoEmpSelecionado = null;
+  document.getElementById('pontoStep1').classList.remove('d-none');
+  document.getElementById('pontoStep2').classList.add('d-none');
+  document.getElementById('pontoStep3').classList.add('d-none');
+  if (document.getElementById('pontoSearch')) document.getElementById('pontoSearch').value = '';
+  pontoDeptFiltro = 'todos';
+  renderPontoDeptFiltro();
+  renderGradeEmp();
+}
+
+// ===================================================================
+// RELATÓRIO DE PONTO
+// ===================================================================
+function iniciarRelatorio() {
+  const hoje = new Date();
+  const primeiroDia = new Date(hoje.getFullYear(), hoje.getMonth(), 1).toISOString().slice(0,10);
+  const ultimoDia   = new Date(hoje.getFullYear(), hoje.getMonth()+1, 0).toISOString().slice(0,10);
+  const elDe  = document.getElementById('relDe');
+  const elAte = document.getElementById('relAte');
+  if (elDe  && !elDe.value)  elDe.value  = primeiroDia;
+  if (elAte && !elAte.value) elAte.value  = ultimoDia;
+
+  const selEmp  = document.getElementById('relEmp');
+  const selDept = document.getElementById('relDept');
+  if (selEmp) {
+    selEmp.innerHTML = '<option value="">Todos</option>' +
+      employees.filter(e=>e.status!=='inativo').sort((a,b)=>a.nome.localeCompare(b.nome))
+        .map(e=>`<option value="${e.id}">${e.nome}</option>`).join('');
+  }
+  if (selDept) {
+    const depts = [...new Set(departments.map(d=>d.nome))];
+    selDept.innerHTML = '<option value="">Todos</option>' + depts.map(d=>`<option value="${d}">${cap(d)}</option>`).join('');
+  }
+  renderRelatorio();
+}
+
+function calcHoras(entrada, saida) {
+  if (!entrada || !saida) return null;
+  const [eh,em,es] = entrada.split(':').map(Number);
+  const [sh,sm,ss] = saida.split(':').map(Number);
+  const totalSeg = (sh*3600+sm*60+ss) - (eh*3600+em*60+es);
+  if (totalSeg <= 0) return null;
+  const hh = Math.floor(totalSeg/3600);
+  const mm = Math.floor((totalSeg%3600)/60);
+  return `${String(hh).padStart(2,'0')}h${String(mm).padStart(2,'0')}`;
+}
+
+function calcHorasMin(entrada, saida) {
+  if (!entrada || !saida) return 0;
+  const [eh,em] = entrada.split(':').map(Number);
+  const [sh,sm] = saida.split(':').map(Number);
+  const total = (sh*60+sm) - (eh*60+em);
+  return Math.max(0, total);
+}
+
+function renderRelatorio() {
+  const de   = document.getElementById('relDe')?.value   || '';
+  const ate  = document.getElementById('relAte')?.value  || '';
+  const empF = document.getElementById('relEmp')?.value  || '';
+  const dptF = document.getElementById('relDept')?.value || '';
+
+  const todos = carregarPonto();
+  const entradas = todos.filter(r => r.tipo === 'entrada');
+
+  // Agrupar pares entrada/saída por empregado+data
+  const pares = [];
+  entradas.forEach(ent => {
+    const saidas = todos.filter(r =>
+      r.tipo === 'saida' && r.empId === ent.empId && r.data === ent.data && r.hora > ent.hora
+    );
+    const saidaMaisProxima = saidas.sort((a,b)=>a.hora.localeCompare(b.hora))[0];
+    pares.push({ entrada: ent, saida: saidaMaisProxima || null });
+  });
+
+  const filtrado = pares.filter(p => {
+    const data = p.entrada.data;
+    const okDe  = !de  || data >= de;
+    const okAte = !ate || data <= ate;
+    const okEmp = !empF || String(p.entrada.empId) === empF;
+    const okDpt = !dptF || p.entrada.empDepto === dptF;
+    return okDe && okAte && okEmp && okDpt;
+  }).sort((a,b) => {
+    const dt = a.entrada.data.localeCompare(b.entrada.data);
+    if (dt !== 0) return dt;
+    return a.entrada.empNome.localeCompare(b.entrada.empNome);
+  });
+
+  // Cards de resumo
+  const totalReg   = filtrado.length;
+  let totalMin = 0;
+  const empSet = new Set();
+  filtrado.forEach(p => {
+    empSet.add(p.entrada.empId);
+    if (p.saida) totalMin += calcHorasMin(p.entrada.hora, p.saida.hora);
+  });
+  const totalH = Math.floor(totalMin/60);
+  const totalM = totalMin%60;
+
+  const cards = document.getElementById('relCards');
+  if (cards) {
+    cards.innerHTML = `
+      <div class="col-6 col-md-3">
+        <div class="card text-center border-0 shadow-sm"><div class="card-body py-2">
+          <div style="font-size:1.8rem;font-weight:800;color:var(--tg-red)">${totalReg}</div>
+          <small class="text-muted">Registros</small>
+        </div></div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card text-center border-0 shadow-sm"><div class="card-body py-2">
+          <div style="font-size:1.8rem;font-weight:800;color:#198754">${empSet.size}</div>
+          <small class="text-muted">Funcionários</small>
+        </div></div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card text-center border-0 shadow-sm"><div class="card-body py-2">
+          <div style="font-size:1.8rem;font-weight:800;color:#0d6efd">${totalH}h${String(totalM).padStart(2,'0')}</div>
+          <small class="text-muted">Horas totais</small>
+        </div></div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card text-center border-0 shadow-sm"><div class="card-body py-2">
+          <div style="font-size:1.8rem;font-weight:800;color:#6f42c1">${totalReg > 0 ? Math.round(totalMin/totalReg) : 0}min</div>
+          <small class="text-muted">Média por registro</small>
+        </div></div>
+      </div>`;
+  }
+
+  const DIAS_SEMANA = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+  const body = document.getElementById('relBody');
+  if (!body) return;
+
+  if (!filtrado.length) {
+    body.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-4">Nenhum registro encontrado.</td></tr>';
+    document.getElementById('relCount').textContent = '';
+    return;
+  }
+
+  body.innerHTML = filtrado.map(p => {
+    const dt = new Date(p.entrada.data + 'T12:00:00');
+    const diaSem = DIAS_SEMANA[dt.getDay()];
+    const dataFmt = dt.toLocaleDateString('pt-BR');
+    const hrs = p.saida ? calcHoras(p.entrada.hora, p.saida.hora) : null;
+    const hrsHtml = hrs
+      ? `<span class="badge bg-success">${hrs}</span>`
+      : '<span class="text-muted">—</span>';
+    return `<tr>
+      <td>${dataFmt}</td>
+      <td><span class="badge bg-secondary">${diaSem}</span></td>
+      <td>${p.entrada.empNome}</td>
+      <td>${p.entrada.empFuncao}</td>
+      <td><span class="badge" style="background:${getDeptCor(p.entrada.empDepto)}">${cap(p.entrada.empDepto)}</span></td>
+      <td><span class="badge bg-success">${p.entrada.hora}</span></td>
+      <td>${p.saida ? `<span class="badge bg-danger">${p.saida.hora}</span>` : '<span class="text-muted">—</span>'}</td>
+      <td>${hrsHtml}</td>
+      <td class="no-print">
+        <button class="btn btn-xs btn-outline-danger py-0 px-1" style="font-size:.7rem" onclick="excluirRegistroPonto(${p.entrada.id},${p.saida?p.saida.id:'null'})">
+          <i class="bi bi-trash"></i>
+        </button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('relCount').textContent = `${filtrado.length} registro(s) encontrado(s)`;
+}
+
+function excluirRegistroPonto(idEntrada, idSaida) {
+  if (!confirm('Excluir este par de registros?')) return;
+  let registros = carregarPonto().filter(r => r.id !== idEntrada && r.id !== idSaida);
+  salvarPonto(registros);
+  renderRelatorio();
+}
+
+function confirmarLimparPonto() {
+  if (!confirm('Atenção: isso apagará TODOS os registros de ponto permanentemente. Confirma?')) return;
+  localStorage.removeItem('tche_ponto');
+  renderRelatorio();
+}
+
+function relHoje() {
+  const hoje = new Date().toISOString().slice(0,10);
+  document.getElementById('relDe').value = hoje;
+  document.getElementById('relAte').value = hoje;
+  renderRelatorio();
+}
+
+function relSemana() {
+  const hoje = new Date();
+  const dia  = hoje.getDay();
+  const ini  = new Date(hoje); ini.setDate(hoje.getDate() - dia);
+  const fim  = new Date(hoje); fim.setDate(hoje.getDate() + (6 - dia));
+  document.getElementById('relDe').value  = ini.toISOString().slice(0,10);
+  document.getElementById('relAte').value = fim.toISOString().slice(0,10);
+  renderRelatorio();
+}
+
+function relMes() {
+  const hoje = new Date();
+  document.getElementById('relDe').value  = new Date(hoje.getFullYear(), hoje.getMonth(), 1).toISOString().slice(0,10);
+  document.getElementById('relAte').value = new Date(hoje.getFullYear(), hoje.getMonth()+1, 0).toISOString().slice(0,10);
+  renderRelatorio();
+}
+
+function exportarPontoCSV() {
+  const de  = document.getElementById('relDe')?.value  || '';
+  const ate = document.getElementById('relAte')?.value || '';
+  const todos = carregarPonto();
+  const entradas = todos.filter(r => r.tipo === 'entrada' && (!de || r.data >= de) && (!ate || r.data <= ate));
+  const DIAS = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+
+  let csv = 'Data;Dia;Funcionário;Função;Departamento;Entrada;Saída;Horas\n';
+  entradas.sort((a,b)=>a.data.localeCompare(b.data)||a.empNome.localeCompare(b.empNome)).forEach(ent => {
+    const saidas = todos.filter(r => r.tipo==='saida' && r.empId===ent.empId && r.data===ent.data && r.hora>ent.hora);
+    const saida = saidas.sort((a,b)=>a.hora.localeCompare(b.hora))[0];
+    const dt = new Date(ent.data+'T12:00:00');
+    const hrs = saida ? calcHoras(ent.hora, saida.hora) : '';
+    csv += `${dt.toLocaleDateString('pt-BR')};${DIAS[dt.getDay()]};${ent.empNome};${ent.empFuncao};${ent.empDepto};${ent.hora};${saida?saida.hora:''};${hrs}\n`;
+  });
+
+  const blob = new Blob(['﻿' + csv], {type:'text/csv;charset=utf-8;'});
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = `Ponto_TcheGrill_${de||'inicio'}_${ate||'fim'}.csv`;
+  a.click(); URL.revokeObjectURL(url);
+}
+
+// ===================================================================
+// START
+// ===================================================================
+document.addEventListener('DOMContentLoaded', initAuth);
+</script>
+</body>
+</html>

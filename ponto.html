@@ -1,0 +1,2313 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Ponto – Tche Grill</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1c1c2e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Ponto TG">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<script>
+  if('serviceWorker' in navigator){
+    navigator.serviceWorker.register('/sw.js').catch(()=>{});
+  }
+</script>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+<style>
+:root { --tg-red:#c0392b; --tg-dark:#1c1c2e; }
+body { background:#f4f6f9; font-family:'Segoe UI',sans-serif; }
+
+/* LOGIN */
+#loginScreen {
+  position:fixed;inset:0;z-index:9999;
+  background:linear-gradient(135deg,#1c1c2e 0%,#2d1b1b 60%,#3a1010 100%);
+  display:flex;align-items:center;justify-content:center;
+}
+#loginScreen .card { width:100%;max-width:400px;border:none;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.5); }
+#loginScreen .card-header { background:var(--tg-dark);color:#fff;border-radius:16px 16px 0 0;text-align:center;padding:28px 20px 20px; }
+#loginScreen .brand-icon { font-size:3rem;color:#c0392b; }
+#loginScreen .brand-name { font-size:1.6rem;font-weight:700;letter-spacing:2px;margin:6px 0 2px; }
+#loginScreen .brand-sub  { font-size:.8rem;color:#aaa; }
+
+/* APP */
+#appScreen { display:none; }
+.app-header { background:var(--tg-dark);color:#fff;padding:10px 20px; }
+.app-header h1 { font-size:1.3rem;margin:0;letter-spacing:1px; }
+.nav-tabs .nav-link { color:#555;font-weight:500;border:none;padding:8px 14px; }
+.nav-tabs .nav-link.active { color:var(--tg-red);border-bottom:3px solid var(--tg-red);font-weight:700;background:none; }
+.nav-tabs { border-bottom:2px solid #dee2e6; }
+
+/* RELÓGIO */
+.ponto-relogio { font-size:3.5rem;font-weight:800;letter-spacing:4px;color:var(--tg-dark);font-variant-numeric:tabular-nums; }
+.ponto-data    { font-size:1rem;color:#888;letter-spacing:1px; }
+
+/* CARDS DE FUNCIONÁRIOS */
+.emp-card { cursor:pointer;border:2px solid #e0e0e0;border-radius:12px;padding:12px 8px;text-align:center;transition:all .2s;background:#fff; }
+.emp-card:hover { border-color:var(--tg-red);transform:translateY(-2px);box-shadow:0 4px 12px rgba(192,57,43,.15); }
+.emp-card.selected { border-color:var(--tg-red);background:#fff5f5; }
+.emp-avatar { width:52px;height:52px;border-radius:50%;margin:0 auto 8px;display:flex;align-items:center;justify-content:center;font-size:1.2rem;font-weight:700;color:#fff; }
+
+/* BOTÕES PONTO */
+.btn-ponto-entrada,.btn-ponto-saida { min-width:160px;padding:20px 30px;font-size:1.2rem;font-weight:700;border-radius:16px; }
+.ponto-confirm { border-radius:16px;padding:30px;animation:fadeIn .3s ease; }
+@keyframes fadeIn { from{opacity:0;transform:scale(.95)} to{opacity:1;transform:scale(1)} }
+.registro-linha { display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:8px;margin-bottom:4px;font-size:.85rem; }
+.reg-entrada { background:#d4edda;color:#155724; }
+.reg-saida   { background:#f8d7da;color:#721c24; }
+
+/* RESUMO DIÁRIO */
+.card-resumo { border:none;border-radius:14px;box-shadow:0 2px 10px rgba(0,0,0,.07); }
+.card-resumo .num { font-size:3rem;font-weight:800;line-height:1; }
+.card-resumo .label { font-size:.8rem;color:#666;margin-top:4px; }
+.progress-slim { height:5px;border-radius:3px;margin-top:10px; }
+
+/* CARTÃO PONTO – tela */
+.cartao-table { font-size:.75rem;border-collapse:collapse;width:100%; }
+.cartao-table th,.cartao-table td { padding:3px 6px;border:1px solid #dee2e6;vertical-align:middle;text-align:center; }
+.cartao-table .col-data { text-align:left;white-space:nowrap;min-width:120px; }
+.row-folga  { background:#e2e3e5;color:#495057; }
+.row-ferias { background:#cce5ff;color:#004085; }
+.row-falta  { background:#fff3cd;color:#856404; }
+.row-totais { background:var(--tg-dark);color:#fff;font-weight:700; }
+.badge-manual { font-size:.65rem;background:#6f42c1;color:#fff;padding:1px 4px;border-radius:3px;vertical-align:middle; }
+.badge-noturno { font-size:.65rem;background:#0d6efd;color:#fff;padding:1px 4px;border-radius:3px;vertical-align:middle; }
+
+/* BANCO DE HORAS */
+.banco-card { border:none;border-radius:14px;padding:16px;box-shadow:0 2px 10px rgba(0,0,0,.07); }
+.banco-saldo-pos { color:#198754;font-size:1.4rem;font-weight:800; }
+.banco-saldo-neg { color:#dc3545;font-size:1.4rem;font-weight:800; }
+.banco-saldo-zer { color:#6c757d;font-size:1.4rem;font-weight:800; }
+
+/* CONFORMIDADE */
+.alerta-card { border-left:5px solid;border-radius:8px;padding:12px 16px;margin-bottom:10px;background:#fff; }
+.alerta-critico  { border-color:#dc3545; }
+.alerta-atencao  { border-color:#ffc107; }
+.alerta-info     { border-color:#0dcaf0; }
+.alerta-ok       { border-color:#198754; }
+
+/* PRINT */
+@media print {
+  .no-print { display:none!important; }
+  #loginScreen { display:none!important; }
+  .app-header { display:none!important; }
+  .nav-tabs { display:none!important; }
+  .tab-pane { display:block!important; }
+  body { background:#fff; }
+  .cartao-print-area { display:block!important; }
+}
+.cartao-print-area { }
+
+/* RECONHECIMENTO FACIAL */
+.camera-wrap { position:relative;display:inline-block;border-radius:16px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.2); }
+.camera-wrap video  { display:block;transform:scaleX(-1); }
+.camera-wrap canvas { position:absolute;top:0;left:0;pointer-events:none;transform:scaleX(-1); }
+.face-status { min-height:36px;display:flex;align-items:center;justify-content:center; }
+.face-verified { border:3px solid #198754!important; }
+.face-scanning { border:3px solid #ffc107!important; }
+.face-error    { border:3px solid #dc3545!important; }
+.banner-face { background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:10px 14px;font-size:.82rem;margin-bottom:12px; }
+
+/* MODAL CORREÇÃO */
+.modal-header-dark { background:var(--tg-dark);color:#fff; }
+</style>
+</head>
+<body>
+
+<!-- ==================== LOGIN ==================== -->
+<div id="loginScreen">
+  <div class="card shadow-lg">
+    <div class="card-header">
+      <div class="brand-icon"><i class="bi bi-fire"></i></div>
+      <div class="brand-name">TCHE GRILL</div>
+      <div class="brand-sub">REGISTRO DE PONTO</div>
+    </div>
+    <div class="card-body p-4">
+      <div class="mb-3">
+        <label class="form-label fw-bold">Usuário</label>
+        <div class="input-group">
+          <span class="input-group-text"><i class="bi bi-person-fill"></i></span>
+          <input type="text" class="form-control" id="loginUser" placeholder="usuário" onkeydown="if(event.key==='Enter')fazerLogin()">
+        </div>
+      </div>
+      <div class="mb-3">
+        <label class="form-label fw-bold">Senha</label>
+        <div class="input-group">
+          <span class="input-group-text"><i class="bi bi-lock-fill"></i></span>
+          <input type="password" class="form-control" id="loginSenha" placeholder="senha" onkeydown="if(event.key==='Enter')fazerLogin()">
+        </div>
+      </div>
+      <div class="alert alert-danger login-error d-none" id="loginErro">Usuário ou senha incorretos.</div>
+      <button class="btn btn-danger w-100 fw-bold py-2" onclick="fazerLogin()">
+        <i class="bi bi-box-arrow-in-right"></i> Entrar
+      </button>
+      <div class="text-center mt-3">
+        <a href="index.html" class="text-muted small"><i class="bi bi-arrow-left"></i> Ir para a Escala</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== APP ==================== -->
+<div id="appScreen">
+
+  <!-- HEADER -->
+  <div class="app-header d-flex align-items-center justify-content-between no-print">
+    <div class="d-flex align-items-center gap-3">
+      <i class="bi bi-fire" style="font-size:1.6rem;color:var(--tg-red)"></i>
+      <h1>TCHE GRILL — PONTO</h1>
+    </div>
+    <div class="d-flex align-items-center gap-3">
+      <a href="index.html" class="btn btn-sm btn-outline-light"><i class="bi bi-calendar3"></i> Escala</a>
+      <span id="headerUser" class="text-white-50 small"></span>
+      <button class="btn btn-sm btn-outline-danger" onclick="fazerLogout()"><i class="bi bi-box-arrow-right"></i></button>
+    </div>
+  </div>
+
+  <!-- TABS -->
+  <div class="no-print" style="background:#fff;border-bottom:2px solid #dee2e6;padding:0 16px">
+    <ul class="nav nav-tabs border-0">
+      <li class="nav-item"><button class="nav-link active" data-tab="bater"><i class="bi bi-clock-fill"></i> Bater Ponto</button></li>
+      <li class="nav-item"><button class="nav-link" data-tab="cadastro"><i class="bi bi-person-lines-fill"></i> Cadastro</button></li>
+      <li class="nav-item"><button class="nav-link" data-tab="resumo"><i class="bi bi-grid-fill"></i> Resumo Diário</button></li>
+      <li class="nav-item"><button class="nav-link" data-tab="cartao"><i class="bi bi-card-list"></i> Cartão Ponto</button></li>
+      <li class="nav-item"><button class="nav-link" data-tab="banco"><i class="bi bi-bank"></i> Banco de Horas</button></li>
+      <li class="nav-item"><button class="nav-link" data-tab="conformidade"><i class="bi bi-shield-check"></i> Conformidade <span id="confBadge" class="badge bg-danger ms-1"></span></button></li>
+    </ul>
+  </div>
+
+  <div class="container-fluid py-3">
+
+    <!-- ===== TAB: BATER PONTO ===== -->
+    <div id="tab-bater" class="tab-pane">
+
+      <div class="text-center mb-4 py-3" style="background:#fff;border-radius:16px;box-shadow:0 2px 8px rgba(0,0,0,.06)">
+        <div class="ponto-relogio" id="pontoRelogio">00:00:00</div>
+        <div class="ponto-data" id="pontoDataHoje"></div>
+      </div>
+
+      <!-- BANNER: aviso quando não está no localhost -->
+      <div id="bannerFaceOff" class="banner-face d-none no-print">
+        <i class="bi bi-exclamation-triangle-fill text-warning"></i>
+        <strong>Reconhecimento facial desativado.</strong>
+        Para ativar, use o arquivo <strong>iniciar.bat</strong> (duplo clique) em vez de abrir o arquivo diretamente.
+        <a href="#" onclick="voltarSelecao();return false" class="ms-2">Usar sem reconhecimento facial</a>
+      </div>
+
+      <!-- STEP 1: Selecionar funcionário -->
+      <div id="baterStep1">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h6 class="mb-0 fw-bold">Selecione o funcionário:</h6>
+          <div class="input-group input-group-sm" style="max-width:220px">
+            <span class="input-group-text"><i class="bi bi-search"></i></span>
+            <input type="text" class="form-control" id="baterSearch" placeholder="Buscar..." oninput="renderGrade()">
+          </div>
+        </div>
+        <div class="d-flex flex-wrap gap-1 mb-3" id="baterDeptFiltro"></div>
+        <div class="row g-2" id="baterGrade"></div>
+      </div>
+
+      <!-- STEP 1.5: Verificação Facial -->
+      <div id="baterStep15" class="d-none">
+        <div class="text-center p-4" style="background:#fff;border-radius:16px;box-shadow:0 2px 8px rgba(0,0,0,.06)">
+          <div class="emp-avatar mx-auto mb-2" id="baterAvatar15" style="width:56px;height:56px;font-size:1.2rem"></div>
+          <h5 class="fw-bold mb-1" id="baterEmpNome15"></h5>
+          <small class="text-muted" id="baterEmpFunc15"></small>
+
+          <div class="alert alert-warning d-none mt-3 mb-0 py-2" id="alertaSemFace" style="font-size:.82rem">
+            <i class="bi bi-exclamation-triangle"></i> Funcionário <strong>sem rosto cadastrado</strong>.
+            O ponto será registrado sem verificação. Peça ao admin para cadastrar o rosto.
+          </div>
+
+          <div class="mt-3">
+            <div class="camera-wrap" id="cameraWrapVerif">
+              <video id="videoVerif" width="340" height="255" autoplay muted playsinline></video>
+              <canvas id="canvasVerif" width="340" height="255"></canvas>
+            </div>
+          </div>
+
+          <div class="face-status mt-2" id="verifStatus">
+            <span class="text-muted small">Iniciando câmera...</span>
+          </div>
+
+          <div class="d-flex justify-content-center gap-3 mt-3">
+            <button class="btn btn-success px-4 py-2 fw-bold" id="btnVerificar"
+                    onclick="verificarIdentidade()" disabled>
+              <i class="bi bi-person-check-fill"></i> Verificar Identidade
+            </button>
+            <button class="btn btn-outline-secondary" onclick="cancelarVerificacao()">
+              <i class="bi bi-arrow-left"></i> Voltar
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- STEP 2: Bater ponto -->
+      <div id="baterStep2" class="d-none">
+        <div class="text-center mb-4 p-4" style="background:#fff;border-radius:16px;box-shadow:0 2px 8px rgba(0,0,0,.06)">
+          <div class="emp-avatar mx-auto mb-2" id="baterAvatar" style="width:72px;height:72px;font-size:1.6rem"></div>
+          <h5 class="fw-bold mb-0" id="baterEmpNome"></h5>
+          <small class="text-muted" id="baterEmpFunc"></small>
+          <div class="mt-2" id="baterUltimoReg"></div>
+        </div>
+        <div class="d-flex justify-content-center gap-4 mb-4">
+          <button class="btn btn-success btn-ponto-entrada" onclick="registrarPonto('entrada')">
+            <i class="bi bi-box-arrow-in-right d-block mb-1" style="font-size:1.6rem"></i>ENTRADA
+          </button>
+          <button class="btn btn-danger btn-ponto-saida" onclick="registrarPonto('saida')">
+            <i class="bi bi-box-arrow-left d-block mb-1" style="font-size:1.6rem"></i>SAÍDA
+          </button>
+        </div>
+        <div class="text-center mb-4">
+          <button class="btn btn-link text-muted" onclick="voltarSelecao()"><i class="bi bi-arrow-left"></i> Trocar funcionário</button>
+        </div>
+        <div style="max-width:480px;margin:0 auto">
+          <h6 class="fw-bold mb-2"><i class="bi bi-list-check"></i> Registros de hoje</h6>
+          <div id="baterRegistrosHoje"></div>
+        </div>
+      </div>
+
+      <!-- STEP 3: Confirmação -->
+      <div id="baterStep3" class="d-none text-center">
+        <div class="ponto-confirm" id="baterConfirmBox" style="max-width:380px;margin:0 auto">
+          <div style="font-size:4rem" id="baterConfirmIcon"></div>
+          <h4 class="fw-bold mt-2" id="baterConfirmTipo"></h4>
+          <p class="mb-1" id="baterConfirmNome"></p>
+          <p class="display-6 fw-bold" id="baterConfirmHora"></p>
+          <p class="text-muted" id="baterConfirmData"></p>
+          <div class="mt-3">
+            <div class="progress" style="height:6px">
+              <div class="progress-bar bg-success" id="baterProgressBar" style="width:100%;transition:width 3s linear"></div>
+            </div>
+            <small class="text-muted">Voltando em 3 segundos...</small>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /tab-bater -->
+
+    <!-- ===== TAB: CADASTRO ===== -->
+    <div id="tab-cadastro" class="tab-pane d-none">
+
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="mb-0 fw-bold"><i class="bi bi-person-lines-fill"></i> Cadastro de Funcionários</h5>
+        <div class="d-flex gap-2">
+          <input type="text" class="form-control form-control-sm" id="cadSearch"
+                 placeholder="Buscar nome, função..." style="max-width:200px"
+                 oninput="renderCadastro()">
+          <select class="form-select form-select-sm" id="cadFiltroStatus" onchange="renderCadastro()" style="max-width:140px">
+            <option value="">Todos os status</option>
+            <option value="ativo">Ativos</option>
+            <option value="ferias">Férias</option>
+            <option value="afastado">Afastado</option>
+            <option value="contratar">A contratar</option>
+            <option value="inativo">Inativos</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Tabela -->
+      <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle" style="font-size:.82rem">
+          <thead class="table-dark">
+            <tr>
+              <th>ID</th>
+              <th>Nome</th>
+              <th>Função</th>
+              <th>Depto.</th>
+              <th>CPF</th>
+              <th>CTPS</th>
+              <th>Nº Folha</th>
+              <th>Admissão</th>
+              <th>Carga/Dia</th>
+              <th>Status</th>
+              <th class="no-print">Ações</th>
+            </tr>
+          </thead>
+          <tbody id="cadBody"></tbody>
+        </table>
+      </div>
+      <small class="text-muted" id="cadCount"></small>
+    </div><!-- /tab-cadastro -->
+
+    <!-- ===== TAB: RESUMO DIÁRIO ===== -->
+    <div id="tab-resumo" class="tab-pane d-none">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="mb-0 fw-bold">Resumo do Dia — <span id="resumoDataLabel"></span></h5>
+        <button class="btn btn-sm btn-outline-secondary" onclick="renderResumo()"><i class="bi bi-arrow-clockwise"></i> Atualizar</button>
+      </div>
+      <div class="row g-3 mb-4" id="resumoCards"></div>
+      <div class="row g-3">
+        <div class="col-md-6">
+          <div class="card border-0 shadow-sm h-100">
+            <div class="card-header fw-bold bg-white border-0">Trabalhando agora <span class="badge bg-success ms-1" id="qtdTrabalhando">0</span></div>
+            <div class="card-body p-2" style="max-height:300px;overflow-y:auto" id="listaTrabalhando"></div>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="card border-0 shadow-sm h-100">
+            <div class="card-header fw-bold bg-white border-0">Ausentes / Faltantes <span class="badge bg-danger ms-1" id="qtdFaltantes">0</span></div>
+            <div class="card-body p-2" style="max-height:300px;overflow-y:auto" id="listaFaltantes"></div>
+          </div>
+        </div>
+      </div>
+    </div><!-- /tab-resumo -->
+
+    <!-- ===== TAB: CARTÃO PONTO ===== -->
+    <div id="tab-cartao" class="tab-pane d-none">
+
+      <!-- Filtros (no-print) -->
+      <div class="row g-2 mb-3 no-print">
+        <div class="col-md-4">
+          <label class="form-label fw-bold" style="font-size:.8rem">Funcionário</label>
+          <select class="form-select form-select-sm" id="cartaoEmp" onchange="renderCartao()"></select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label fw-bold" style="font-size:.8rem">Mês</label>
+          <select class="form-select form-select-sm" id="cartaoMes" onchange="renderCartao()">
+            <option value="0">Janeiro</option><option value="1">Fevereiro</option><option value="2">Março</option>
+            <option value="3">Abril</option><option value="4">Maio</option><option value="5">Junho</option>
+            <option value="6">Julho</option><option value="7">Agosto</option><option value="8">Setembro</option>
+            <option value="9">Outubro</option><option value="10">Novembro</option><option value="11">Dezembro</option>
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label fw-bold" style="font-size:.8rem">Ano</label>
+          <input type="number" class="form-control form-control-sm" id="cartaoAno" min="2020" max="2099" onchange="renderCartao()">
+        </div>
+        <div class="col-md-4 d-flex align-items-end gap-2">
+          <button class="btn btn-sm btn-danger" onclick="renderCartao()"><i class="bi bi-search"></i> Gerar</button>
+          <button class="btn btn-sm btn-primary" onclick="window.print()"><i class="bi bi-printer"></i> Imprimir</button>
+          <button class="btn btn-sm btn-success" onclick="exportarCartaoCSV()"><i class="bi bi-file-earmark-excel"></i> CSV</button>
+          <button class="btn btn-sm btn-outline-secondary no-print" onclick="abrirModalCorrecao()"><i class="bi bi-pencil-square"></i> Correção</button>
+        </div>
+      </div>
+
+      <!-- Cartão imprimível -->
+      <div id="cartaoPrintArea" style="background:#fff;border-radius:12px;padding:20px;box-shadow:0 2px 8px rgba(0,0,0,.06)">
+
+        <!-- Cabeçalho do cartão -->
+        <div style="border:2px solid #333;padding:12px;margin-bottom:0">
+          <div class="row g-0">
+            <div class="col-7">
+              <table style="font-size:.75rem;width:100%;border-collapse:collapse">
+                <tr><td style="width:90px;padding:2px 4px;font-weight:700">EMPRESA:</td><td style="padding:2px 4px" id="cpEmpresa">TCHE GRILL POUSADA E RESTAURANTE LTDA</td></tr>
+                <tr><td style="padding:2px 4px;font-weight:700">CNPJ:</td><td style="padding:2px 4px" id="cpCnpj">57.453.213/0001-96</td></tr>
+                <tr><td style="padding:2px 4px;font-weight:700">NOME:</td><td style="padding:2px 4px;font-weight:700;font-size:.85rem" id="cpNome">—</td></tr>
+                <tr><td style="padding:2px 4px;font-weight:700">C.T.P.S.:</td><td style="padding:2px 4px" id="cpCtps">—</td></tr>
+                <tr><td style="padding:2px 4px;font-weight:700">CPF:</td><td style="padding:2px 4px" id="cpCpf">—</td></tr>
+                <tr><td style="padding:2px 4px;font-weight:700">FUNÇÃO:</td><td style="padding:2px 4px;font-weight:700" id="cpFuncao">—</td></tr>
+                <tr><td style="padding:2px 4px;font-weight:700">OBSERVAÇÃO:</td><td style="padding:2px 4px" id="cpObs">—</td></tr>
+              </table>
+            </div>
+            <div class="col-1"></div>
+            <div class="col-4">
+              <div style="text-align:right;margin-bottom:6px">
+                <strong style="font-size:1.1rem">CARTÃO PONTO</strong><br>
+                <small id="cpPeriodo" style="font-size:.72rem">—</small>
+              </div>
+              <table style="font-size:.75rem;width:100%;border-collapse:collapse">
+                <tr><td style="padding:2px 4px;font-weight:700">Nº FOLHA:</td><td style="padding:2px 4px" id="cpNrFolha">—</td></tr>
+                <tr><td style="padding:2px 4px;font-weight:700">ADMISSÃO:</td><td style="padding:2px 4px" id="cpAdmissao">—</td></tr>
+                <tr><td style="padding:2px 4px;font-weight:700">DEPARTAMENTO:</td><td style="padding:2px 4px;font-weight:700" id="cpDepto">—</td></tr>
+              </table>
+              <div style="margin-top:8px;font-size:.7rem;font-weight:700;border-top:1px solid #999;padding-top:4px">HORÁRIO DE TRABALHO — CARGA DIÁRIA</div>
+              <table style="font-size:.7rem;width:100%;border-collapse:collapse" id="cpHorario">
+                <tr><td>SEGUNDA</td><td id="cpCargaSeg">07:20</td></tr>
+                <tr><td>TERÇA</td>  <td id="cpCargaTer">07:20</td></tr>
+                <tr><td>QUARTA</td> <td id="cpCargaQua">07:20</td></tr>
+                <tr><td>QUINTA</td> <td id="cpCargaQui">07:20</td></tr>
+                <tr><td>SEXTA</td>  <td id="cpCargaSex">07:20</td></tr>
+                <tr><td>SÁBADO</td> <td id="cpCargaSab">07:20</td></tr>
+                <tr><td>DOMINGO</td><td id="cpCargaDom">07:20</td></tr>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tabela de registros -->
+        <div class="table-responsive" style="margin-top:0">
+          <table class="cartao-table" style="border-top:none">
+            <thead>
+              <tr style="background:#333;color:#fff">
+                <th class="col-data">DATA</th>
+                <th>ENTRADA 1</th><th>SAÍDA 1</th>
+                <th>ENTRADA 2</th><th>SAÍDA 2</th>
+                <th>ENTRADA 3</th><th>SAÍDA 3</th>
+                <th>NORMAIS</th>
+                <th>BCRED.</th><th>BDEB.</th><th>BTOTAL</th><th>BSALDO</th>
+                <th>EXTRAS</th>
+              </tr>
+            </thead>
+            <tbody id="cartaoBody"></tbody>
+            <tfoot id="cartaoFoot"></tfoot>
+          </table>
+        </div>
+
+        <!-- Legenda de justificativas -->
+        <div id="cartaoLegenda" style="margin-top:8px;font-size:.72rem;border-top:1px solid #ccc;padding-top:6px"></div>
+
+        <!-- Rodapé com assinaturas -->
+        <div style="margin-top:30px;display:flex;justify-content:space-between;font-size:.75rem">
+          <div style="text-align:center;width:45%">
+            <div style="border-top:1px solid #333;padding-top:4px" id="cpAssinaturaEmp">—</div>
+          </div>
+          <div style="text-align:center;width:45%">
+            <div style="border-top:1px solid #333;padding-top:4px">TCHE GRILL POUSADA E RESTAURANTE LTDA</div>
+            <div>RH</div>
+          </div>
+        </div>
+        <div style="margin-top:8px;font-size:.65rem;color:#666">
+          (*) - Batida lançada manualmente &nbsp;&nbsp; (N) - Hora noturna (22h–5h)
+        </div>
+        <div style="margin-top:4px;font-size:.65rem;color:#999;text-align:right" id="cpEmitido"></div>
+      </div>
+    </div><!-- /tab-cartao -->
+
+    <!-- ===== TAB: BANCO DE HORAS ===== -->
+    <div id="tab-banco" class="tab-pane d-none">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="mb-0 fw-bold">Banco de Horas Individual</h5>
+        <div class="d-flex gap-2">
+          <select class="form-select form-select-sm" id="bancoDept" onchange="renderBanco()" style="max-width:160px">
+            <option value="">Todos os deptos.</option>
+          </select>
+          <button class="btn btn-sm btn-outline-secondary" onclick="renderBanco()"><i class="bi bi-arrow-clockwise"></i></button>
+        </div>
+      </div>
+      <!-- Cards de totais -->
+      <div class="row g-3 mb-4" id="bancoCards"></div>
+      <!-- Tabela individual -->
+      <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle">
+          <thead class="table-dark">
+            <tr>
+              <th>Funcionário</th><th>Departamento</th><th>Carga/Dia</th>
+              <th>Crédito</th><th>Débito</th><th>Saldo</th>
+              <th>Situação</th><th class="no-print">Ações</th>
+            </tr>
+          </thead>
+          <tbody id="bancoBody"></tbody>
+        </table>
+      </div>
+    </div><!-- /tab-banco -->
+
+    <!-- ===== TAB: CONFORMIDADE ===== -->
+    <div id="tab-conformidade" class="tab-pane d-none">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="mb-0 fw-bold"><i class="bi bi-shield-check"></i> Conformidade — Portaria 671/2021 & CLT</h5>
+        <button class="btn btn-sm btn-dark ms-3" onclick="abrirCadastroRosto()">
+          <i class="bi bi-camera-fill"></i> Cadastrar Rostos
+        </button>
+        <div class="d-flex gap-2">
+          <select class="form-select form-select-sm" id="confPeriodoDe" style="max-width:140px"></select>
+          <span class="align-self-center text-muted">até</span>
+          <select class="form-select form-select-sm" id="confPeriodoAte" style="max-width:140px"></select>
+          <button class="btn btn-sm btn-danger" onclick="renderConformidade()"><i class="bi bi-search"></i> Verificar</button>
+        </div>
+      </div>
+
+      <!-- Legenda -->
+      <div class="d-flex gap-3 mb-3 flex-wrap" style="font-size:.8rem">
+        <span><span class="badge bg-danger">🔴 Crítico</span> Violação legal — risco de passivo trabalhista</span>
+        <span><span class="badge bg-warning text-dark">🟡 Atenção</span> Limite atingido — monitorar</span>
+        <span><span class="badge bg-info">🔵 Info</span> Horas noturnas — adicional 20%</span>
+        <span><span class="badge bg-success">✅ OK</span> Dentro dos parâmetros</span>
+      </div>
+
+      <!-- Resumo do check -->
+      <div class="row g-3 mb-3" id="confResumo"></div>
+
+      <!-- Lista de alertas -->
+      <div id="confAlertas"></div>
+    </div><!-- /tab-conformidade -->
+
+  </div><!-- /container -->
+</div><!-- /appScreen -->
+
+<!-- ==================== MODAL: EDIÇÃO DE FUNCIONÁRIO ==================== -->
+<div class="modal fade" id="modalCadFunc" tabindex="-1">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+      <div class="modal-header modal-header-dark">
+        <h5 class="modal-title" id="modalCadFuncTitulo">
+          <i class="bi bi-person-lines-fill"></i> Dados do Funcionário — Cartão Ponto
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="cfId">
+
+        <!-- SEÇÃO 1: Identificação -->
+        <div class="p-3 mb-3 rounded" style="background:#f8f9fa;border-left:4px solid var(--tg-red)">
+          <div class="fw-bold mb-2 text-uppercase" style="font-size:.75rem;color:var(--tg-red);letter-spacing:1px">
+            <i class="bi bi-person-badge"></i> Identificação
+          </div>
+          <div class="row g-3">
+            <div class="col-12">
+              <label class="form-label fw-bold">Nome Completo *</label>
+              <input type="text" class="form-control" id="cfNome" placeholder="Ex: JOÃO SILVA SANTOS">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-bold">CPF</label>
+              <input type="text" class="form-control" id="cfCpf" placeholder="000.000.000-00" maxlength="14"
+                     oninput="mascaraCpf(this)">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-bold">CTPS (Carteira de Trabalho)</label>
+              <input type="text" class="form-control" id="cfCtps" placeholder="Nº da CTPS">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-bold">Nº Folha (Ficha de Ponto)</label>
+              <input type="text" class="form-control" id="cfNrFolha" placeholder="Ex: 19">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-bold">Data de Admissão</label>
+              <input type="date" class="form-control" id="cfAdmissao">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-bold">Data de Desligamento</label>
+              <input type="date" class="form-control" id="cfDesligamento">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-bold">Status</label>
+              <select class="form-select" id="cfStatus">
+                <option value="ativo">Ativo</option>
+                <option value="ferias">Férias</option>
+                <option value="afastado">Afastado</option>
+                <option value="contratar">A contratar</option>
+                <option value="inativo">Inativo</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- SEÇÃO 2: Função e Departamento -->
+        <div class="p-3 mb-3 rounded" style="background:#f8f9fa;border-left:4px solid #0d6efd">
+          <div class="fw-bold mb-2 text-uppercase" style="font-size:.75rem;color:#0d6efd;letter-spacing:1px">
+            <i class="bi bi-briefcase"></i> Cargo e Departamento
+          </div>
+          <div class="row g-3">
+            <div class="col-md-5">
+              <label class="form-label fw-bold">Função *</label>
+              <input type="text" class="form-control" id="cfFuncao" placeholder="Ex: Cozinheira Chefe">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-bold">Departamento *</label>
+              <select class="form-select" id="cfDept"></select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-bold">É Folguista?</label>
+              <select class="form-select" id="cfFolguista">
+                <option value="0">Não</option>
+                <option value="1">Sim — cobre folgas do depto.</option>
+              </select>
+            </div>
+            <div class="col-12">
+              <label class="form-label fw-bold">Observação</label>
+              <input type="text" class="form-control" id="cfObs" placeholder="Observações gerais">
+            </div>
+          </div>
+        </div>
+
+        <!-- SEÇÃO 3: Jornada de Trabalho -->
+        <div class="p-3 mb-3 rounded" style="background:#f8f9fa;border-left:4px solid #198754">
+          <div class="fw-bold mb-2 text-uppercase" style="font-size:.75rem;color:#198754;letter-spacing:1px">
+            <i class="bi bi-clock"></i> Jornada de Trabalho
+          </div>
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label fw-bold">Horário (Descrição)</label>
+              <input type="text" class="form-control" id="cfHorario" placeholder="Ex: 06 às 14">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-bold">Carga Diária (HH:MM)</label>
+              <input type="text" class="form-control" id="cfCarga" placeholder="07:20"
+                     oninput="atualizarPreviewCarga()">
+              <div class="form-text">Padrão: 07:20 (44h semanais — 6×1)</div>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-bold">Folga Fixa Semanal</label>
+              <select class="form-select" id="cfFolgaFixa" onchange="atualizarPreviewCarga()">
+                <option value="">— Sem folga fixa —</option>
+                <option value="domingo">Domingo</option>
+                <option value="segunda">Segunda-feira</option>
+                <option value="terça">Terça-feira</option>
+                <option value="quarta">Quarta-feira</option>
+                <option value="quinta">Quinta-feira</option>
+                <option value="sexta">Sexta-feira</option>
+                <option value="sábado">Sábado</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Tabela visual do horário por dia (espelho do cartão ponto) -->
+          <div class="mt-3">
+            <div class="fw-bold mb-2" style="font-size:.8rem">
+              Carga por dia da semana (prévia do cartão ponto):
+            </div>
+            <div class="table-responsive">
+              <table class="table table-sm table-bordered text-center mb-0" style="font-size:.8rem;max-width:500px">
+                <thead class="table-secondary">
+                  <tr>
+                    <th>Seg</th><th>Ter</th><th>Qua</th><th>Qui</th><th>Sex</th><th>Sáb</th><th>Dom</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr id="cfCargaPreview">
+                    <td>07:20</td><td>07:20</td><td>07:20</td><td>07:20</td><td>07:20</td><td>07:20</td><td>07:20</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- SEÇÃO 4: Empresa (somente leitura — exibido no cartão) -->
+        <div class="p-3 rounded" style="background:#e8f4fd;border-left:4px solid #0dcaf0">
+          <div class="fw-bold mb-2 text-uppercase" style="font-size:.75rem;color:#0dcaf0;letter-spacing:1px">
+            <i class="bi bi-building"></i> Dados da Empresa (exibidos no cartão ponto)
+          </div>
+          <div class="row g-2" style="font-size:.82rem">
+            <div class="col-md-6">
+              <span class="fw-bold">Empresa:</span> TCHE GRILL POUSADA E RESTAURANTE LTDA
+            </div>
+            <div class="col-md-3">
+              <span class="fw-bold">CNPJ:</span> 57.453.213/0001-96
+            </div>
+            <div class="col-md-3">
+              <span class="fw-bold">Inscrição:</span> 222.882.736
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button class="btn btn-danger fw-bold" onclick="salvarCadFunc()">
+          <i class="bi bi-check-lg"></i> Salvar Cadastro
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== MODAL: CADASTRO DE ROSTOS ==================== -->
+<div class="modal fade" id="modalCadastroRosto" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header modal-header-dark">
+        <h5 class="modal-title"><i class="bi bi-camera-fill"></i> Cadastro de Reconhecimento Facial</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" onclick="fecharCameraRosto()"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-info py-2" style="font-size:.83rem">
+          <i class="bi bi-info-circle"></i>
+          Tire pelo menos <strong>5 fotos</strong> do funcionário em posições ligeiramente diferentes (frente, leve rotação esquerda/direita) para melhor precisão.
+        </div>
+        <div class="row g-3 mb-3">
+          <div class="col-md-5">
+            <label class="form-label fw-bold">Funcionário</label>
+            <select class="form-select" id="rostoEmpSelect" onchange="atualizarContadorFotos()"></select>
+          </div>
+          <div class="col-md-7 d-flex align-items-end gap-3">
+            <div class="text-center p-2" style="background:#f8f9fa;border-radius:8px;min-width:120px">
+              <div style="font-size:1.6rem;font-weight:800;color:var(--tg-red)" id="contFotos">0</div>
+              <small class="text-muted">fotos cadastradas</small>
+            </div>
+            <button class="btn btn-outline-danger btn-sm" onclick="excluirRostosCadastrados()">
+              <i class="bi bi-trash"></i> Remover todas
+            </button>
+          </div>
+        </div>
+
+        <div class="text-center">
+          <div class="camera-wrap" id="cameraWrapCadastro" style="border:3px solid #dee2e6">
+            <video id="videoCadastro" width="340" height="255" autoplay muted playsinline></video>
+            <canvas id="canvasCadastro" width="340" height="255"></canvas>
+          </div>
+          <div class="face-status mt-2" id="cadastroStatus">
+            <span class="text-muted">Câmera desligada</span>
+          </div>
+          <div class="d-flex justify-content-center gap-3 mt-3">
+            <button class="btn btn-outline-secondary" id="btnLigarCamera" onclick="ligarCameraCadastro()">
+              <i class="bi bi-camera"></i> Ligar Câmera
+            </button>
+            <button class="btn btn-primary d-none" id="btnCapturar" onclick="capturarRosto()">
+              <i class="bi bi-camera-fill"></i> Capturar Foto
+            </button>
+            <button class="btn btn-outline-secondary d-none" id="btnDesligarCamera" onclick="desligarCameraCadastro()">
+              <i class="bi bi-camera-video-off"></i> Desligar
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal" onclick="fecharCameraRosto()">Fechar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== MODAL: CORREÇÃO MANUAL ==================== -->
+<div class="modal fade" id="modalCorrecao" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header modal-header-dark">
+        <h5 class="modal-title"><i class="bi bi-pencil-square"></i> Correção Manual de Ponto</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-3 mb-3">
+          <div class="col-md-4">
+            <label class="form-label fw-bold">Funcionário</label>
+            <select class="form-select" id="corrEmp" onchange="renderRegistrosCorrecao()"></select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label fw-bold">Data</label>
+            <input type="date" class="form-control" id="corrData" onchange="renderRegistrosCorrecao()">
+          </div>
+          <div class="col-md-2">
+            <label class="form-label fw-bold">Hora</label>
+            <input type="time" class="form-control" id="corrHora" step="60">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label fw-bold">Tipo</label>
+            <select class="form-select" id="corrTipo">
+              <option value="entrada">Entrada</option>
+              <option value="saida">Saída</option>
+            </select>
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-bold">Justificativa <small class="text-muted">(obrigatório — Portaria 671)</small></label>
+          <input type="text" class="form-control" id="corrJustificativa" placeholder="Ex: Esqueceu de bater, falha no sistema, etc.">
+        </div>
+        <button class="btn btn-danger mb-3" onclick="salvarCorrecao()"><i class="bi bi-plus-circle"></i> Adicionar Registro</button>
+        <hr>
+        <h6 class="fw-bold">Registros do dia selecionado <small class="badge bg-warning text-dark">* = manual</small></h6>
+        <div id="corrRegistros"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== MODAL: BANCO DE HORAS ==================== -->
+<div class="modal fade" id="modalBanco" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header modal-header-dark">
+        <h5 class="modal-title"><i class="bi bi-bank"></i> Lançamento no Banco de Horas</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="bancoEmpId">
+        <div class="mb-3">
+          <label class="fw-bold">Funcionário</label>
+          <div id="bancoEmpNome" class="fw-bold text-danger mt-1"></div>
+        </div>
+        <div class="row g-3">
+          <div class="col-6">
+            <label class="form-label fw-bold">Tipo</label>
+            <select class="form-select" id="bancoTipo">
+              <option value="credito">Crédito (horas a receber)</option>
+              <option value="debito">Débito (horas a pagar)</option>
+              <option value="compensar">Compensação (zerar crédito)</option>
+            </select>
+          </div>
+          <div class="col-6">
+            <label class="form-label fw-bold">Horas (HH:MM)</label>
+            <input type="text" class="form-control" id="bancoHoras" placeholder="01:30">
+          </div>
+          <div class="col-12">
+            <label class="form-label fw-bold">Observação</label>
+            <input type="text" class="form-control" id="bancoObs" placeholder="Ex: Extras de novembro compensadas">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button class="btn btn-danger" onclick="salvarLancamentoBanco()"><i class="bi bi-check-lg"></i> Salvar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="face-api.min.js" onerror="window._faceApiErr=true"></script>
+<script>
+// ===================================================================
+// DADOS PADRÃO (espelho do index.html — usado se localStorage vazio)
+// ===================================================================
+const DEPTS_INIT = [
+  {id:1,nome:'cozinha',   cor:'#c0392b',desc:'Preparo de pratos e limpeza da cozinha'},
+  {id:2,nome:'salão',     cor:'#e67e22',desc:'Atendimento, caixa e balcão'},
+  {id:3,nome:'churrasco', cor:'#27ae60',desc:'Churrasqueiros e auxiliares'},
+  {id:4,nome:'pousada',   cor:'#2980b9',desc:'Atendimento da pousada'},
+];
+const EMPLOYEES_INIT = [
+  {id:1, nome:'DAMARIS SOARES DE SOUZA',          funcao:'cozinheira chefe',        departamento:'cozinha',   horario:'05 às 13',    folga_fixa:'sexta',   folguista:false,status:'ativo',    carga_diaria:'07:20'},
+  {id:2, nome:'JUSSIMARA ALVES DE OLIVEIRA',       funcao:'auxiliar de cozinha 1',   departamento:'cozinha',   horario:'06 às 14',    folga_fixa:'segunda', folguista:false,status:'ativo',    carga_diaria:'07:20'},
+  {id:3, nome:'JAISLANE CARDOSO DA SILVA',         funcao:'auxiliar de cozinha 2',   departamento:'cozinha',   horario:'06 às 14',    folga_fixa:'terça',   folguista:false,status:'ativo',    carga_diaria:'07:20'},
+  {id:4, nome:'TANIA REGINA SAO PEDRO QUEIRO',     funcao:'auxiliar de cozinha 3',   departamento:'cozinha',   horario:'15 às 23',    folga_fixa:'segunda', folguista:false,status:'ativo',    carga_diaria:'07:20'},
+  {id:5, nome:'MONICA SANTANA FIUZA DA SILVA',     funcao:'folguista cozinha',       departamento:'cozinha',   horario:'variável',    folga_fixa:'terça',   folguista:true, status:'ativo',    carga_diaria:'07:20'},
+  {id:6, nome:'A CONTRATAR',                       funcao:'auxiliar de limpeza',     departamento:'cozinha',   horario:'8 às 16:40',  folga_fixa:'quarta',  folguista:false,status:'contratar',carga_diaria:'07:20'},
+  {id:7, nome:'MAILANE NASCIMENTO FERREIRA',       funcao:'estoquista',              departamento:'salão',     horario:'8 às 16:40',  folga_fixa:'segunda', folguista:false,status:'ativo',    carga_diaria:'07:20'},
+  {id:8, nome:'PATRICIA RIBEIRO DE OLIVEIRA',      funcao:'caixa manhã',             departamento:'salão',     horario:'06 às 14',    folga_fixa:'terça',   folguista:false,status:'ativo',    carga_diaria:'07:20'},
+  {id:9, nome:'LAIANE FERREIRA DA CONCEICAO',      funcao:'caixa noite',             departamento:'salão',     horario:'14 às 22',    folga_fixa:'quarta',  folguista:false,status:'ativo',    carga_diaria:'07:20'},
+  {id:10,nome:'MALU CARDOSO DE ASSIS',             funcao:'balcão manhã',            departamento:'salão',     horario:'06 às 14',    folga_fixa:'quinta',  folguista:false,status:'ativo',    carga_diaria:'07:20'},
+  {id:11,nome:'EDUARDA DA SILVA SOARES',           funcao:'balcão noite',            departamento:'salão',     horario:'14 às 22',    folga_fixa:'sexta',   folguista:false,status:'ativo',    carga_diaria:'07:20'},
+  {id:12,nome:'A CONTRATAR',                       funcao:'garçom 1 (almoço)',       departamento:'salão',     horario:'11 às 15',    folga_fixa:'sábado',  folguista:false,status:'contratar',carga_diaria:'07:20'},
+  {id:13,nome:'A CONTRATAR',                       funcao:'garçom 2 (almoço)',       departamento:'salão',     horario:'11 às 15',    folga_fixa:'segunda', folguista:false,status:'contratar',carga_diaria:'07:20'},
+  {id:14,nome:'A CONTRATAR',                       funcao:'garçom 3 (almoço)',       departamento:'salão',     horario:'11 às 15',    folga_fixa:'terça',   folguista:false,status:'contratar',carga_diaria:'07:20'},
+  {id:15,nome:'LÍVIA ALMEIDA COSTA',               funcao:'garçom noite 1',          departamento:'salão',     horario:'15:20 às 23', folga_fixa:'quarta',  folguista:false,status:'ativo',    carga_diaria:'07:20'},
+  {id:16,nome:'Cauã',                              funcao:'garçom noite 2',          departamento:'salão',     horario:'15:20 às 23', folga_fixa:'quinta',  folguista:false,status:'ativo',    carga_diaria:'07:20'},
+  {id:17,nome:'DINAMARA GOMES DOS SANTOS',         funcao:'folguista salão',         departamento:'salão',     horario:'variável',    folga_fixa:'sexta',   folguista:true, status:'ativo',    carga_diaria:'07:20'},
+  {id:18,nome:'EDNA RITA AMORIM DOS SANTOS',       funcao:'auxiliar de limpeza',     departamento:'salão',     horario:'07 às 15',    folga_fixa:'sábado',  folguista:false,status:'ativo',    carga_diaria:'07:20'},
+  {id:19,nome:'DAVI DA SILVA DOS SANTOS MEDI',     funcao:'churrasqueiro 1',         departamento:'churrasco', horario:'07 às 15',    folga_fixa:'segunda', folguista:false,status:'ativo',    carga_diaria:'07:20'},
+  {id:20,nome:'MATHEUS DO NASCIMENTO CARDOSO',     funcao:'churrasqueiro 2',         departamento:'churrasco', horario:'07 às 15',    folga_fixa:'terça',   folguista:false,status:'ativo',    carga_diaria:'07:20'},
+  {id:21,nome:'A CONTRATAR',                       funcao:'auxiliar churrasco noite',departamento:'churrasco', horario:'15:20 às 23', folga_fixa:'quarta',  folguista:false,status:'contratar',carga_diaria:'07:20'},
+  {id:22,nome:'JUCILENE CONCEIÇÃO COSTA',          funcao:'atendente',               departamento:'pousada',   horario:'',            folga_fixa:'',        folguista:false,status:'ativo',    carga_diaria:'07:20'},
+  {id:23,nome:'SILVANO RIBEIRO DA SILVA',          funcao:'atendente',               departamento:'pousada',   horario:'',            folga_fixa:'',        folguista:false,status:'ativo',    carga_diaria:'07:20'},
+  {id:24,nome:'SUELY PEREIRA SANTOS',              funcao:'cozinheira',              departamento:'salão',     horario:'',            folga_fixa:'',        folguista:false,status:'ativo',    carga_diaria:'07:20'},
+];
+
+// ===================================================================
+// CONSTANTES
+// ===================================================================
+const EMPRESA_NOME  = 'TCHE GRILL POUSADA E RESTAURANTE LTDA';
+const EMPRESA_CNPJ  = '57.453.213/0001-96';
+const CARGA_PADRAO  = '07:20';
+const TOLERANCIA_MIN = 5; // Súmula TST 366
+const DIAS_PT = ['Domingo','Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado'];
+const DIAS_ABREV = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+const MESES_PT = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+
+// ===================================================================
+// AUTH
+// ===================================================================
+async function sha256(text){
+  const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+
+async function initAuth(){
+  const sess=sessionStorage.getItem('tche_session');
+  if(sess){ mostrarApp(sess); return; }
+  document.getElementById('loginScreen').style.display='flex';
+}
+
+async function fazerLogin(){
+  const user=document.getElementById('loginUser').value.trim();
+  const senha=document.getElementById('loginSenha').value;
+  if(!user||!senha) return;
+  let cred=JSON.parse(localStorage.getItem('tche_cred')||'null');
+  if(!cred){
+    const hash=await sha256('tche2026');
+    cred={user:'admin',hash};
+    localStorage.setItem('tche_cred',JSON.stringify(cred));
+  }
+  const hash=await sha256(senha);
+  if(user===cred.user&&hash===cred.hash){
+    sessionStorage.setItem('tche_session',user);
+    document.getElementById('loginScreen').style.display='none';
+    mostrarApp(user);
+  } else {
+    document.getElementById('loginErro').classList.remove('d-none');
+  }
+}
+
+function fazerLogout(){
+  sessionStorage.removeItem('tche_session');
+  location.reload();
+}
+
+function mostrarApp(user){
+  document.getElementById('appScreen').style.display='block';
+  document.getElementById('headerUser').textContent=user;
+  init();
+}
+
+// ===================================================================
+// DADOS (localStorage compartilhado com index.html)
+// ===================================================================
+let employees=[], departments=[], pontos=[], bancoData={}, facesData={};
+let baterEmpSelecionado=null, baterInterval=null, baterDeptFiltro='todos';
+let modalCorrecao, modalBancoModal;
+
+/* ---- API REST (funciona quando servido via HTTP; silencioso via file://) ---- */
+const IS_HTTP = location.protocol.startsWith('http');
+const API_ORIGIN = IS_HTTP ? location.origin : '';
+
+async function apiGet(key){
+  if(!IS_HTTP) return null;
+  try{
+    const r = await fetch(`${API_ORIGIN}/api/store/${key}`);
+    if(r.ok){ const d=await r.json(); return d; }
+  }catch(_){}
+  return null;
+}
+function apiSave(key, data){
+  if(!IS_HTTP) return;
+  fetch(`${API_ORIGIN}/api/store/${key}`, {
+    method:'PUT',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(data)
+  }).catch(()=>{});
+}
+
+/* ---- Funções de dados (leem da memória; init() carrega tudo do servidor) ---- */
+function tryParse(str, fallback){ try{ return JSON.parse(str??'null')??fallback; }catch{ return fallback; } }
+
+function carregarEmps()  { return employees; }
+function carregarPonto() { return pontos; }
+function salvarPonto(r)  { pontos=r; localStorage.setItem('tche_ponto',JSON.stringify(r)); apiSave('tche_ponto',r); }
+function carregarBanco() { return bancoData; }
+function salvarBanco(b)  { bancoData=b; localStorage.setItem('tche_banco',JSON.stringify(b)); apiSave('tche_banco',b); }
+function carregarDepts() { return departments; }
+function carregarFaces() { return facesData; }
+function salvarFaces(f)  { facesData=f; localStorage.setItem('tche_faces',JSON.stringify(f)); apiSave('tche_faces',f); }
+
+function getDeptCor(nome){
+  const d=departments.find(x=>x.nome===nome);
+  return d?d.cor:'#888';
+}
+
+function cap(s){ return s?s.charAt(0).toUpperCase()+s.slice(1):s; }
+
+async function init(){
+  // 1) Tenta carregar do servidor (tablet via Wi-Fi ou PC via HTTP)
+  // 2) Fallback: localStorage
+  // 3) Fallback: dados padrão embutidos
+  const [apiEmps, apiDepts, apiPonto, apiBanco, apiFaces] = await Promise.all([
+    apiGet('tche_emps'), apiGet('tche_depts'), apiGet('tche_ponto'),
+    apiGet('tche_banco'), apiGet('tche_faces')
+  ]);
+
+  const lsEmps  = tryParse(localStorage.getItem('tche_emps'),  null);
+  const lsDepts = tryParse(localStorage.getItem('tche_depts'), null);
+
+  employees   = apiEmps  || lsEmps  || JSON.parse(JSON.stringify(EMPLOYEES_INIT));
+  departments = apiDepts || lsDepts || JSON.parse(JSON.stringify(DEPTS_INIT));
+  pontos      = apiPonto || tryParse(localStorage.getItem('tche_ponto'), []);
+  bancoData   = apiBanco || tryParse(localStorage.getItem('tche_banco'), {});
+  facesData   = apiFaces || tryParse(localStorage.getItem('tche_faces'), {});
+
+  // Garante persistência no servidor (primeira carga ou tablet sem dados)
+  if(!apiEmps)  apiSave('tche_emps',  employees);
+  if(!apiDepts) apiSave('tche_depts', departments);
+  // Mantém localStorage atualizado (compatibilidade com index.html via file://)
+  localStorage.setItem('tche_emps',  JSON.stringify(employees));
+  localStorage.setItem('tche_depts', JSON.stringify(departments));
+
+  iniciarRelogio();
+  renderDeptFiltro();
+  renderGrade();
+  // Configurar modais
+  modalCorrecao    = new bootstrap.Modal(document.getElementById('modalCorrecao'));
+  modalBancoModal  = new bootstrap.Modal(document.getElementById('modalBanco'));
+  modalCadastroRosto = new bootstrap.Modal(document.getElementById('modalCadastroRosto'));
+
+  // Inicializar reconhecimento facial em background
+  if(ehLocalhost() && faceApiOk()){
+    inicializarFaceAPI().then(ok=>{
+      if(ok) console.log('Reconhecimento facial pronto.');
+    });
+  } else if(!ehLocalhost()){
+    document.getElementById('bannerFaceOff').classList.remove('d-none');
+  }
+  // Setup tabs
+  document.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>mudarTab(b.dataset.tab)));
+  // Init cartão
+  const hoje=new Date();
+  const selMes=document.getElementById('cartaoMes');
+  const selAno=document.getElementById('cartaoAno');
+  if(selMes) selMes.value=hoje.getMonth();
+  if(selAno) selAno.value=hoje.getFullYear();
+  popularSelectsEmp();
+  popularBancoDept();
+  popularConfPeriodo();
+  updateConfBadge();
+}
+
+function mudarTab(tab){
+  document.querySelectorAll('.tab-pane').forEach(t=>t.classList.add('d-none'));
+  document.getElementById('tab-'+tab).classList.remove('d-none');
+  document.querySelectorAll('[data-tab]').forEach(b=>b.classList.remove('active'));
+  document.querySelector('[data-tab="'+tab+'"]').classList.add('active');
+  if(tab==='cadastro')    renderCadastro();
+  if(tab==='resumo')      renderResumo();
+  if(tab==='cartao')      renderCartao();
+  if(tab==='banco')       renderBanco();
+  if(tab==='conformidade') renderConformidade();
+}
+
+/* ==================== CADASTRO DE FUNCIONÁRIOS ==================== */
+let modalCadFunc = null;
+
+function renderCadastro(){
+  if(!modalCadFunc) modalCadFunc = new bootstrap.Modal(document.getElementById('modalCadFunc'));
+
+  const search = (document.getElementById('cadSearch')?.value||'').toLowerCase();
+  const filtStatus = document.getElementById('cadFiltroStatus')?.value||'';
+
+  const lista = employees
+    .filter(e=>{
+      const ok1 = !search || e.nome.toLowerCase().includes(search) ||
+                  (e.funcao||'').toLowerCase().includes(search);
+      const ok2 = !filtStatus || (e.status||'ativo') === filtStatus;
+      return ok1 && ok2;
+    })
+    .sort((a,b)=>a.nome.localeCompare(b.nome));
+
+  const STATUS_LABEL = {
+    ativo:'<span class="badge bg-success">Ativo</span>',
+    ferias:'<span class="badge bg-info text-dark">Férias</span>',
+    afastado:'<span class="badge bg-warning text-dark">Afastado</span>',
+    contratar:'<span class="badge bg-secondary">A contratar</span>',
+    inativo:'<span class="badge bg-danger">Inativo</span>',
+  };
+
+  document.getElementById('cadBody').innerHTML = lista.map(e=>{
+    const admFmt = e.admissao ? e.admissao.split('-').reverse().join('/') : '—';
+    const statusLabel = STATUS_LABEL[e.status||'ativo'] || STATUS_LABEL['ativo'];
+    return `<tr>
+      <td class="text-muted" style="font-size:.75rem">${e.id}</td>
+      <td class="fw-bold">${e.nome}</td>
+      <td>${e.funcao||'—'}</td>
+      <td>${e.dept||'—'}</td>
+      <td style="font-size:.8rem">${e.cpf||'—'}</td>
+      <td style="font-size:.8rem">${e.ctps||'—'}</td>
+      <td class="text-center" style="font-size:.8rem">${e.nr_folha||'—'}</td>
+      <td style="font-size:.8rem">${admFmt}</td>
+      <td class="text-center fw-bold" style="font-size:.8rem">${e.carga_diaria||'07:20'}</td>
+      <td>${statusLabel}</td>
+      <td>
+        <button class="btn btn-sm btn-outline-primary" onclick="abrirModalCadFunc(${e.id})" title="Editar">
+          <i class="bi bi-pencil-fill"></i>
+        </button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('cadCount').textContent =
+    `${lista.length} funcionário(s) exibido(s) de ${employees.length} total`;
+}
+
+function abrirModalCadFunc(id){
+  const e = employees.find(x=>x.id===id);
+  if(!e) return;
+
+  document.getElementById('cfId').value        = id;
+  document.getElementById('cfNome').value      = e.nome||'';
+  document.getElementById('cfCpf').value       = e.cpf||'';
+  document.getElementById('cfCtps').value      = e.ctps||'';
+  document.getElementById('cfNrFolha').value   = e.nr_folha||'';
+  document.getElementById('cfAdmissao').value  = e.admissao||'';
+  document.getElementById('cfDesligamento').value = e.desligamento||'';
+  document.getElementById('cfFuncao').value    = e.funcao||'';
+  document.getElementById('cfObs').value       = e.obs||'';
+  document.getElementById('cfHorario').value   = e.horario||'';
+  document.getElementById('cfCarga').value     = e.carga_diaria||'07:20';
+  document.getElementById('cfStatus').value    = e.status||'ativo';
+  document.getElementById('cfFolguista').value = e.folguista?'1':'0';
+  document.getElementById('cfFolgaFixa').value = e.folga_fixa||'';
+
+  // Preenche select de departamentos
+  const deptSel = document.getElementById('cfDept');
+  deptSel.innerHTML = departments.map(d=>
+    `<option value="${d.nome}" ${d.nome===e.dept?'selected':''}>${d.nome}</option>`
+  ).join('');
+
+  // Preview da carga por dia
+  atualizarPreviewCarga();
+
+  document.getElementById('modalCadFuncTitulo').innerHTML =
+    `<i class="bi bi-person-lines-fill"></i> ${e.nome} — Cartão Ponto`;
+
+  modalCadFunc.show();
+}
+
+function atualizarPreviewCarga(){
+  const carga = document.getElementById('cfCarga')?.value||'07:20';
+  const folga  = document.getElementById('cfFolgaFixa')?.value||'';
+  const dias   = ['seg','ter','qua','qui','sex','sáb','dom'];
+  const nomes  = ['segunda','terça','quarta','quinta','sexta','sábado','domingo'];
+  const prev   = document.getElementById('cfCargaPreview');
+  if(!prev) return;
+  prev.innerHTML = dias.map((d,i)=>{
+    const ehFolga = nomes[i]===folga;
+    return `<td class="${ehFolga?'bg-warning text-dark fw-bold':''}">${ehFolga?'FOLGA':carga}</td>`;
+  }).join('');
+}
+
+function salvarCadFunc(){
+  const id  = parseInt(document.getElementById('cfId').value);
+  const idx = employees.findIndex(x=>x.id===id);
+  if(idx<0) return;
+
+  const nome = document.getElementById('cfNome').value.trim();
+  if(!nome){ alert('Nome é obrigatório.'); return; }
+
+  const e = employees[idx];
+  e.nome         = nome.toUpperCase();
+  e.cpf          = document.getElementById('cfCpf').value.trim();
+  e.ctps         = document.getElementById('cfCtps').value.trim();
+  e.nr_folha     = document.getElementById('cfNrFolha').value.trim();
+  e.admissao     = document.getElementById('cfAdmissao').value;
+  e.desligamento = document.getElementById('cfDesligamento').value;
+  e.funcao       = document.getElementById('cfFuncao').value.trim();
+  e.dept         = document.getElementById('cfDept').value;
+  e.obs          = document.getElementById('cfObs').value.trim();
+  e.horario      = document.getElementById('cfHorario').value.trim();
+  e.carga_diaria = document.getElementById('cfCarga').value.trim()||'07:20';
+  e.status       = document.getElementById('cfStatus').value;
+  e.folguista    = document.getElementById('cfFolguista').value==='1';
+  e.folga_fixa   = document.getElementById('cfFolgaFixa').value;
+
+  localStorage.setItem('tche_emps', JSON.stringify(employees));
+  apiSave('tche_emps', employees);
+  modalCadFunc.hide();
+  renderCadastro();
+  popularSelectsEmp();
+}
+
+function mascaraCpf(input){
+  let v = input.value.replace(/\D/g,'');
+  if(v.length>3)  v = v.slice(0,3)+'.'+v.slice(3);
+  if(v.length>7)  v = v.slice(0,7)+'.'+v.slice(7);
+  if(v.length>11) v = v.slice(0,11)+'-'+v.slice(11);
+  input.value = v.slice(0,14);
+}
+
+function popularSelectsEmp(){
+  const ativos=employees.filter(e=>e.status!=='inativo').sort((a,b)=>a.nome.localeCompare(b.nome));
+  const opts=ativos.map(e=>`<option value="${e.id}">${e.nome}</option>`).join('');
+  ['cartaoEmp','corrEmp'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el) el.innerHTML=opts;
+  });
+}
+
+function popularBancoDept(){
+  const el=document.getElementById('bancoDept');
+  if(!el) return;
+  const depts=[...new Set(employees.filter(e=>e.status!=='inativo').map(e=>e.departamento))];
+  el.innerHTML='<option value="">Todos os deptos.</option>'+depts.map(d=>`<option value="${d}">${cap(d)}</option>`).join('');
+}
+
+function popularConfPeriodo(){
+  const hoje=new Date();
+  const de=document.getElementById('confPeriodoDe');
+  const ate=document.getElementById('confPeriodoAte');
+  if(!de||!ate) return;
+  let opts='';
+  for(let i=0;i<12;i++){
+    const dt=new Date(hoje.getFullYear(),hoje.getMonth()-i,1);
+    const val=`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}`;
+    const label=`${MESES_PT[dt.getMonth()]} ${dt.getFullYear()}`;
+    opts+=`<option value="${val}">${label}</option>`;
+  }
+  de.innerHTML=opts;
+  ate.innerHTML=opts;
+}
+
+// ===================================================================
+// RELÓGIO
+// ===================================================================
+function iniciarRelogio(){
+  if(baterInterval) clearInterval(baterInterval);
+  const tick=()=>{
+    const now=new Date();
+    const h=String(now.getHours()).padStart(2,'0');
+    const m=String(now.getMinutes()).padStart(2,'0');
+    const s=String(now.getSeconds()).padStart(2,'0');
+    const el=document.getElementById('pontoRelogio');
+    if(el) el.textContent=`${h}:${m}:${s}`;
+    const elD=document.getElementById('pontoDataHoje');
+    if(elD) elD.textContent=`${DIAS_PT[now.getDay()]}, ${now.toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'})}`;
+  };
+  tick();
+  baterInterval=setInterval(tick,1000);
+}
+
+// ===================================================================
+// BATER PONTO
+// ===================================================================
+function renderDeptFiltro(){
+  const cont=document.getElementById('baterDeptFiltro');
+  if(!cont) return;
+  const depts=[...new Set(employees.filter(e=>e.status!=='inativo').map(e=>e.departamento))];
+  cont.innerHTML=`<button class="btn btn-sm ${baterDeptFiltro==='todos'?'btn-dark':'btn-outline-secondary'}" onclick="setDeptFiltro('todos')">Todos</button>`+
+    depts.map(d=>`<button class="btn btn-sm ${baterDeptFiltro===d?'btn-dark':'btn-outline-secondary'}" onclick="setDeptFiltro('${d}')" style="${baterDeptFiltro===d?'background:'+getDeptCor(d)+';color:#fff;border-color:'+getDeptCor(d):'border-color:'+getDeptCor(d)}">${cap(d)}</button>`).join('');
+}
+function setDeptFiltro(d){ baterDeptFiltro=d; renderDeptFiltro(); renderGrade(); }
+
+function renderGrade(){
+  const q=(document.getElementById('baterSearch')?.value||'').toLowerCase();
+  const lista=employees.filter(e=>e.status!=='inativo'&&(baterDeptFiltro==='todos'||e.departamento===baterDeptFiltro)&&(e.nome.toLowerCase().includes(q)||e.funcao.toLowerCase().includes(q)));
+  const el=document.getElementById('baterGrade');
+  if(!el) return;
+  if(!lista.length){ el.innerHTML='<div class="col-12 text-center text-muted py-4">Nenhum funcionário encontrado.</div>'; return; }
+  el.innerHTML=lista.map(e=>{
+    const cor=getDeptCor(e.departamento);
+    const ini=e.nome.split(' ').filter(Boolean).slice(0,2).map(p=>p[0]).join('').toUpperCase();
+    return`<div class="col-6 col-sm-4 col-md-3 col-lg-2"><div class="emp-card" onclick="selecionarEmp(${e.id})">
+      <div class="emp-avatar" style="background:${cor}">${ini}</div>
+      <div class="fw-bold" style="font-size:.78rem;line-height:1.2">${e.nome.split(' ').slice(0,2).join(' ')}</div>
+      <div class="text-muted" style="font-size:.68rem">${e.funcao}</div>
+    </div></div>`;
+  }).join('');
+}
+
+function selecionarEmp(id){
+  baterEmpSelecionado=employees.find(e=>e.id===id);
+  if(!baterEmpSelecionado) return;
+  document.getElementById('baterStep1').classList.add('d-none');
+  document.getElementById('baterStep2').classList.remove('d-none');
+  document.getElementById('baterStep3').classList.add('d-none');
+  const cor=getDeptCor(baterEmpSelecionado.departamento);
+  const ini=baterEmpSelecionado.nome.split(' ').filter(Boolean).slice(0,2).map(p=>p[0]).join('').toUpperCase();
+  const av=document.getElementById('baterAvatar');
+  av.style.background=cor; av.textContent=ini;
+  document.getElementById('baterEmpNome').textContent=baterEmpSelecionado.nome;
+  document.getElementById('baterEmpFunc').textContent=`${baterEmpSelecionado.funcao} – ${cap(baterEmpSelecionado.departamento)}`;
+  atualizarRegistrosHoje();
+}
+
+function atualizarRegistrosHoje(){
+  if(!baterEmpSelecionado) return;
+  const hoje=new Date().toISOString().slice(0,10);
+  const regs=carregarPonto().filter(r=>r.empId===baterEmpSelecionado.id&&r.data===hoje);
+  const cont=document.getElementById('baterRegistrosHoje');
+  if(!cont) return;
+  if(!regs.length){ cont.innerHTML='<div class="text-muted text-center py-2" style="font-size:.85rem">Nenhum registro hoje.</div>'; }
+  else {
+    cont.innerHTML=regs.map(r=>`<div class="registro-linha ${r.tipo==='entrada'?'reg-entrada':'reg-saida'}">
+      <i class="bi bi-${r.tipo==='entrada'?'box-arrow-in-right':'box-arrow-left'}"></i>
+      <strong>${r.tipo==='entrada'?'ENTRADA':'SAÍDA'}</strong>${r.manual?'<span class="badge-manual ms-1">*manual</span>':''}
+      <span class="ms-auto">${r.hora.slice(0,5)}</span>
+    </div>`).join('');
+  }
+  const ultimo=regs[regs.length-1];
+  const badge=document.getElementById('baterUltimoReg');
+  if(badge) badge.innerHTML=ultimo?`<span class="badge ${ultimo.tipo==='entrada'?'bg-success':'bg-danger'}">Último: ${ultimo.tipo==='entrada'?'Entrada':'Saída'} às ${ultimo.hora.slice(0,5)}</span>`:'';
+}
+
+function registrarPonto(tipo){
+  if(!baterEmpSelecionado) return;
+  const agora=new Date();
+  const hoje=agora.toISOString().slice(0,10);
+  const hora=agora.toTimeString().slice(0,8);
+  const regs=carregarPonto();
+  const doEmpHoje=regs.filter(r=>r.empId===baterEmpSelecionado.id&&r.data===hoje);
+  const ultimo=doEmpHoje[doEmpHoje.length-1];
+  if(ultimo&&ultimo.tipo===tipo){
+    alert(`O último registro já foi ${tipo==='entrada'?'ENTRADA':'SAÍDA'}. Registre ${tipo==='entrada'?'SAÍDA':'ENTRADA'} primeiro.`);
+    return;
+  }
+  regs.push({id:Date.now(),empId:baterEmpSelecionado.id,empNome:baterEmpSelecionado.nome,empFuncao:baterEmpSelecionado.funcao,empDepto:baterEmpSelecionado.departamento,data:hoje,hora,tipo,manual:false,justificativa:''});
+  salvarPonto(regs);
+
+  document.getElementById('baterStep2').classList.add('d-none');
+  document.getElementById('baterStep3').classList.remove('d-none');
+  const box=document.getElementById('baterConfirmBox');
+  box.style.background=tipo==='entrada'?'#d4edda':'#f8d7da';
+  document.getElementById('baterConfirmIcon').textContent=tipo==='entrada'?'✅':'🏁';
+  document.getElementById('baterConfirmTipo').textContent=tipo==='entrada'?'ENTRADA REGISTRADA':'SAÍDA REGISTRADA';
+  document.getElementById('baterConfirmNome').textContent=baterEmpSelecionado.nome;
+  document.getElementById('baterConfirmHora').textContent=hora.slice(0,5);
+  document.getElementById('baterConfirmData').textContent=agora.toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
+  const bar=document.getElementById('baterProgressBar');
+  if(bar){ bar.style.transition='none'; bar.style.width='100%'; setTimeout(()=>{ bar.style.transition='width 3s linear'; bar.style.width='0%'; },50); }
+  setTimeout(voltarSelecao,3000);
+}
+
+function voltarSelecao(){
+  baterEmpSelecionado=null;
+  document.getElementById('baterStep1').classList.remove('d-none');
+  document.getElementById('baterStep2').classList.add('d-none');
+  document.getElementById('baterStep3').classList.add('d-none');
+  const s=document.getElementById('baterSearch');
+  if(s) s.value='';
+  baterDeptFiltro='todos';
+  renderDeptFiltro(); renderGrade();
+}
+
+// ===================================================================
+// UTILITÁRIOS DE TEMPO
+// ===================================================================
+function horaParaMin(h){
+  if(!h||typeof h!=='string') return 0;
+  const partes=h.split(':').map(Number);
+  return partes[0]*60+(partes[1]||0);
+}
+function minParaHora(m){
+  const abs=Math.abs(m);
+  return`${Math.floor(abs/60).toString().padStart(2,'0')}:${(abs%60).toString().padStart(2,'0')}`;
+}
+function ehNoturna(hora){
+  const m=horaParaMin(hora.slice(0,5));
+  return m>=22*60||m<5*60;
+}
+function minutosNoturnos(entrada,saida){
+  if(!entrada||!saida) return 0;
+  let mE=horaParaMin(entrada.slice(0,5));
+  let mS=horaParaMin(saida.slice(0,5));
+  if(mS<=mE) mS+=24*60;
+  let noturno=0;
+  for(let m=mE;m<mS;m++){
+    const hm=m%1440;
+    if(hm>=22*60||hm<5*60) noturno++;
+  }
+  return noturno;
+}
+function calcIntrajornada(regs){
+  if(regs.length<2) return null;
+  const ordenados=[...regs].sort((a,b)=>a.hora.localeCompare(b.hora));
+  const pares=[];
+  for(let i=0;i+1<ordenados.length;i+=2){
+    if(ordenados[i].tipo==='entrada'&&ordenados[i+1].tipo==='saida'){
+      pares.push({e:ordenados[i].hora,s:ordenados[i+1].hora});
+    }
+  }
+  if(pares.length<2) return null;
+  let menorIntervalo=Infinity;
+  for(let i=0;i+1<pares.length;i++){
+    const mS=horaParaMin(pares[i].s.slice(0,5));
+    const mE=horaParaMin(pares[i+1].e.slice(0,5));
+    menorIntervalo=Math.min(menorIntervalo,mE-mS);
+  }
+  return menorIntervalo;
+}
+
+// ===================================================================
+// RESUMO DIÁRIO
+// ===================================================================
+function renderResumo(){
+  const hoje=new Date();
+  const hojeStr=hoje.toISOString().slice(0,10);
+  document.getElementById('resumoDataLabel').textContent=hoje.toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
+
+  const ativos=employees.filter(e=>e.status!=='inativo');
+  const pontoHoje=carregarPonto().filter(r=>r.data===hojeStr);
+
+  const trabalhando=[];
+  const faltantes=[];
+  const emFolga=[];
+  const emFerias=[];
+  const afastados=[];
+  const ausJustificada=[];
+
+  ativos.forEach(e=>{
+    if(e.status==='ferias'){ emFerias.push(e); return; }
+    if(e.status==='afastado'){ afastados.push(e); return; }
+    const regsEmp=pontoHoje.filter(r=>r.empId===e.id).sort((a,b)=>a.hora.localeCompare(b.hora));
+    const ultimo=regsEmp[regsEmp.length-1];
+    const temEntrada=regsEmp.some(r=>r.tipo==='entrada');
+    const estaPresente=ultimo&&ultimo.tipo==='entrada';
+    if(estaPresente){ trabalhando.push(e); return; }
+    // Verificar se é folga pela escala
+    const dow=hoje.getDay();
+    const DIAS_MAP=['domingo','segunda','terça','quarta','quinta','sexta','sábado'];
+    const ehFolga=e.folga_fixa===DIAS_MAP[dow];
+    if(ehFolga){ emFolga.push(e); return; }
+    if(temEntrada){ trabalhando.push(e); return; }
+    faltantes.push(e);
+  });
+
+  const total=ativos.length||1;
+  const cards=[
+    {label:'Trabalhando',num:trabalhando.length,cor:'#198754',icon:'bi-person-check-fill'},
+    {label:'Faltantes',num:faltantes.length,cor:'#dc3545',icon:'bi-person-x-fill'},
+    {label:'Em Folga',num:emFolga.length,cor:'#6c757d',icon:'bi-calendar-x'},
+    {label:'De Férias',num:emFerias.length,cor:'#6f42c1',icon:'bi-sun'},
+    {label:'Afastados',num:afastados.length,cor:'#fd7e14',icon:'bi-bandaid'},
+    {label:'Aus. Justificada',num:ausJustificada.length,cor:'#0dcaf0',icon:'bi-journal-check'},
+  ];
+
+  document.getElementById('resumoCards').innerHTML=cards.map(c=>`
+    <div class="col-6 col-md-4 col-lg-2">
+      <div class="card-resumo card p-3">
+        <i class="bi ${c.icon} mb-1" style="font-size:1.4rem;color:${c.cor}"></i>
+        <div class="num" style="color:${c.cor}">${c.num}</div>
+        <div class="label">${c.label}</div>
+        <div class="progress-slim progress"><div class="progress-bar" style="width:${Math.round(c.num/total*100)}%;background:${c.cor}"></div></div>
+        <small class="text-muted">${Math.round(c.num/total*100)}%</small>
+      </div>
+    </div>`).join('');
+
+  document.getElementById('qtdTrabalhando').textContent=trabalhando.length;
+  document.getElementById('qtdFaltantes').textContent=faltantes.length;
+
+  const listaItem=(e)=>{
+    const cor=getDeptCor(e.departamento);
+    const ini=e.nome.split(' ').filter(Boolean).slice(0,2).map(p=>p[0]).join('').toUpperCase();
+    return`<div class="d-flex align-items-center gap-2 p-2 border-bottom">
+      <div style="width:32px;height:32px;border-radius:50%;background:${cor};display:flex;align-items:center;justify-content:center;color:#fff;font-size:.7rem;font-weight:700">${ini}</div>
+      <div><div style="font-size:.82rem;font-weight:600">${e.nome.split(' ').slice(0,3).join(' ')}</div><div style="font-size:.7rem;color:#888">${e.funcao}</div></div>
+    </div>`;
+  };
+
+  document.getElementById('listaTrabalhando').innerHTML=trabalhando.length?trabalhando.map(listaItem).join(''):'<div class="text-muted text-center py-3" style="font-size:.85rem">Nenhum no momento.</div>';
+  document.getElementById('listaFaltantes').innerHTML=faltantes.length?faltantes.map(listaItem).join(''):'<div class="text-success text-center py-3" style="font-size:.85rem">✅ Nenhum faltante.</div>';
+}
+
+// ===================================================================
+// CARTÃO PONTO
+// ===================================================================
+function calcPares(regsOrdenados){
+  const pares=[];
+  let i=0;
+  while(i<regsOrdenados.length&&pares.length<3){
+    if(regsOrdenados[i].tipo==='entrada'){
+      const e=regsOrdenados[i];
+      const s=regsOrdenados[i+1]&&regsOrdenados[i+1].tipo==='saida'?regsOrdenados[i+1]:null;
+      pares.push({e,s});
+      i+=s?2:1;
+    } else { i++; }
+  }
+  return pares;
+}
+
+function calcTotalTrabalhado(pares){
+  let total=0;
+  pares.forEach(p=>{
+    if(p.e&&p.s){
+      let mE=horaParaMin(p.e.hora.slice(0,5));
+      let mS=horaParaMin(p.s.hora.slice(0,5));
+      if(mS<mE) mS+=24*60;
+      total+=mS-mE;
+    }
+  });
+  return total;
+}
+
+function renderCartao(){
+  employees=carregarEmps();
+  const empId=parseInt(document.getElementById('cartaoEmp')?.value);
+  const mes=parseInt(document.getElementById('cartaoMes')?.value);
+  const ano=parseInt(document.getElementById('cartaoAno')?.value);
+  if(!empId||isNaN(mes)||isNaN(ano)) return;
+
+  const emp=employees.find(e=>e.id===empId);
+  if(!emp) return;
+
+  // Cabeçalho
+  const fmtData=d=>{ if(!d) return '—'; const p=d.split('-'); return`${p[2]}/${p[1]}/${p[0]}`; };
+  document.getElementById('cpNome').textContent=emp.nome;
+  document.getElementById('cpCtps').textContent=emp.ctps||'—';
+  document.getElementById('cpCpf').textContent=emp.cpf||'—';
+  document.getElementById('cpNrFolha').textContent=emp.nr_folha||'—';
+  document.getElementById('cpAdmissao').textContent=fmtData(emp.admissao);
+  document.getElementById('cpFuncao').textContent=emp.funcao?.toUpperCase()||'—';
+  document.getElementById('cpDepto').textContent=emp.departamento?.toUpperCase()||'—';
+  document.getElementById('cpObs').textContent=emp.obs||'—';
+  const ini=new Date(ano,mes,1); const fim=new Date(ano,mes+1,0);
+  document.getElementById('cpPeriodo').textContent=`Período: ${ini.toLocaleDateString('pt-BR')} até ${fim.toLocaleDateString('pt-BR')}`;
+  const cargaDia=emp.carga_diaria||CARGA_PADRAO;
+  ['Seg','Ter','Qua','Qui','Sex','Sab','Dom'].forEach(d=>{ const el=document.getElementById('cpCarga'+d); if(el) el.textContent=cargaDia; });
+  const agora=new Date();
+  document.getElementById('cpEmitido').textContent=`Emitido em ${agora.toLocaleDateString('pt-BR')} ${agora.toLocaleTimeString('pt-BR')}`;
+  document.getElementById('cpAssinaturaEmp').textContent=emp.nome;
+
+  const totalDias=fim.getDate();
+  const todos=carregarPonto();
+  const regsEmp=todos.filter(r=>r.empId===empId);
+
+  const DIAS_MAP=['domingo','segunda','terça','quarta','quinta','sexta','sábado'];
+  let totalNormais=0, totalBcred=0, totalBdeb=0, totalExtras=0, bsaldoCum=0;
+  const justMap={};
+  let rows='';
+  let ultimaSaida=null;
+
+  for(let d=1;d<=totalDias;d++){
+    const dt=new Date(ano,mes,d);
+    const dtStr=`${ano}-${String(mes+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const dow=dt.getDay();
+    const dowNome=DIAS_ABREV[dow];
+    const dataFmt=`${String(d).padStart(2,'0')}/${String(mes+1).padStart(2,'0')}/${ano} - ${dowNome}`;
+
+    const regsD=regsEmp.filter(r=>r.data===dtStr).sort((a,b)=>a.hora.localeCompare(b.hora));
+    const ehFolga=emp.folga_fixa===DIAS_MAP[dow];
+    const ehFerias=emp.status==='ferias';
+
+    if(ehFerias){
+      justMap['FÉRIAS']=(justMap['FÉRIAS']||0)+horaParaMin(cargaDia);
+      rows+=`<tr class="row-ferias"><td class="col-data">${dataFmt}</td>${Array(6).fill('<td>FÉRIAS</td>').join('')}<td>00:00</td><td></td><td></td><td></td><td></td><td></td></tr>`;
+      continue;
+    }
+    if(ehFolga&&!regsD.length){
+      justMap['FOLGA']=(justMap['FOLGA']||0)+horaParaMin(cargaDia);
+      rows+=`<tr class="row-folga"><td class="col-data">${dataFmt}</td>${Array(4).fill('<td>FOLGA</td>').join('')}<td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>`;
+      continue;
+    }
+
+    if(!regsD.length){
+      // Falta
+      const cargaM=horaParaMin(cargaDia);
+      totalBdeb+=cargaM; bsaldoCum-=cargaM;
+      justMap['FALTA']=(justMap['FALTA']||0)+cargaM;
+      rows+=`<tr class="row-falta"><td class="col-data">${dataFmt}</td><td colspan="6" style="color:#856404">FALTA</td><td>00:00</td><td></td><td>${minParaHora(cargaM)}</td><td>${minParaHora(Math.abs(bsaldoCum))}</td><td style="color:#dc3545">${minParaHora(bsaldoCum)}</td><td></td></tr>`;
+      continue;
+    }
+
+    const pares=calcPares(regsD);
+    const trabM=calcTotalTrabalhado(pares);
+    const cargaM=horaParaMin(cargaDia);
+    const tolM=TOLERANCIA_MIN;
+
+    let normaisM=0, extrasM=0, bcredM=0, bdebM=0;
+    if(trabM>0){
+      const diff=trabM-cargaM;
+      if(diff>tolM){ extrasM=diff; normaisM=cargaM; }
+      else if(diff>=-tolM){ normaisM=trabM; }
+      else { normaisM=trabM; bdebM=Math.abs(diff); bsaldoCum-=bdebM; }
+      if(extrasM>0){ bcredM=extrasM; bsaldoCum+=bcredM; extrasM=0; }
+    }
+    totalNormais+=normaisM; totalBcred+=bcredM; totalBdeb+=bdebM; totalExtras+=extrasM;
+
+    const celula=(reg,idx)=>{
+      if(!reg) return '<td></td>';
+      const m=reg.manual?'<span class="badge-manual">*</span>':'';
+      const n=ehNoturna(reg.hora)?'<span class="badge-noturno">N</span>':'';
+      return`<td>${reg.hora.slice(0,5)}${m}${n}</td>`;
+    };
+
+    const p=[pares[0]||null,pares[1]||null,pares[2]||null];
+    const bsaldoStyle=bsaldoCum<0?'color:#dc3545':'color:#198754';
+    rows+=`<tr>
+      <td class="col-data">${dataFmt}</td>
+      ${celula(p[0]?.e)} ${celula(p[0]?.s)}
+      ${celula(p[1]?.e)} ${celula(p[1]?.s)}
+      ${celula(p[2]?.e)} ${celula(p[2]?.s)}
+      <td>${normaisM?minParaHora(normaisM):''}</td>
+      <td>${bcredM?minParaHora(bcredM):''}</td>
+      <td>${bdebM?minParaHora(bdebM):''}</td>
+      <td>${(bcredM||bdebM)?minParaHora(Math.abs(bsaldoCum)):''}</td>
+      <td style="${bsaldoStyle}">${bsaldoCum!==0?((bsaldoCum<0?'-':'')+minParaHora(bsaldoCum)):''}</td>
+      <td>${extrasM?minParaHora(extrasM):''}</td>
+    </tr>`;
+
+    if(regsD.length) ultimaSaida=regsD.filter(r=>r.tipo==='saida').sort((a,b)=>b.hora.localeCompare(a.hora))[0];
+  }
+
+  document.getElementById('cartaoBody').innerHTML=rows;
+  document.getElementById('cartaoFoot').innerHTML=`
+    <tr class="row-totais">
+      <td class="col-data" style="text-align:left">TOTAIS</td>
+      <td colspan="6"></td>
+      <td>${minParaHora(totalNormais)}</td>
+      <td>${totalBcred?minParaHora(totalBcred):'00:00'}</td>
+      <td>${totalBdeb?minParaHora(totalBdeb):'00:00'}</td>
+      <td>${minParaHora(Math.abs(bsaldoCum))}</td>
+      <td style="${bsaldoCum<0?'color:#f88':'color:#8f8'}">${(bsaldoCum<0?'-':'')+minParaHora(bsaldoCum)}</td>
+      <td>${totalExtras?minParaHora(totalExtras):'00:00'}</td>
+    </tr>`;
+
+  if(Object.keys(justMap).length){
+    let leg=`<table style="font-size:.7rem;border-collapse:collapse;width:100%"><tr style="background:#555;color:#fff"><th style="padding:3px 8px">LEGENDA DE JUSTIFICATIVAS</th><th></th><th style="padding:3px 8px">HORAS</th></tr>`;
+    leg+=Object.entries(justMap).map(([k,v])=>`<tr><td style="padding:2px 8px;font-weight:700">${k}</td><td style="padding:2px 8px">${k}</td><td style="padding:2px 8px">${minParaHora(v)}</td></tr>`).join('');
+    leg+='</table>';
+    document.getElementById('cartaoLegenda').innerHTML=leg;
+  } else {
+    document.getElementById('cartaoLegenda').innerHTML='';
+  }
+}
+
+function exportarCartaoCSV(){
+  employees=carregarEmps();
+  const empId=parseInt(document.getElementById('cartaoEmp')?.value);
+  const mes=parseInt(document.getElementById('cartaoMes')?.value);
+  const ano=parseInt(document.getElementById('cartaoAno')?.value);
+  if(!empId||isNaN(mes)||isNaN(ano)) return;
+  const emp=employees.find(e=>e.id===empId);
+  if(!emp) return;
+  const totalDias=new Date(ano,mes+1,0).getDate();
+  const todos=carregarPonto();
+  const regsEmp=todos.filter(r=>r.empId===empId);
+  const DIAS_MAP=['domingo','segunda','terça','quarta','quinta','sexta','sábado'];
+  let csv='Data;Dia;E1;S1;E2;S2;E3;S3;Normais;BCredito;BDebito;BSaldo;Extras\n';
+  for(let d=1;d<=totalDias;d++){
+    const dt=new Date(ano,mes,d);
+    const dtStr=`${ano}-${String(mes+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const dow=dt.getDay();
+    const regsD=regsEmp.filter(r=>r.data===dtStr).sort((a,b)=>a.hora.localeCompare(b.hora));
+    const pares=calcPares(regsD);
+    const trabM=calcTotalTrabalhado(pares);
+    const cargaM=horaParaMin(emp.carga_diaria||CARGA_PADRAO);
+    const diff=trabM-cargaM;
+    const normais=trabM>0?Math.min(trabM,cargaM):0;
+    const extras=diff>TOLERANCIA_MIN?diff:0;
+    const bdeb=diff<-TOLERANCIA_MIN?Math.abs(diff):0;
+    const h=(i,t)=>pares[i]?.[t]?.hora?.slice(0,5)||'';
+    csv+=`${dt.toLocaleDateString('pt-BR')};${DIAS_ABREV[dow]};${h(0,'e')};${h(0,'s')};${h(1,'e')};${h(1,'s')};${h(2,'e')};${h(2,'s')};${normais?minParaHora(normais):''};${extras?minParaHora(extras):''};${bdeb?minParaHora(bdeb):''}; \n`;
+  }
+  const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download=`CartaoPonto_${emp.nome.split(' ')[0]}_${MESES_PT[mes]}_${ano}.csv`;
+  a.click(); URL.revokeObjectURL(url);
+}
+
+// ===================================================================
+// CORREÇÃO MANUAL
+// ===================================================================
+function abrirModalCorrecao(){
+  popularSelectsEmp();
+  const hoje=new Date().toISOString().slice(0,10);
+  document.getElementById('corrData').value=hoje;
+  document.getElementById('corrHora').value='';
+  document.getElementById('corrJustificativa').value='';
+  renderRegistrosCorrecao();
+  modalCorrecao.show();
+}
+
+function renderRegistrosCorrecao(){
+  const empId=parseInt(document.getElementById('corrEmp')?.value);
+  const data=document.getElementById('corrData')?.value;
+  if(!empId||!data){ document.getElementById('corrRegistros').innerHTML=''; return; }
+  const regs=carregarPonto().filter(r=>r.empId===empId&&r.data===data).sort((a,b)=>a.hora.localeCompare(b.hora));
+  const cont=document.getElementById('corrRegistros');
+  if(!regs.length){ cont.innerHTML='<div class="text-muted py-2">Nenhum registro neste dia.</div>'; return; }
+  cont.innerHTML=regs.map(r=>`
+    <div class="d-flex align-items-center gap-2 p-2 border-bottom">
+      <span class="badge ${r.tipo==='entrada'?'bg-success':'bg-danger'}">${r.tipo.toUpperCase()}</span>
+      <strong>${r.hora.slice(0,5)}</strong>
+      ${r.manual?'<span class="badge bg-warning text-dark">*manual</span>':''}
+      <small class="text-muted flex-grow-1">${r.justificativa||''}</small>
+      <button class="btn btn-sm btn-outline-danger py-0 px-1" onclick="excluirRegistro(${r.id})" title="Excluir"><i class="bi bi-trash"></i></button>
+    </div>`).join('');
+}
+
+function salvarCorrecao(){
+  const empId=parseInt(document.getElementById('corrEmp')?.value);
+  const data=document.getElementById('corrData')?.value;
+  const hora=document.getElementById('corrHora')?.value;
+  const tipo=document.getElementById('corrTipo')?.value;
+  const just=document.getElementById('corrJustificativa')?.value.trim();
+  if(!empId||!data||!hora){ alert('Preencha todos os campos.'); return; }
+  if(!just){ alert('Justificativa obrigatória (Portaria 671/2021).'); return; }
+  const emp=employees.find(e=>e.id===empId);
+  const regs=carregarPonto();
+  regs.push({
+    id:Date.now(),empId,empNome:emp?.nome||'',empFuncao:emp?.funcao||'',empDepto:emp?.departamento||'',
+    data,hora:hora+':00',tipo,manual:true,justificativa:just
+  });
+  salvarPonto(regs);
+  document.getElementById('corrHora').value='';
+  document.getElementById('corrJustificativa').value='';
+  renderRegistrosCorrecao();
+}
+
+function excluirRegistro(id){
+  if(!confirm('Excluir este registro?')) return;
+  salvarPonto(carregarPonto().filter(r=>r.id!==id));
+  renderRegistrosCorrecao();
+}
+
+// ===================================================================
+// BANCO DE HORAS
+// ===================================================================
+function renderBanco(){
+  employees=carregarEmps();
+  const deptFil=document.getElementById('bancoDept')?.value||'';
+  const banco=carregarBanco();
+  const ativos=employees.filter(e=>e.status!=='inativo'&&(!deptFil||e.departamento===deptFil));
+
+  // Calcular saldos automáticos do ponto
+  const todos=carregarPonto();
+  const hoje=new Date();
+  const mesAtual=hoje.getMonth();
+  const anoAtual=hoje.getFullYear();
+
+  let totalCredGlobal=0, totalDebGlobal=0;
+  let vencidos=0;
+
+  const rows=ativos.map(emp=>{
+    const b=banco[emp.id]||{credito:0,debito:0,lancamentos:[]};
+    // Calcular do ponto este mês
+    const regsEmp=todos.filter(r=>r.empId===emp.id);
+    let autoCred=0, autoDeb=0;
+    for(let d=1;d<=hoje.getDate();d++){
+      const dtStr=`${anoAtual}-${String(mesAtual+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+      const regsD=regsEmp.filter(r=>r.data===dtStr).sort((a,b)=>a.hora.localeCompare(b.hora));
+      if(!regsD.length) continue;
+      const pares=calcPares(regsD);
+      const trabM=calcTotalTrabalhado(pares);
+      const cargaM=horaParaMin(emp.carga_diaria||CARGA_PADRAO);
+      const diff=trabM-cargaM;
+      if(diff>TOLERANCIA_MIN) autoCred+=diff;
+      else if(diff<-TOLERANCIA_MIN) autoDeb+=Math.abs(diff);
+    }
+    const saldoTotal=(b.credito+autoCred)-(b.debito+autoDeb);
+    totalCredGlobal+=b.credito+autoCred;
+    totalDebGlobal+=b.debito+autoDeb;
+
+    // Verificar vencimento (6 meses = 180 dias)
+    const lancsMaisAntigos=b.lancamentos?.filter(l=>l.tipo==='credito')||[];
+    let estaVencido=false;
+    lancsMaisAntigos.forEach(l=>{
+      const diff=(hoje-new Date(l.data))/(1000*60*60*24);
+      if(diff>180) estaVencido=true;
+    });
+    if(estaVencido) vencidos++;
+
+    const saldoClass=saldoTotal>0?'banco-saldo-pos':saldoTotal<0?'banco-saldo-neg':'banco-saldo-zer';
+    const situacao=estaVencido
+      ?'<span class="badge bg-danger">VENCIDO</span>'
+      :saldoTotal>0?'<span class="badge bg-warning text-dark">A compensar</span>'
+      :saldoTotal<0?'<span class="badge bg-danger">Devedor</span>'
+      :'<span class="badge bg-success">OK</span>';
+
+    totalCredGlobal+=autoCred; totalDebGlobal+=autoDeb;
+
+    return`<tr>
+      <td><strong>${emp.nome.split(' ').slice(0,3).join(' ')}</strong></td>
+      <td><span class="badge" style="background:${getDeptCor(emp.departamento)}">${cap(emp.departamento)}</span></td>
+      <td>${emp.carga_diaria||CARGA_PADRAO}</td>
+      <td class="text-success">${minParaHora(b.credito+autoCred)}</td>
+      <td class="text-danger">${minParaHora(b.debito+autoDeb)}</td>
+      <td class="${saldoClass}">${saldoTotal<0?'-':''}${minParaHora(Math.abs(saldoTotal))}</td>
+      <td>${situacao}</td>
+      <td class="no-print">
+        <button class="btn btn-sm btn-outline-primary py-0 px-1" onclick="abrirLancamentoBanco(${emp.id})" title="Lançar"><i class="bi bi-plus-circle"></i></button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('bancoBody').innerHTML=rows||'<tr><td colspan="8" class="text-center text-muted py-3">Nenhum funcionário encontrado.</td></tr>';
+  document.getElementById('bancoCards').innerHTML=`
+    <div class="col-md-3"><div class="banco-card"><small class="text-muted">Crédito Total</small><div class="banco-saldo-pos">${minParaHora(totalCredGlobal)}</div></div></div>
+    <div class="col-md-3"><div class="banco-card"><small class="text-muted">Débito Total</small><div class="banco-saldo-neg">${minParaHora(totalDebGlobal)}</div></div></div>
+    <div class="col-md-3"><div class="banco-card"><small class="text-muted">Saldo Líquido</small><div class="${totalCredGlobal-totalDebGlobal>=0?'banco-saldo-pos':'banco-saldo-neg'}">${minParaHora(Math.abs(totalCredGlobal-totalDebGlobal))}</div></div></div>
+    <div class="col-md-3"><div class="banco-card"><small class="text-muted">Banco Vencido (>6m)</small><div class="${vencidos>0?'banco-saldo-neg':'banco-saldo-zer'}">${vencidos} func.</div><small class="text-danger">${vencidos>0?'Pagar com +50%!':''}</small></div></div>`;
+}
+
+function abrirLancamentoBanco(empId){
+  const emp=employees.find(e=>e.id===empId);
+  document.getElementById('bancoEmpId').value=empId;
+  document.getElementById('bancoEmpNome').textContent=emp?.nome||'';
+  document.getElementById('bancoHoras').value='';
+  document.getElementById('bancoObs').value='';
+  modalBancoModal.show();
+}
+
+function salvarLancamentoBanco(){
+  const empId=parseInt(document.getElementById('bancoEmpId').value);
+  const tipo=document.getElementById('bancoTipo').value;
+  const horasStr=document.getElementById('bancoHoras').value;
+  const obs=document.getElementById('bancoObs').value.trim();
+  if(!horasStr){ alert('Informe as horas.'); return; }
+  const minutos=horaParaMin(horasStr);
+  if(minutos<=0){ alert('Horas inválidas. Use o formato HH:MM.'); return; }
+  const banco=carregarBanco();
+  if(!banco[empId]) banco[empId]={credito:0,debito:0,lancamentos:[]};
+  const hoje=new Date().toISOString().slice(0,10);
+  if(tipo==='credito'){ banco[empId].credito+=minutos; }
+  else if(tipo==='debito'){ banco[empId].debito+=minutos; }
+  else if(tipo==='compensar'){ banco[empId].credito=Math.max(0,banco[empId].credito-minutos); }
+  banco[empId].lancamentos=banco[empId].lancamentos||[];
+  banco[empId].lancamentos.push({tipo,minutos,obs,data:hoje});
+  salvarBanco(banco);
+  modalBancoModal.hide();
+  renderBanco();
+}
+
+// ===================================================================
+// CONFORMIDADE – PORTARIA 671/2021
+// ===================================================================
+function renderConformidade(){
+  employees=carregarEmps();
+  const periodoDeVal=document.getElementById('confPeriodoDe')?.value||'';
+  const periodoAteVal=document.getElementById('confPeriodoAte')?.value||'';
+  if(!periodoDeVal||!periodoAteVal){ alert('Selecione o período.'); return; }
+
+  const [anoD,mesD]=periodoDeVal.split('-').map(Number);
+  const [anoA,mesA]=periodoAteVal.split('-').map(Number);
+  const dtDe=new Date(anoD,mesD-1,1);
+  const dtAte=new Date(anoA,mesA,0);
+
+  const todos=carregarPonto();
+  const ativos=employees.filter(e=>e.status!=='inativo');
+  const banco=carregarBanco();
+
+  const alertas=[];
+  let criticos=0, atencoes=0, infos=0, oks=0;
+
+  ativos.forEach(emp=>{
+    const regsEmp=todos.filter(r=>r.empId===emp.id).sort((a,b)=>(a.data+a.hora).localeCompare(b.data+b.hora));
+    const cargaM=horaParaMin(emp.carga_diaria||CARGA_PADRAO);
+    let semConsecut=0, maxSemConsecut=0;
+    let diasComRegistro={};
+
+    // Agrupar por dia
+    regsEmp.forEach(r=>{ if(!diasComRegistro[r.data]) diasComRegistro[r.data]=[]; diasComRegistro[r.data].push(r); });
+
+    const dias=Object.keys(diasComRegistro).filter(d=>{
+      const dt=new Date(d+'T12:00:00');
+      return dt>=dtDe&&dt<=dtAte;
+    }).sort();
+
+    // Verificar cada dia
+    dias.forEach((dStr,idx)=>{
+      const regsD=diasComRegistro[dStr].sort((a,b)=>a.hora.localeCompare(b.hora));
+      const pares=calcPares(regsD);
+      const trabM=calcTotalTrabalhado(pares);
+      const diff=trabM-cargaM;
+
+      // 1. Horas extras > 2h
+      if(diff>120){
+        alertas.push({nivel:'atencao',emp:emp.nome,dia:new Date(dStr+'T12:00:00').toLocaleDateString('pt-BR'),msg:`Horas extras: ${minParaHora(diff)} (máximo legal: 02:00 — Art. 59 CLT)`,ref:'Art. 59 CLT'});
+        atencoes++;
+      }
+
+      // 2. Intervalo intrajornada
+      if(trabM>6*60){
+        const intra=calcIntrajornada(regsD);
+        if(intra!==null&&intra<30){
+          alertas.push({nivel:'critico',emp:emp.nome,dia:new Date(dStr+'T12:00:00').toLocaleDateString('pt-BR'),msg:`Intervalo intrajornada de ${minParaHora(intra)} — mínimo legal: 30 min (Art. 71 CLT)`,ref:'Art. 71 CLT'});
+          criticos++;
+        } else if(intra!==null&&intra<60){
+          alertas.push({nivel:'atencao',emp:emp.nome,dia:new Date(dStr+'T12:00:00').toLocaleDateString('pt-BR'),msg:`Intervalo intrajornada de ${minParaHora(intra)} — recomendado ≥ 1h (Art. 71 CLT)`,ref:'Art. 71 CLT'});
+          atencoes++;
+        }
+      }
+
+      // 3. Intervalo interjornada
+      if(idx>0){
+        const dAnterior=dias[idx-1];
+        const regsAnt=diasComRegistro[dAnterior].sort((a,b)=>b.hora.localeCompare(a.hora));
+        const ultimaSaida=regsAnt.find(r=>r.tipo==='saida');
+        const primeiraEntrada=regsD.find(r=>r.tipo==='entrada');
+        if(ultimaSaida&&primeiraEntrada){
+          const dtAnt=new Date(dAnterior+'T'+ultimaSaida.hora);
+          const dtAtual=new Date(dStr+'T'+primeiraEntrada.hora);
+          const diffMin=(dtAtual-dtAnt)/60000;
+          if(diffMin<11*60){
+            alertas.push({nivel:'critico',emp:emp.nome,dia:new Date(dStr+'T12:00:00').toLocaleDateString('pt-BR'),msg:`Intervalo interjornada de ${minParaHora(diffMin)} — mínimo legal: 11h (Art. 66 CLT)`,ref:'Art. 66 CLT'});
+            criticos++;
+          }
+        }
+      }
+
+      // 4. Horas noturnas
+      let minNot=0;
+      pares.forEach(p=>{ if(p.e&&p.s) minNot+=minutosNoturnos(p.e.hora,p.s.hora); });
+      if(minNot>0){
+        alertas.push({nivel:'info',emp:emp.nome,dia:new Date(dStr+'T12:00:00').toLocaleDateString('pt-BR'),msg:`${minParaHora(minNot)} de horas noturnas (22h–5h) — adicional de 20% (Art. 73 CLT)`,ref:'Art. 73 CLT'});
+        infos++;
+      }
+    });
+
+    // 5. 7 dias consecutivos sem descanso
+    let consec=0;
+    let dtCur=new Date(dtDe);
+    while(dtCur<=dtAte){
+      const dStr=dtCur.toISOString().slice(0,10);
+      const dow=dtCur.getDay();
+      const DIAS_MAP=['domingo','segunda','terça','quarta','quinta','sexta','sábado'];
+      const ehFolga=emp.folga_fixa===DIAS_MAP[dow];
+      const temReg=!!diasComRegistro[dStr]?.length;
+      if(temReg&&!ehFolga){ consec++; }
+      else { maxSemConsecut=Math.max(maxSemConsecut,consec); consec=0; }
+      dtCur.setDate(dtCur.getDate()+1);
+    }
+    maxSemConsecut=Math.max(maxSemConsecut,consec);
+    if(maxSemConsecut>=7){
+      alertas.push({nivel:'critico',emp:emp.nome,dia:'período',msg:`${maxSemConsecut} dias consecutivos sem descanso (Art. 67 CLT — máximo 6 dias)`,ref:'Art. 67 CLT'});
+      criticos++;
+    }
+
+    // 6. Banco de horas vencido
+    const b=banco[emp.id];
+    if(b?.lancamentos){
+      b.lancamentos.filter(l=>l.tipo==='credito').forEach(l=>{
+        const diffDias=(new Date()-new Date(l.data))/(1000*60*60*24);
+        if(diffDias>180){
+          alertas.push({nivel:'atencao',emp:emp.nome,dia:l.data,msg:`Banco de horas com crédito de ${minParaHora(l.minutos)} vencido (${Math.floor(diffDias)}d sem compensação — limite: 180 dias CLT)`,ref:'CLT + Portaria 671'});
+          atencoes++;
+        }
+      });
+    }
+
+    if(!alertas.some(a=>a.emp===emp.nome)){ oks++; }
+  });
+
+  // Resumo
+  document.getElementById('confResumo').innerHTML=`
+    <div class="col-6 col-md-3"><div class="card border-0 shadow-sm text-center p-3"><div style="font-size:2rem;font-weight:800;color:#dc3545">${criticos}</div><small>Críticos 🔴</small></div></div>
+    <div class="col-6 col-md-3"><div class="card border-0 shadow-sm text-center p-3"><div style="font-size:2rem;font-weight:800;color:#ffc107">${atencoes}</div><small>Atenções 🟡</small></div></div>
+    <div class="col-6 col-md-3"><div class="card border-0 shadow-sm text-center p-3"><div style="font-size:2rem;font-weight:800;color:#0dcaf0">${infos}</div><small>Informativos 🔵</small></div></div>
+    <div class="col-6 col-md-3"><div class="card border-0 shadow-sm text-center p-3"><div style="font-size:2rem;font-weight:800;color:#198754">${oks}</div><small>Funcionários OK ✅</small></div></div>`;
+
+  if(!alertas.length){
+    document.getElementById('confAlertas').innerHTML=`<div class="alerta-card alerta-ok p-3"><i class="bi bi-check-circle-fill text-success"></i> <strong>Nenhuma irregularidade encontrada no período.</strong> Todos os registros estão em conformidade com a Portaria 671/2021 e a CLT.</div>`;
+    updateConfBadge(0);
+    return;
+  }
+
+  const ICONES={critico:'🔴',atencao:'🟡',info:'🔵'};
+  const CLASSES={critico:'alerta-critico',atencao:'alerta-atencao',info:'alerta-info'};
+  document.getElementById('confAlertas').innerHTML=alertas.map(a=>`
+    <div class="alerta-card ${CLASSES[a.nivel]}">
+      <div class="d-flex justify-content-between">
+        <span>${ICONES[a.nivel]} <strong>${a.emp}</strong> — <small class="text-muted">${a.dia}</small></span>
+        <span class="badge bg-secondary">${a.ref}</span>
+      </div>
+      <div style="font-size:.85rem;margin-top:4px">${a.msg}</div>
+    </div>`).join('');
+  updateConfBadge(criticos);
+}
+
+function updateConfBadge(n){
+  if(n===undefined){
+    const todos=carregarPonto();
+    if(!todos.length){ document.getElementById('confBadge').textContent=''; return; }
+  }
+  const badge=document.getElementById('confBadge');
+  if(!badge) return;
+  if(n===0){ badge.textContent=''; }
+  else if(n>0){ badge.textContent=n; }
+}
+
+// ===================================================================
+// RECONHECIMENTO FACIAL
+// ===================================================================
+let faceModelsLoaded  = false;
+let faceCamStream     = null;       // câmera de verificação
+let cadastroCamStream = null;       // câmera de cadastro
+let faceDetectTimer   = null;
+let cadastroDetectTimer = null;
+let modalCadastroRosto;
+
+function ehLocalhost(){
+  // Retorna true quando servido via HTTP (localhost OU IP local via servidor)
+  // A câmera pode exigir configuração extra no tablet — ver instruções no iniciar.bat
+  return location.protocol.startsWith('http');
+}
+function faceApiOk(){
+  return typeof faceapi !== 'undefined' && !window._faceApiErr;
+}
+
+async function inicializarFaceAPI(){
+  if(!faceApiOk() || faceModelsLoaded) return faceModelsLoaded;
+  try {
+    await Promise.all([
+      faceapi.nets.tinyFaceDetector.loadFromUri('/models'),
+      faceapi.nets.faceLandmark68Net.loadFromUri('/models'),
+      faceapi.nets.faceRecognitionNet.loadFromUri('/models'),
+    ]);
+    faceModelsLoaded = true;
+    console.log('Face-API modelos carregados.');
+  } catch(e) {
+    console.warn('Face-API: erro ao carregar modelos —', e.message);
+  }
+  return faceModelsLoaded;
+}
+
+// ---------- VERIFICAÇÃO (bater ponto) ----------
+async function selecionarEmp(id){
+  baterEmpSelecionado = employees.find(e=>e.id===id);
+  if(!baterEmpSelecionado) return;
+
+  ['baterStep1','baterStep2','baterStep3'].forEach(s=>
+    document.getElementById(s).classList.add('d-none'));
+
+  const cor = getDeptCor(baterEmpSelecionado.departamento);
+  const ini = baterEmpSelecionado.nome.split(' ').filter(Boolean).slice(0,2).map(p=>p[0]).join('').toUpperCase();
+  document.getElementById('baterAvatar15').style.background = cor;
+  document.getElementById('baterAvatar15').textContent = ini;
+  document.getElementById('baterEmpNome15').textContent = baterEmpSelecionado.nome;
+  document.getElementById('baterEmpFunc15').textContent = `${baterEmpSelecionado.funcao} – ${cap(baterEmpSelecionado.departamento)}`;
+
+  if(!ehLocalhost() || !faceApiOk()){
+    document.getElementById('bannerFaceOff').classList.remove('d-none');
+    irParaStep2(); return;
+  }
+  document.getElementById('bannerFaceOff').classList.add('d-none');
+
+  // Verificar se tem rosto cadastrado
+  const faces = carregarFaces();
+  const temFace = faces[id] && faces[id].length > 0;
+  document.getElementById('alertaSemFace').classList.toggle('d-none', temFace);
+
+  document.getElementById('baterStep15').classList.remove('d-none');
+  document.getElementById('verifStatus').innerHTML = '<span class="text-muted small"><i class="bi bi-hourglass-split"></i> Abrindo câmera...</span>';
+  document.getElementById('btnVerificar').disabled = true;
+
+  await abrirCameraVerif();
+}
+
+async function abrirCameraVerif(){
+  try {
+    faceCamStream = await navigator.mediaDevices.getUserMedia({
+      video:{ width:340, height:255, facingMode:'user' }
+    });
+    const v = document.getElementById('videoVerif');
+    v.srcObject = faceCamStream;
+    await v.play();
+    iniciarDeteccaoVerif();
+  } catch(e){
+    document.getElementById('verifStatus').innerHTML =
+      `<span class="badge bg-danger"><i class="bi bi-camera-video-off"></i> Câmera indisponível: ${e.message}</span>`;
+    document.getElementById('btnVerificar').disabled = false;
+  }
+}
+
+function iniciarDeteccaoVerif(){
+  const video  = document.getElementById('videoVerif');
+  const canvas = document.getElementById('canvasVerif');
+  const wrap   = document.getElementById('cameraWrapVerif');
+  const status = document.getElementById('verifStatus');
+  const btn    = document.getElementById('btnVerificar');
+
+  faceDetectTimer = setInterval(async()=>{
+    if(!video.videoWidth) return;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    try {
+      const dets = await faceapi
+        .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({scoreThreshold:0.5}))
+        .withFaceLandmarks();
+
+      if(dets.length===1){
+        const b = dets[0].detection.box;
+        ctx.strokeStyle='#00c851'; ctx.lineWidth=3;
+        ctx.strokeRect(b.x,b.y,b.width,b.height);
+        wrap.className='camera-wrap face-verified';
+        status.innerHTML='<span class="badge bg-success"><i class="bi bi-check-circle"></i> Rosto detectado — clique em Verificar</span>';
+        btn.disabled=false;
+      } else if(dets.length>1){
+        wrap.className='camera-wrap face-scanning';
+        status.innerHTML='<span class="badge bg-warning text-dark">Apenas um rosto por vez</span>';
+        btn.disabled=true;
+      } else {
+        wrap.className='camera-wrap face-error';
+        status.innerHTML='<span class="badge bg-secondary"><i class="bi bi-person-bounding-box"></i> Posicione seu rosto na câmera</span>';
+        btn.disabled=true;
+      }
+    } catch(_){}
+  }, 350);
+}
+
+async function verificarIdentidade(){
+  const video  = document.getElementById('videoVerif');
+  const status = document.getElementById('verifStatus');
+  const btn    = document.getElementById('btnVerificar');
+  btn.disabled=true;
+  status.innerHTML='<span class="badge bg-info"><i class="bi bi-cpu"></i> Processando...</span>';
+
+  try {
+    const det = await faceapi
+      .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+      .withFaceLandmarks()
+      .withFaceDescriptor();
+
+    if(!det){
+      status.innerHTML='<span class="badge bg-danger">Rosto não capturado. Tente novamente.</span>';
+      btn.disabled=false; return;
+    }
+
+    const faces = carregarFaces();
+    const stored = faces[baterEmpSelecionado.id];
+
+    if(!stored || !stored.length){
+      // Sem rosto cadastrado → permite com aviso
+      pararCameraVerif();
+      irParaStep2(); return;
+    }
+
+    const labeled = new faceapi.LabeledFaceDescriptors(
+      String(baterEmpSelecionado.id),
+      stored.map(d=>new Float32Array(d))
+    );
+    const matcher = new faceapi.FaceMatcher([labeled], 0.55);
+    const match   = matcher.findBestMatch(det.descriptor);
+
+    if(match.label === String(baterEmpSelecionado.id)){
+      // Verificado!
+      const wrap = document.getElementById('cameraWrapVerif');
+      wrap.className='camera-wrap face-verified';
+      status.innerHTML='<span class="badge bg-success fs-6"><i class="bi bi-patch-check-fill"></i> Identidade verificada!</span>';
+      clearInterval(faceDetectTimer);
+      setTimeout(()=>{ pararCameraVerif(); irParaStep2(); }, 900);
+    } else {
+      status.innerHTML=`<span class="badge bg-danger"><i class="bi bi-x-circle"></i> Rosto não reconhecido (dist: ${match.distance.toFixed(2)}). Tente novamente ou chame o responsável.</span>`;
+      btn.disabled=false;
+    }
+  } catch(e){
+    status.innerHTML=`<span class="badge bg-danger">Erro: ${e.message}</span>`;
+    btn.disabled=false;
+  }
+}
+
+function pararCameraVerif(){
+  if(faceDetectTimer){ clearInterval(faceDetectTimer); faceDetectTimer=null; }
+  if(faceCamStream){ faceCamStream.getTracks().forEach(t=>t.stop()); faceCamStream=null; }
+}
+
+function cancelarVerificacao(){
+  pararCameraVerif();
+  baterEmpSelecionado=null;
+  document.getElementById('baterStep15').classList.add('d-none');
+  document.getElementById('baterStep1').classList.remove('d-none');
+}
+
+function irParaStep2(){
+  pararCameraVerif();
+  document.getElementById('baterStep15').classList.add('d-none');
+  const cor = getDeptCor(baterEmpSelecionado.departamento);
+  const ini = baterEmpSelecionado.nome.split(' ').filter(Boolean).slice(0,2).map(p=>p[0]).join('').toUpperCase();
+  document.getElementById('baterAvatar').style.background=cor;
+  document.getElementById('baterAvatar').textContent=ini;
+  document.getElementById('baterEmpNome').textContent=baterEmpSelecionado.nome;
+  document.getElementById('baterEmpFunc').textContent=`${baterEmpSelecionado.funcao} – ${cap(baterEmpSelecionado.departamento)}`;
+  atualizarRegistrosHoje();
+  document.getElementById('baterStep2').classList.remove('d-none');
+}
+
+// ---------- CADASTRO DE ROSTOS (admin) ----------
+function abrirCadastroRosto(){
+  if(!ehLocalhost()||!faceApiOk()){
+    alert('O reconhecimento facial só funciona via servidor local.\n\nDuplo clique no arquivo "iniciar.bat" para iniciar o servidor corretamente.');
+    return;
+  }
+  popularSelectsEmp();
+  // popular select de rostos
+  const sel = document.getElementById('rostoEmpSelect');
+  if(sel){
+    const ativos = employees.filter(e=>e.status!=='inativo').sort((a,b)=>a.nome.localeCompare(b.nome));
+    sel.innerHTML = ativos.map(e=>`<option value="${e.id}">${e.nome}</option>`).join('');
+  }
+  atualizarContadorFotos();
+  desligarCameraCadastro();
+  document.getElementById('cadastroStatus').innerHTML='<span class="text-muted">Câmera desligada</span>';
+  modalCadastroRosto.show();
+}
+
+function atualizarContadorFotos(){
+  const empId = parseInt(document.getElementById('rostoEmpSelect')?.value);
+  const faces = carregarFaces();
+  document.getElementById('contFotos').textContent = (faces[empId]||[]).length;
+}
+
+async function ligarCameraCadastro(){
+  try {
+    cadastroCamStream = await navigator.mediaDevices.getUserMedia({
+      video:{ width:340, height:255, facingMode:'user' }
+    });
+    const v = document.getElementById('videoCadastro');
+    v.srcObject = cadastroCamStream;
+    await v.play();
+    document.getElementById('btnLigarCamera').classList.add('d-none');
+    document.getElementById('btnCapturar').classList.remove('d-none');
+    document.getElementById('btnDesligarCamera').classList.remove('d-none');
+    iniciarDeteccaoCadastro();
+  } catch(e){
+    document.getElementById('cadastroStatus').innerHTML=
+      `<span class="badge bg-danger">Câmera indisponível: ${e.message}</span>`;
+  }
+}
+
+function iniciarDeteccaoCadastro(){
+  const video  = document.getElementById('videoCadastro');
+  const canvas = document.getElementById('canvasCadastro');
+  const wrap   = document.getElementById('cameraWrapCadastro');
+  const status = document.getElementById('cadastroStatus');
+
+  cadastroDetectTimer = setInterval(async()=>{
+    if(!video.videoWidth) return;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    try {
+      const dets = await faceapi
+        .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({scoreThreshold:0.5}))
+        .withFaceLandmarks();
+      if(dets.length===1){
+        const b=dets[0].detection.box;
+        ctx.strokeStyle='#00c851'; ctx.lineWidth=3;
+        ctx.strokeRect(b.x,b.y,b.width,b.height);
+        wrap.style.borderColor='#198754';
+        status.innerHTML='<span class="badge bg-success">✓ Rosto detectado — clique em Capturar Foto</span>';
+        document.getElementById('btnCapturar').disabled=false;
+      } else {
+        wrap.style.borderColor='#dee2e6';
+        status.innerHTML='<span class="badge bg-secondary">Posicione o rosto do funcionário</span>';
+        document.getElementById('btnCapturar').disabled=true;
+      }
+    } catch(_){}
+  }, 350);
+}
+
+async function capturarRosto(){
+  const video = document.getElementById('videoCadastro');
+  const empId = parseInt(document.getElementById('rostoEmpSelect').value);
+  const status= document.getElementById('cadastroStatus');
+  const btn   = document.getElementById('btnCapturar');
+
+  btn.disabled=true;
+  status.innerHTML='<span class="badge bg-info"><i class="bi bi-cpu"></i> Processando rosto...</span>';
+
+  try {
+    const det = await faceapi
+      .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+      .withFaceLandmarks()
+      .withFaceDescriptor();
+
+    if(!det){
+      status.innerHTML='<span class="badge bg-danger">Rosto não detectado. Reposicione e tente.</span>';
+      btn.disabled=false; return;
+    }
+
+    const faces = carregarFaces();
+    if(!faces[empId]) faces[empId]=[];
+    faces[empId].push(Array.from(det.descriptor));
+    salvarFaces(faces);
+
+    const qtd = faces[empId].length;
+    document.getElementById('contFotos').textContent = qtd;
+    status.innerHTML=`<span class="badge bg-success">✓ Foto ${qtd} capturada! ${qtd<5?'Capture mais '+(5-qtd)+' foto(s) para melhor precisão.':' Cadastro completo!'}</span>`;
+    btn.disabled=false;
+  } catch(e){
+    status.innerHTML=`<span class="badge bg-danger">Erro: ${e.message}</span>`;
+    btn.disabled=false;
+  }
+}
+
+function excluirRostosCadastrados(){
+  const empId = parseInt(document.getElementById('rostoEmpSelect').value);
+  const emp   = employees.find(e=>e.id===empId);
+  if(!confirm(`Remover todos os rostos cadastrados de ${emp?.nome||'este funcionário'}?`)) return;
+  const faces = carregarFaces();
+  delete faces[empId];
+  salvarFaces(faces);
+  atualizarContadorFotos();
+  document.getElementById('cadastroStatus').innerHTML='<span class="badge bg-warning text-dark">Rostos removidos.</span>';
+}
+
+function desligarCameraCadastro(){
+  if(cadastroDetectTimer){ clearInterval(cadastroDetectTimer); cadastroDetectTimer=null; }
+  if(cadastroCamStream){ cadastroCamStream.getTracks().forEach(t=>t.stop()); cadastroCamStream=null; }
+  document.getElementById('btnLigarCamera')?.classList.remove('d-none');
+  document.getElementById('btnCapturar')?.classList.add('d-none');
+  document.getElementById('btnDesligarCamera')?.classList.add('d-none');
+  const wrap=document.getElementById('cameraWrapCadastro');
+  if(wrap) wrap.style.borderColor='#dee2e6';
+}
+
+function fecharCameraRosto(){
+  desligarCameraCadastro();
+}
+
+// ===================================================================
+// START
+// ===================================================================
+document.addEventListener('DOMContentLoaded', initAuth);
+</script>
+</body>
+</html>
