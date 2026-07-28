@@ -1,0 +1,241 @@
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
+
+interface PermissionSeed {
+  slug: string;
+  module: string;
+  description: string;
+}
+
+const PERMISSIONS: PermissionSeed[] = [
+  // Cadastros
+  { slug: 'companies.view', module: 'cadastros', description: 'Visualizar empresas' },
+  { slug: 'companies.manage', module: 'cadastros', description: 'Incluir/editar empresas' },
+  { slug: 'suppliers.view', module: 'cadastros', description: 'Visualizar fornecedores' },
+  { slug: 'suppliers.manage', module: 'cadastros', description: 'Incluir/editar fornecedores' },
+  { slug: 'customers.view', module: 'cadastros', description: 'Visualizar clientes' },
+  { slug: 'customers.manage', module: 'cadastros', description: 'Incluir/editar clientes' },
+  { slug: 'categories.view', module: 'cadastros', description: 'Visualizar categorias financeiras' },
+  { slug: 'categories.manage', module: 'cadastros', description: 'Incluir/editar categorias financeiras' },
+  { slug: 'cost-centers.view', module: 'cadastros', description: 'Visualizar centros de custo' },
+  { slug: 'cost-centers.manage', module: 'cadastros', description: 'Incluir/editar centros de custo' },
+  { slug: 'bank-accounts.view', module: 'cadastros', description: 'Visualizar contas bancárias' },
+  { slug: 'bank-accounts.manage', module: 'cadastros', description: 'Incluir/editar contas bancárias' },
+  { slug: 'payment-methods.view', module: 'cadastros', description: 'Visualizar formas de pagamento' },
+  { slug: 'payment-methods.manage', module: 'cadastros', description: 'Incluir/editar formas de pagamento' },
+  { slug: 'acquirers.view', module: 'cadastros', description: 'Visualizar cartões e adquirentes' },
+  { slug: 'acquirers.manage', module: 'cadastros', description: 'Incluir/editar cartões e adquirentes' },
+
+  // Financeiro
+  { slug: 'financial.view', module: 'financeiro', description: 'Visualizar visão financeira' },
+  { slug: 'financial.documents', module: 'financeiro', description: 'Enviar documentos' },
+  { slug: 'financial.process', module: 'financeiro', description: 'Processar lançamentos' },
+  { slug: 'financial.approve', module: 'financeiro', description: 'Autorizar pagamentos' },
+  { slug: 'payables.view', module: 'financeiro', description: 'Visualizar contas a pagar' },
+  { slug: 'receivables.view', module: 'financeiro', description: 'Visualizar contas a receber' },
+  { slug: 'financial.scheduled', module: 'financeiro', description: 'Visualizar agendados' },
+  { slug: 'financial.paid', module: 'financeiro', description: 'Visualizar contas pagas' },
+  { slug: 'financial.movements', module: 'financeiro', description: 'Visualizar movimentações' },
+  { slug: 'bank-import.view', module: 'financeiro', description: 'Importação bancária' },
+  { slug: 'reconciliation.view', module: 'financeiro', description: 'Conciliação bancária' },
+  { slug: 'transfers.view', module: 'financeiro', description: 'Transferências' },
+  { slug: 'financial.closing', module: 'financeiro', description: 'Fechamento financeiro' },
+
+  // Inteligência Financeira
+  { slug: 'bi.view', module: 'inteligencia-financeira', description: 'Dashboard gerencial' },
+  { slug: 'bi.cash-flow', module: 'inteligencia-financeira', description: 'Fluxo de caixa' },
+  { slug: 'bi.dre', module: 'inteligencia-financeira', description: 'DRE gerencial' },
+  { slug: 'bi.revenue-expenses', module: 'inteligencia-financeira', description: 'Receitas e despesas' },
+  { slug: 'bi.categories', module: 'inteligencia-financeira', description: 'Categorias (BI)' },
+  { slug: 'bi.cost-centers', module: 'inteligencia-financeira', description: 'Centros de custo (BI)' },
+  { slug: 'bi.suppliers', module: 'inteligencia-financeira', description: 'Fornecedores (BI)' },
+  { slug: 'bi.customers', module: 'inteligencia-financeira', description: 'Clientes (BI)' },
+  { slug: 'bi.indicators', module: 'inteligencia-financeira', description: 'Indicadores' },
+  { slug: 'bi.reports', module: 'inteligencia-financeira', description: 'Relatórios' },
+
+  // Configurações
+  { slug: 'settings.organization', module: 'configuracoes', description: 'Dados da organização' },
+  { slug: 'settings.users', module: 'configuracoes', description: 'Usuários' },
+  { slug: 'settings.roles', module: 'configuracoes', description: 'Perfis' },
+  { slug: 'settings.permissions', module: 'configuracoes', description: 'Permissões' },
+  { slug: 'settings.financial-params', module: 'configuracoes', description: 'Parâmetros financeiros' },
+  { slug: 'settings.approval-rules', module: 'configuracoes', description: 'Regras de aprovação' },
+  { slug: 'settings.reconciliation-rules', module: 'configuracoes', description: 'Regras de conciliação' },
+  { slug: 'settings.integrations', module: 'configuracoes', description: 'Integrações' },
+  { slug: 'settings.notifications', module: 'configuracoes', description: 'Notificações' },
+  { slug: 'settings.audit', module: 'configuracoes', description: 'Auditoria' },
+];
+
+const ALL_SLUGS = PERMISSIONS.map((p) => p.slug);
+const CADASTROS_SLUGS = PERMISSIONS.filter((p) => p.module === 'cadastros').map((p) => p.slug);
+const BI_SLUGS = PERMISSIONS.filter((p) => p.module === 'inteligencia-financeira').map((p) => p.slug);
+
+const ROLES: {
+  slug: string;
+  name: string;
+  description: string;
+  isSystem: boolean;
+  permissions: string[];
+}[] = [
+  {
+    slug: 'platform_admin',
+    name: 'Administrador da plataforma',
+    description: 'Acesso global à plataforma Pulse (equipe Pulse).',
+    isSystem: true,
+    permissions: ALL_SLUGS,
+  },
+  {
+    slug: 'organization_admin',
+    name: 'Administrador da organização',
+    description: 'Gerencia organizações, empresas, usuários e configurações.',
+    isSystem: true,
+    permissions: ALL_SLUGS,
+  },
+  {
+    slug: 'company_admin',
+    name: 'Administrador da empresa',
+    description: 'Gerencia os dados da empresa.',
+    isSystem: true,
+    permissions: ALL_SLUGS.filter((s) => s !== 'settings.organization'),
+  },
+  {
+    slug: 'financial',
+    name: 'Financeiro',
+    description: 'Opera rotinas financeiras completas.',
+    isSystem: true,
+    permissions: [
+      ...CADASTROS_SLUGS,
+      'financial.view',
+      'financial.documents',
+      'financial.process',
+      'financial.approve',
+      'payables.view',
+      'receivables.view',
+      'financial.scheduled',
+      'financial.paid',
+      'financial.movements',
+      'bank-import.view',
+      'reconciliation.view',
+      'transfers.view',
+      'financial.closing',
+      ...BI_SLUGS,
+    ],
+  },
+  {
+    slug: 'financial_operator',
+    name: 'Operador financeiro',
+    description: 'Inclui e processa informações, com restrições.',
+    isSystem: true,
+    permissions: [
+      'companies.view',
+      'suppliers.view',
+      'suppliers.manage',
+      'customers.view',
+      'customers.manage',
+      'categories.view',
+      'cost-centers.view',
+      'bank-accounts.view',
+      'payment-methods.view',
+      'financial.view',
+      'financial.documents',
+      'financial.process',
+      'payables.view',
+      'receivables.view',
+      'financial.scheduled',
+      'financial.movements',
+      'bank-import.view',
+    ],
+  },
+  {
+    slug: 'approver',
+    name: 'Aprovador',
+    description: 'Aprova ou rejeita pagamentos.',
+    isSystem: true,
+    permissions: ['financial.view', 'financial.approve', 'payables.view', 'receivables.view', 'bi.view'],
+  },
+  {
+    slug: 'manager',
+    name: 'Gestor',
+    description: 'Consulta dashboards, relatórios e indicadores.',
+    isSystem: true,
+    permissions: ['financial.view', ...BI_SLUGS],
+  },
+  {
+    slug: 'accountant',
+    name: 'Contador',
+    description: 'Consulta dados contábeis, relatórios e exportações.',
+    isSystem: true,
+    permissions: ['financial.view', 'financial.paid', ...BI_SLUGS],
+  },
+];
+
+async function main() {
+  console.log('Aplicando seed de permissões...');
+  for (const permission of PERMISSIONS) {
+    await prisma.permission.upsert({
+      where: { slug: permission.slug },
+      update: { module: permission.module, description: permission.description },
+      create: permission,
+    });
+  }
+
+  console.log('Aplicando seed de perfis...');
+  for (const role of ROLES) {
+    const created = await prisma.role.upsert({
+      where: { slug: role.slug },
+      update: { name: role.name, description: role.description, isSystem: role.isSystem },
+      create: {
+        slug: role.slug,
+        name: role.name,
+        description: role.description,
+        isSystem: role.isSystem,
+      },
+    });
+
+    const permissions = await prisma.permission.findMany({
+      where: { slug: { in: role.permissions } },
+    });
+
+    await prisma.rolePermission.deleteMany({ where: { roleId: created.id } });
+    await prisma.rolePermission.createMany({
+      data: permissions.map((permission) => ({ roleId: created.id, permissionId: permission.id })),
+      skipDuplicates: true,
+    });
+  }
+
+  console.log('Aplicando seed de organização/empresa de demonstração...');
+  const organization = await prisma.organization.upsert({
+    where: { id: '00000000-0000-0000-0000-000000000001' },
+    update: {},
+    create: {
+      id: '00000000-0000-0000-0000-000000000001',
+      name: 'Tchê Grill',
+    },
+  });
+
+  await prisma.company.upsert({
+    where: { document: '11222333000181' },
+    update: {},
+    create: {
+      organizationId: organization.id,
+      name: 'Tchê Grill Restaurante Ltda.',
+      tradeName: 'Tchê Grill',
+      document: '11222333000181',
+    },
+  });
+
+  console.log('Seed concluído com sucesso.');
+  console.log(
+    'Para vincular seu usuário Supabase como Administrador da organização, veja as instruções no README (seção "Primeiro acesso").',
+  );
+}
+
+main()
+  .catch((error) => {
+    console.error(error);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });

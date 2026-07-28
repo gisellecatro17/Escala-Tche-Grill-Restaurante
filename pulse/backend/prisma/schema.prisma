@@ -1,0 +1,201 @@
+// Pulse — schema de fundação (organizações, empresas, usuários, perfis, permissões e auditoria).
+// Módulos financeiros (contas a pagar/receber, conciliação etc.) serão adicionados em etapas futuras.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum RecordStatus {
+  ACTIVE
+  INACTIVE
+  BLOCKED
+
+  @@map("record_status")
+}
+
+/// Cliente/grupo contratante da plataforma Pulse. Pode possuir várias empresas (CNPJs).
+model Organization {
+  id     String       @id @default(uuid()) @db.Uuid
+  name   String
+  status RecordStatus @default(ACTIVE)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+
+  companies       Company[]
+  userMemberships UserOrganizationRole[]
+  auditLogs       AuditLog[]
+
+  @@map("organizations")
+}
+
+/// Uma empresa (CNPJ/unidade) pertencente a uma organização.
+model Company {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  name           String
+  tradeName      String?      @map("trade_name")
+  document       String       @unique
+  email          String?
+  phone          String?
+  timezone       String       @default("America/Bahia")
+  status         RecordStatus @default(ACTIVE)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+
+  organization    Organization      @relation(fields: [organizationId], references: [id])
+  userMemberships UserCompanyRole[]
+  auditLogs       AuditLog[]
+
+  @@index([organizationId])
+  @@map("companies")
+}
+
+/// Perfil de usuário do Pulse. O id é o mesmo id do usuário em auth.users (Supabase Auth).
+model User {
+  id        String       @id @db.Uuid
+  name      String
+  email     String       @unique
+  phone     String?
+  avatarUrl String?      @map("avatar_url")
+  status    RecordStatus @default(ACTIVE)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  organizationMemberships UserOrganizationRole[]
+  companyMemberships      UserCompanyRole[]
+  auditLogs               AuditLog[]
+
+  @@map("users")
+}
+
+/// Perfil (conjunto de permissões) que pode ser atribuído a um usuário.
+model Role {
+  id          String  @id @default(uuid()) @db.Uuid
+  slug        String  @unique
+  name        String
+  description String?
+  /// Perfis do sistema (não podem ser excluídos ou renomeados pelo cliente).
+  isSystem    Boolean @default(false) @map("is_system")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  permissions             RolePermission[]
+  organizationMemberships UserOrganizationRole[]
+  companyMemberships      UserCompanyRole[]
+
+  @@map("roles")
+}
+
+/// Permissão granular (ex.: "payables.approve", "companies.view").
+model Permission {
+  id          String  @id @default(uuid()) @db.Uuid
+  slug        String  @unique
+  module      String
+  description String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  roles RolePermission[]
+
+  @@index([module])
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String @map("role_id") @db.Uuid
+  permissionId String @map("permission_id") @db.Uuid
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+/// Vínculo de um usuário a uma organização com um perfil (ex.: Administrador da organização).
+model UserOrganizationRole {
+  id             String       @id @default(uuid()) @db.Uuid
+  userId         String       @map("user_id") @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  roleId         String       @map("role_id") @db.Uuid
+  status         RecordStatus @default(ACTIVE)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  role         Role         @relation(fields: [roleId], references: [id])
+
+  @@unique([userId, organizationId])
+  @@index([organizationId])
+  @@map("user_organization_roles")
+}
+
+/// Vínculo de um usuário a uma empresa com um perfil (o mesmo usuário pode ter perfis
+/// diferentes em empresas diferentes).
+model UserCompanyRole {
+  id        String       @id @default(uuid()) @db.Uuid
+  userId    String       @map("user_id") @db.Uuid
+  companyId String       @map("company_id") @db.Uuid
+  roleId    String       @map("role_id") @db.Uuid
+  status    RecordStatus @default(ACTIVE)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  role    Role    @relation(fields: [roleId], references: [id])
+
+  @@unique([userId, companyId])
+  @@index([companyId])
+  @@map("user_company_roles")
+}
+
+/// Registro de auditoria — somente leitura para usuários comuns.
+model AuditLog {
+  id             String  @id @default(uuid()) @db.Uuid
+  organizationId String? @map("organization_id") @db.Uuid
+  companyId      String? @map("company_id") @db.Uuid
+  userId         String? @map("user_id") @db.Uuid
+
+  action   String
+  entity   String
+  entityId String? @map("entity_id") @db.Uuid
+  field    String?
+  oldValue Json?   @map("old_value")
+  newValue Json?   @map("new_value")
+
+  ipAddress String? @map("ip_address")
+  userAgent String? @map("user_agent")
+  origin    String?
+  reason    String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  organization Organization? @relation(fields: [organizationId], references: [id])
+  company      Company?      @relation(fields: [companyId], references: [id])
+  user         User?         @relation(fields: [userId], references: [id])
+
+  @@index([organizationId])
+  @@index([companyId])
+  @@index([entity, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
