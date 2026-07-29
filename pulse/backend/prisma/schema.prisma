@@ -481,6 +481,174 @@ enum RecurrenceProcessingStatus {
   @@map("recurrence_processing_status")
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Estrutura Financeira (plano de contas, categorias, centros, projetos, tags)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Grupo/tipo da conta na árvore do plano de contas.
+enum AccountPlanType {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  COST
+  EXPENSE
+  RESULT
+  COMPENSATION
+  OTHER
+
+  @@map("account_plan_type")
+}
+
+/// Conta sintética (agrupadora, não aceita lançamentos) x analítica (folha, aceita).
+enum AccountKind {
+  SYNTHETIC
+  ANALYTICAL
+
+  @@map("account_kind")
+}
+
+/// Tipo da natureza financeira do catálogo (`financial_natures`). Não confundir com o
+/// enum `FinancialNature`, que continua atendendo o vínculo de fornecedor já entregue.
+enum FinancialNatureKind {
+  REVENUE
+  EXPENSE
+  COST
+  INVESTMENT
+  TAX
+  TRANSFER
+  REIMBURSEMENT
+  LOAN
+  FINANCIAL_APPLICATION
+  PARTNER_WITHDRAWAL
+  CAPITAL_CONTRIBUTION
+  OTHER
+
+  @@map("financial_nature_kind")
+}
+
+/// Ciclo de vida de um projeto.
+enum ProjectStatus {
+  PLANNING
+  IN_PROGRESS
+  PAUSED
+  COMPLETED
+  CANCELLED
+  ARCHIVED
+
+  @@map("project_status")
+}
+
+/// Critério de rateio (seção "Rateios" do prompt de estrutura financeira).
+enum AllocationCriterion {
+  PERCENTAGE
+  FIXED_AMOUNT
+  QUANTITY
+  HOURS
+  WEIGHT
+  CUSTOM
+
+  @@map("allocation_criterion")
+}
+
+/// Dimensão de destino de uma linha de rateio.
+enum AllocationTargetType {
+  COST_CENTER
+  RESULT_CENTER
+  PROJECT
+  BUSINESS_UNIT
+  CATEGORY
+  ACCOUNT_PLAN
+
+  @@map("allocation_target_type")
+}
+
+/// Forma de comparação usada por uma regra de classificação automática.
+enum ClassificationMatchType {
+  CONTAINS
+  EQUALS
+  STARTS_WITH
+  ENDS_WITH
+  REGEX
+  AMOUNT_RANGE
+  DOCUMENT_NUMBER
+
+  @@map("classification_match_type")
+}
+
+/// Campo do lançamento importado sobre o qual a regra é aplicada.
+enum ClassificationMatchField {
+  DESCRIPTION
+  COUNTERPARTY_NAME
+  COUNTERPARTY_DOCUMENT
+  BANK_HISTORY
+  AMOUNT
+  DOCUMENT_NUMBER
+
+  @@map("classification_match_field")
+}
+
+/// Origem do lançamento a que a regra se aplica (preparação para OFX/PIX/cartão).
+enum TransactionOrigin {
+  ANY
+  OFX
+  PIX
+  TED
+  DOC
+  BOLETO
+  CARD
+  CASH
+  MANUAL
+
+  @@map("transaction_origin")
+}
+
+/// Como a regra de classificação nasceu — `LEARNED` é reservado ao motor futuro.
+enum ClassificationRuleSource {
+  MANUAL
+  IMPORTED
+  LEARNED
+  SYSTEM
+
+  @@map("classification_rule_source")
+}
+
+/// Cadastro cuja árvore/estrutura foi versionada.
+enum HierarchyEntity {
+  ACCOUNT_PLAN
+  CATEGORY
+  COST_CENTER
+  RESULT_CENTER
+  BUSINESS_UNIT
+  PROJECT
+
+  @@map("hierarchy_entity")
+}
+
+/// Formato de origem aceito na importação da estrutura financeira.
+enum StructureImportFormat {
+  EXCEL
+  CSV
+  CONTA_AZUL
+  OMIE
+  SAP
+  TOTVS
+  CUSTOM
+
+  @@map("structure_import_format")
+}
+
+/// Situação de um lote de importação da estrutura financeira.
+enum StructureImportStatus {
+  PENDING
+  VALIDATED
+  APPLIED
+  REJECTED
+  FAILED
+
+  @@map("structure_import_status")
+}
+
 /// Cliente/grupo contratante da plataforma Pulse. Pode possuir várias empresas (CNPJs).
 model Organization {
   id     String       @id @default(uuid()) @db.Uuid
@@ -501,6 +669,13 @@ model Organization {
   supplierRegistryQueries SupplierRegistryQuery[]
   customers               Customer[]
   customerRegistryQueries CustomerRegistryQuery[]
+
+  accountPlans      FinancialAccountPlan[]
+  financialNatures  FinancialNatureCatalog[]
+  businessUnits     BusinessUnit[]
+  financialTags     FinancialTag[]
+  hierarchyVersions FinancialHierarchyVersion[]
+  structureImports  FinancialStructureImport[]
 
   @@map("organizations")
 }
@@ -607,6 +782,17 @@ model Company {
   customerLinks   CustomerCompanyLink[]
   categories      Category[]
   costCenters     CostCenter[]
+
+  accountPlans        FinancialAccountPlan[]
+  resultCenters       ResultCenter[]
+  projects            Project[]
+  businessUnits       BusinessUnit[]
+  financialNatures    FinancialNatureCatalog[]
+  financialTags       FinancialTag[]
+  classificationRules ClassificationRule[]
+  allocationRules     AllocationRule[]
+  hierarchyVersions   FinancialHierarchyVersion[]
+  structureImports    FinancialStructureImport[]
 
   @@unique([organizationId, internalCode])
   @@index([organizationId])
@@ -892,6 +1078,11 @@ model AuditLog {
 /// Categoria financeira mínima, com suporte a subcategorias (parentCategoryId).
 /// Reaproveitada tanto como categoria de despesa (fornecedores) quanto como
 /// categoria de receita (clientes).
+/// Categoria financeira. As **subcategorias** são a própria hierarquia deste model
+/// (`parentCategoryId`), e não uma tabela separada: os módulos de Fornecedores e Clientes
+/// já apontam `defaultSubcategoryId` para `categories.id`, de modo que uma tabela
+/// `financial_subcategories` paralela duplicaria o conceito e órfãos essas FKs.
+/// Profundidade ilimitada (categoria → subcategoria → sub-subcategoria → ...).
 model Category {
   id               String       @id @default(uuid()) @db.Uuid
   companyId        String       @map("company_id") @db.Uuid
@@ -899,12 +1090,63 @@ model Category {
   name             String
   status           RecordStatus @default(ACTIVE)
 
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  // ── Identificação e apresentação ──
+  code        String? @db.VarChar(50)
+  description String?
+  color       String? @db.VarChar(20)
+  icon        String? @db.VarChar(50)
+  sortOrder   Int     @default(0) @map("sort_order")
+  notes       String?
+
+  /// Profundidade na árvore (0 = raiz). Mantida pelo serviço para acelerar consultas.
+  level Int     @default(0)
+  /// Caminho materializado dos ancestrais (ex.: "Despesas > Energia"), recalculado ao mover.
+  path  String?
+
+  /// Categoria de sistema — protegida contra exclusão pelo usuário.
+  isSystem Boolean @default(false) @map("is_system")
+
+  // ── Vínculos estruturais (dimensões padrão herdadas pelos lançamentos) ──
+  accountPlanId         String? @map("account_plan_id") @db.Uuid
+  financialNatureId     String? @map("financial_nature_id") @db.Uuid
+  defaultCostCenterId   String? @map("default_cost_center_id") @db.Uuid
+  defaultResultCenterId String? @map("default_result_center_id") @db.Uuid
+  defaultProjectId      String? @map("default_project_id") @db.Uuid
+  defaultBusinessUnitId String? @map("default_business_unit_id") @db.Uuid
+
+  // ── Regras automáticas da categoria ──
+  defaultSupplierId       String?        @map("default_supplier_id") @db.Uuid
+  defaultCustomerId       String?        @map("default_customer_id") @db.Uuid
+  /// Conta bancária padrão — FK lógica; o módulo de contas bancárias da empresa ainda não existe.
+  defaultBankAccountId    String?        @map("default_bank_account_id") @db.Uuid
+  defaultPaymentMethod    PaymentMethod? @map("default_payment_method")
+  /// Conta gerencial em texto livre (não há plano contábil contábil-fiscal separado nesta etapa).
+  managementAccount       String?        @map("management_account")
+  defaultDescription      String?        @map("default_description")
+  defaultHistory          String?        @map("default_history")
+  /// Rateio padrão aplicado automaticamente aos lançamentos desta categoria.
+  defaultAllocationRuleId String?        @map("default_allocation_rule_id") @db.Uuid
+
+  /// Habilita a sugestão/aplicação automática desta categoria na importação bancária.
+  autoClassificationEnabled Boolean @default(true) @map("auto_classification_enabled")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
 
   company        Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
   parentCategory Category?  @relation("CategoryHierarchy", fields: [parentCategoryId], references: [id])
   subcategories  Category[] @relation("CategoryHierarchy")
+
+  accountPlan           FinancialAccountPlan?   @relation("CategoryAccountPlan", fields: [accountPlanId], references: [id])
+  financialNature       FinancialNatureCatalog? @relation("CategoryFinancialNature", fields: [financialNatureId], references: [id])
+  defaultCostCenter     CostCenter?             @relation("CategoryDefaultCostCenter", fields: [defaultCostCenterId], references: [id])
+  defaultResultCenter   ResultCenter?           @relation("CategoryDefaultResultCenter", fields: [defaultResultCenterId], references: [id])
+  defaultProject        Project?                @relation("CategoryDefaultProject", fields: [defaultProjectId], references: [id])
+  defaultBusinessUnit   BusinessUnit?           @relation("CategoryDefaultBusinessUnit", fields: [defaultBusinessUnitId], references: [id])
+  defaultAllocationRule AllocationRule?         @relation("CategoryDefaultAllocationRule", fields: [defaultAllocationRuleId], references: [id])
 
   defaultForLinks    SupplierCompanyLink[] @relation("LinkDefaultCategory")
   defaultSubForLinks SupplierCompanyLink[] @relation("LinkDefaultSubcategory")
@@ -913,27 +1155,65 @@ model Category {
   defaultRevenueSubForLinks CustomerCompanyLink[] @relation("CustomerLinkDefaultSubcategory")
   defaultForContracts       CustomerContract[]    @relation("ContractRevenueCategory")
 
+  classificationRules ClassificationRule[]
+  allocationRules     AllocationRule[]     @relation("AllocationRuleCategory")
+  allocationLines     AllocationRuleLine[] @relation("AllocationLineCategory")
+  tagLinks            FinancialTagLink[]   @relation("CategoryTagLinks")
+
+  @@unique([companyId, code])
   @@index([companyId])
+  @@index([companyId, parentCategoryId])
+  @@index([accountPlanId])
   @@map("categories")
 }
 
-/// Centro de custo mínimo. Reaproveitado como "centro de resultado" no Cadastro de
-/// Clientes (seção 25 do prompt de clientes).
+/// Centro de custo, com árvore de profundidade ilimitada. O Cadastro de Clientes ainda
+/// aponta seu "centro de resultado" para este model (decisão da etapa anterior); o model
+/// `ResultCenter` abaixo é a estrutura definitiva e separada exigida por este módulo.
 model CostCenter {
-  id        String       @id @default(uuid()) @db.Uuid
-  companyId String       @map("company_id") @db.Uuid
-  name      String
-  status    RecordStatus @default(ACTIVE)
+  id                 String       @id @default(uuid()) @db.Uuid
+  companyId          String       @map("company_id") @db.Uuid
+  parentCostCenterId String?      @map("parent_cost_center_id") @db.Uuid
+  name               String
+  status             RecordStatus @default(ACTIVE)
 
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  code        String? @db.VarChar(50)
+  description String?
+  color       String? @db.VarChar(20)
+  icon        String? @db.VarChar(50)
+  sortOrder   Int     @default(0) @map("sort_order")
+  notes       String?
+  level       Int     @default(0)
+  path        String?
 
-  company       Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  /// Somente centros analíticos (folhas) aceitam lançamentos diretos.
+  acceptsEntries    Boolean @default(true) @map("accepts_entries")
+  isSystem          Boolean @default(false) @map("is_system")
+  responsibleUserId String? @map("responsible_user_id") @db.Uuid
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+
+  company          Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  parentCostCenter CostCenter?  @relation("CostCenterHierarchy", fields: [parentCostCenterId], references: [id])
+  children         CostCenter[] @relation("CostCenterHierarchy")
+
   links         SupplierCompanyLink[]
   customerLinks CustomerCompanyLink[]
   contracts     CustomerContract[]
 
+  defaultForCategories Category[]           @relation("CategoryDefaultCostCenter")
+  projects             Project[]            @relation("ProjectCostCenter")
+  classificationRules  ClassificationRule[]
+  allocationLines      AllocationRuleLine[] @relation("AllocationLineCostCenter")
+  tagLinks             FinancialTagLink[]   @relation("CostCenterTagLinks")
+
+  @@unique([companyId, code])
   @@index([companyId])
+  @@index([companyId, parentCostCenterId])
   @@map("cost_centers")
 }
 
@@ -1579,6 +1859,7 @@ model Customer {
   companyLinks    CustomerCompanyLink[]
   registryQueries CustomerRegistryQuery[]
   statusHistory   CustomerStatusHistory[]
+  projects        Project[]                @relation("ProjectCustomer")
 
   @@index([organizationId])
   @@index([systemStatus])
@@ -2057,4 +2338,544 @@ model CustomerStatusHistory {
   @@index([customerId])
   @@index([customerCompanyLinkId])
   @@map("customer_status_history")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Estrutura Financeira — models
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Plano de contas em árvore de profundidade ilimitada (1 → 1.1 → 1.1.01 → ...).
+/// Contas sintéticas agrupam; apenas contas analíticas aceitam lançamentos.
+model FinancialAccountPlan {
+  id              String  @id @default(uuid()) @db.Uuid
+  organizationId  String  @map("organization_id") @db.Uuid
+  /// Nulo = conta compartilhada por toda a organização; preenchido = conta exclusiva da empresa.
+  companyId       String? @map("company_id") @db.Uuid
+  parentAccountId String? @map("parent_account_id") @db.Uuid
+
+  code        String  @db.VarChar(50)
+  name        String
+  description String?
+
+  accountType AccountPlanType @default(EXPENSE) @map("account_type")
+  accountKind AccountKind     @default(ANALYTICAL) @map("account_kind")
+
+  financialNatureId String? @map("financial_nature_id") @db.Uuid
+
+  /// Contas sintéticas devem manter `false`; validado no serviço.
+  acceptsEntries Boolean @default(true) @map("accepts_entries")
+
+  color     String? @db.VarChar(20)
+  icon      String? @db.VarChar(50)
+  sortOrder Int     @default(0) @map("sort_order")
+  level     Int     @default(0)
+  path      String?
+  notes     String?
+  isSystem  Boolean @default(false) @map("is_system")
+
+  status RecordStatus @default(ACTIVE)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+
+  organization    Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company         Company?                @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  parentAccount   FinancialAccountPlan?   @relation("AccountPlanHierarchy", fields: [parentAccountId], references: [id])
+  children        FinancialAccountPlan[]  @relation("AccountPlanHierarchy")
+  financialNature FinancialNatureCatalog? @relation("AccountPlanFinancialNature", fields: [financialNatureId], references: [id])
+
+  categories          Category[]           @relation("CategoryAccountPlan")
+  classificationRules ClassificationRule[]
+  allocationLines     AllocationRuleLine[] @relation("AllocationLineAccountPlan")
+  tagLinks            FinancialTagLink[]   @relation("AccountPlanTagLinks")
+
+  @@unique([organizationId, companyId, code])
+  @@index([organizationId])
+  @@index([companyId])
+  @@index([parentAccountId])
+  @@map("financial_account_plans")
+}
+
+/// Centro de resultado — estrutura própria, completamente separada do centro de custo
+/// (seção "Centro de Resultado" do prompt). Também em árvore.
+model ResultCenter {
+  id                   String  @id @default(uuid()) @db.Uuid
+  companyId            String  @map("company_id") @db.Uuid
+  parentResultCenterId String? @map("parent_result_center_id") @db.Uuid
+
+  code        String? @db.VarChar(50)
+  name        String
+  description String?
+  color       String? @db.VarChar(20)
+  icon        String? @db.VarChar(50)
+  sortOrder   Int     @default(0) @map("sort_order")
+  level       Int     @default(0)
+  path        String?
+  notes       String?
+
+  acceptsEntries    Boolean @default(true) @map("accepts_entries")
+  isSystem          Boolean @default(false) @map("is_system")
+  responsibleUserId String? @map("responsible_user_id") @db.Uuid
+
+  status RecordStatus @default(ACTIVE)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+
+  company            Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  parentResultCenter ResultCenter?  @relation("ResultCenterHierarchy", fields: [parentResultCenterId], references: [id])
+  children           ResultCenter[] @relation("ResultCenterHierarchy")
+
+  defaultForCategories Category[]           @relation("CategoryDefaultResultCenter")
+  projects             Project[]            @relation("ProjectResultCenter")
+  classificationRules  ClassificationRule[]
+  allocationLines      AllocationRuleLine[] @relation("AllocationLineResultCenter")
+  tagLinks             FinancialTagLink[]   @relation("ResultCenterTagLinks")
+
+  @@unique([companyId, code])
+  @@index([companyId])
+  @@index([companyId, parentResultCenterId])
+  @@map("result_centers")
+}
+
+/// Projeto — dimensão adicional de análise. `realizedAmount`/`margin` permanecem nulos
+/// até o módulo financeiro existir; nada é calculado nesta etapa.
+model Project {
+  id        String @id @default(uuid()) @db.Uuid
+  companyId String @map("company_id") @db.Uuid
+
+  code        String? @db.VarChar(50)
+  name        String
+  description String?
+
+  /// Cliente do projeto — reaproveita o Cadastro de Clientes já entregue.
+  customerId     String? @map("customer_id") @db.Uuid
+  costCenterId   String? @map("cost_center_id") @db.Uuid
+  resultCenterId String? @map("result_center_id") @db.Uuid
+  businessUnitId String? @map("business_unit_id") @db.Uuid
+
+  responsibleUserId String? @map("responsible_user_id") @db.Uuid
+
+  startDate DateTime? @map("start_date") @db.Date
+  endDate   DateTime? @map("end_date") @db.Date
+
+  status ProjectStatus @default(PLANNING)
+
+  budgetAmount     Decimal? @map("budget_amount") @db.Decimal(18, 2)
+  /// Preenchido pelo módulo financeiro futuro — sempre nulo nesta etapa.
+  realizedAmount   Decimal? @map("realized_amount") @db.Decimal(18, 2)
+  marginPercentage Decimal? @map("margin_percentage") @db.Decimal(7, 4)
+
+  color String? @db.VarChar(20)
+  icon  String? @db.VarChar(50)
+  notes String?
+
+  recordStatus RecordStatus @default(ACTIVE) @map("record_status")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+
+  company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer     Customer?     @relation("ProjectCustomer", fields: [customerId], references: [id])
+  costCenter   CostCenter?   @relation("ProjectCostCenter", fields: [costCenterId], references: [id])
+  resultCenter ResultCenter? @relation("ProjectResultCenter", fields: [resultCenterId], references: [id])
+  businessUnit BusinessUnit? @relation("ProjectBusinessUnit", fields: [businessUnitId], references: [id])
+
+  defaultForCategories Category[]           @relation("CategoryDefaultProject")
+  classificationRules  ClassificationRule[]
+  allocationLines      AllocationRuleLine[] @relation("AllocationLineProject")
+  tagLinks             FinancialTagLink[]   @relation("ProjectTagLinks")
+
+  @@unique([companyId, code])
+  @@index([companyId])
+  @@index([customerId])
+  @@index([status])
+  @@map("projects")
+}
+
+/// Unidade de negócio — dimensão independente (ex.: BPO Financeiro, Tecnologia, Holding).
+/// Pode ser compartilhada pela organização (`companyId` nulo) ou exclusiva de uma empresa.
+model BusinessUnit {
+  id                   String  @id @default(uuid()) @db.Uuid
+  organizationId       String  @map("organization_id") @db.Uuid
+  companyId            String? @map("company_id") @db.Uuid
+  parentBusinessUnitId String? @map("parent_business_unit_id") @db.Uuid
+
+  code        String? @db.VarChar(50)
+  name        String
+  description String?
+  color       String? @db.VarChar(20)
+  icon        String? @db.VarChar(50)
+  sortOrder   Int     @default(0) @map("sort_order")
+  level       Int     @default(0)
+  path        String?
+  notes       String?
+
+  responsibleUserId String? @map("responsible_user_id") @db.Uuid
+  isSystem          Boolean @default(false) @map("is_system")
+
+  status RecordStatus @default(ACTIVE)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+
+  organization       Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company            Company?       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  parentBusinessUnit BusinessUnit?  @relation("BusinessUnitHierarchy", fields: [parentBusinessUnitId], references: [id])
+  children           BusinessUnit[] @relation("BusinessUnitHierarchy")
+
+  defaultForCategories Category[]           @relation("CategoryDefaultBusinessUnit")
+  projects             Project[]            @relation("ProjectBusinessUnit")
+  classificationRules  ClassificationRule[]
+  allocationLines      AllocationRuleLine[] @relation("AllocationLineBusinessUnit")
+  tagLinks             FinancialTagLink[]   @relation("BusinessUnitTagLinks")
+
+  @@unique([organizationId, companyId, code])
+  @@index([organizationId])
+  @@index([companyId])
+  @@map("business_units")
+}
+
+/// Catálogo de naturezas financeiras. O model chama-se `FinancialNatureCatalog` porque o
+/// nome `FinancialNature` já pertence ao enum entregue no módulo de Fornecedores; a tabela
+/// segue com o nome exigido pelo prompt (`financial_natures`).
+model FinancialNatureCatalog {
+  id             String  @id @default(uuid()) @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  companyId      String? @map("company_id") @db.Uuid
+
+  code        String?             @db.VarChar(50)
+  name        String
+  description String?
+  kind        FinancialNatureKind @default(EXPENSE)
+
+  /// Se o valor impacta o resultado (DRE) — transferências/aportes normalmente não impactam.
+  affectsResult   Boolean @default(true) @map("affects_result")
+  /// Se o valor impacta o caixa (DFC).
+  affectsCashFlow Boolean @default(true) @map("affects_cash_flow")
+
+  color     String? @db.VarChar(20)
+  icon      String? @db.VarChar(50)
+  sortOrder Int     @default(0) @map("sort_order")
+  isSystem  Boolean @default(false) @map("is_system")
+
+  status RecordStatus @default(ACTIVE)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company      Company?     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  categories          Category[]             @relation("CategoryFinancialNature")
+  accountPlans        FinancialAccountPlan[] @relation("AccountPlanFinancialNature")
+  classificationRules ClassificationRule[]
+
+  @@unique([organizationId, companyId, code])
+  @@index([organizationId])
+  @@index([companyId])
+  @@map("financial_natures")
+}
+
+/// Tag financeira livre (modelo Notion): um lançamento ou cadastro pode receber várias.
+model FinancialTag {
+  id             String  @id @default(uuid()) @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  companyId      String? @map("company_id") @db.Uuid
+
+  name        String
+  /// Nome normalizado (minúsculo, sem espaços duplicados) — garante unicidade real.
+  slug        String
+  description String?
+  color       String? @db.VarChar(20)
+  icon        String? @db.VarChar(50)
+  /// Agrupador opcional das tags (ex.: "Contratos", "Prioridade").
+  group       String? @db.VarChar(80)
+
+  /// Contador denormalizado de usos, mantido pelo serviço ao vincular/desvincular.
+  usageCount Int @default(0) @map("usage_count")
+
+  status RecordStatus @default(ACTIVE)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company      Company?     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  links FinancialTagLink[]
+
+  @@unique([organizationId, companyId, slug])
+  @@index([organizationId])
+  @@index([companyId])
+  @@map("financial_tags")
+}
+
+/// Vínculo polimórfico entre uma tag e qualquer cadastro da estrutura financeira.
+/// Exatamente uma das colunas de destino deve estar preenchida (validado no serviço).
+model FinancialTagLink {
+  id    String @id @default(uuid()) @db.Uuid
+  tagId String @map("tag_id") @db.Uuid
+
+  /// Rótulo da entidade alvo, para consultas genéricas e para o futuro vínculo com lançamentos.
+  entityType String @map("entity_type") @db.VarChar(50)
+  entityId   String @map("entity_id") @db.Uuid
+
+  categoryId     String? @map("category_id") @db.Uuid
+  accountPlanId  String? @map("account_plan_id") @db.Uuid
+  costCenterId   String? @map("cost_center_id") @db.Uuid
+  resultCenterId String? @map("result_center_id") @db.Uuid
+  projectId      String? @map("project_id") @db.Uuid
+  businessUnitId String? @map("business_unit_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at")
+  createdBy String?  @map("created_by") @db.Uuid
+
+  tag          FinancialTag          @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  category     Category?             @relation("CategoryTagLinks", fields: [categoryId], references: [id], onDelete: Cascade)
+  accountPlan  FinancialAccountPlan? @relation("AccountPlanTagLinks", fields: [accountPlanId], references: [id], onDelete: Cascade)
+  costCenter   CostCenter?           @relation("CostCenterTagLinks", fields: [costCenterId], references: [id], onDelete: Cascade)
+  resultCenter ResultCenter?         @relation("ResultCenterTagLinks", fields: [resultCenterId], references: [id], onDelete: Cascade)
+  project      Project?              @relation("ProjectTagLinks", fields: [projectId], references: [id], onDelete: Cascade)
+  businessUnit BusinessUnit?         @relation("BusinessUnitTagLinks", fields: [businessUnitId], references: [id], onDelete: Cascade)
+
+  @@unique([tagId, entityType, entityId])
+  @@index([entityType, entityId])
+  @@index([tagId])
+  @@map("financial_tag_links")
+}
+
+/// Regra de classificação automática. Nesta etapa apenas **armazena e simula** — nenhum
+/// lançamento é classificado automaticamente, pois os módulos de importação/OFX e de
+/// contas a pagar/receber ainda não existem.
+model ClassificationRule {
+  id        String @id @default(uuid()) @db.Uuid
+  companyId String @map("company_id") @db.Uuid
+
+  name        String
+  description String?
+
+  matchField    ClassificationMatchField @default(DESCRIPTION) @map("match_field")
+  matchType     ClassificationMatchType  @default(CONTAINS) @map("match_type")
+  matchValue    String                   @map("match_value")
+  /// Comparação sem diferenciar maiúsculas/minúsculas e acentos.
+  caseSensitive Boolean                  @default(false) @map("case_sensitive")
+
+  minAmount Decimal? @map("min_amount") @db.Decimal(18, 2)
+  maxAmount Decimal? @map("max_amount") @db.Decimal(18, 2)
+
+  origin TransactionOrigin @default(ANY)
+
+  // ── Dimensões aplicadas quando a regra casa ──
+  categoryId        String? @map("category_id") @db.Uuid
+  subcategoryId     String? @map("subcategory_id") @db.Uuid
+  accountPlanId     String? @map("account_plan_id") @db.Uuid
+  costCenterId      String? @map("cost_center_id") @db.Uuid
+  resultCenterId    String? @map("result_center_id") @db.Uuid
+  projectId         String? @map("project_id") @db.Uuid
+  businessUnitId    String? @map("business_unit_id") @db.Uuid
+  financialNatureId String? @map("financial_nature_id") @db.Uuid
+  allocationRuleId  String? @map("allocation_rule_id") @db.Uuid
+  supplierId        String? @map("supplier_id") @db.Uuid
+  customerId        String? @map("customer_id") @db.Uuid
+
+  appliedDescription String? @map("applied_description")
+  appliedHistory     String? @map("applied_history")
+
+  /// Menor valor = maior prioridade na resolução de conflitos entre regras.
+  priority            Int     @default(100)
+  /// Confiança mínima (0-100) para aplicar sem confirmação humana — usado pelo motor futuro.
+  confidenceThreshold Int     @default(95) @map("confidence_threshold")
+  /// Se `false`, a regra apenas sugere e exige confirmação.
+  autoApply           Boolean @default(false) @map("auto_apply")
+
+  source ClassificationRuleSource @default(MANUAL)
+
+  /// Estatísticas de aprendizado, alimentadas pelo motor futuro.
+  matchCount     Int       @default(0) @map("match_count")
+  confirmedCount Int       @default(0) @map("confirmed_count")
+  rejectedCount  Int       @default(0) @map("rejected_count")
+  lastMatchedAt  DateTime? @map("last_matched_at")
+
+  status RecordStatus @default(ACTIVE)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+
+  company         Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  category        Category?               @relation(fields: [categoryId], references: [id])
+  accountPlan     FinancialAccountPlan?   @relation(fields: [accountPlanId], references: [id])
+  costCenter      CostCenter?             @relation(fields: [costCenterId], references: [id])
+  resultCenter    ResultCenter?           @relation(fields: [resultCenterId], references: [id])
+  project         Project?                @relation(fields: [projectId], references: [id])
+  businessUnit    BusinessUnit?           @relation(fields: [businessUnitId], references: [id])
+  financialNature FinancialNatureCatalog? @relation(fields: [financialNatureId], references: [id])
+  allocationRule  AllocationRule?         @relation("ClassificationRuleAllocation", fields: [allocationRuleId], references: [id])
+
+  @@index([companyId])
+  @@index([companyId, priority])
+  @@index([categoryId])
+  @@map("classification_rules")
+}
+
+/// Cabeçalho de um rateio padrão reutilizável (ex.: "Energia 60/40").
+model AllocationRule {
+  id        String @id @default(uuid()) @db.Uuid
+  companyId String @map("company_id") @db.Uuid
+
+  name        String
+  description String?
+  criterion   AllocationCriterion @default(PERCENTAGE)
+
+  /// Categoria à qual este rateio pertence por padrão (opcional).
+  categoryId String? @map("category_id") @db.Uuid
+
+  /// Descrição do critério quando `criterion = CUSTOM`.
+  customCriterionLabel String? @map("custom_criterion_label")
+
+  isDefault Boolean      @default(false) @map("is_default")
+  status    RecordStatus @default(ACTIVE)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+
+  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  category Category? @relation("AllocationRuleCategory", fields: [categoryId], references: [id])
+
+  lines                AllocationRuleLine[]
+  defaultForCategories Category[]           @relation("CategoryDefaultAllocationRule")
+  classificationRules  ClassificationRule[] @relation("ClassificationRuleAllocation")
+
+  @@index([companyId])
+  @@index([categoryId])
+  @@map("allocation_rules")
+}
+
+/// Linha de rateio. Para `PERCENTAGE`, a soma das linhas da regra deve fechar 100%
+/// (validado em `AllocationRulesService`).
+model AllocationRuleLine {
+  id               String @id @default(uuid()) @db.Uuid
+  allocationRuleId String @map("allocation_rule_id") @db.Uuid
+
+  targetType AllocationTargetType @map("target_type")
+
+  costCenterId   String? @map("cost_center_id") @db.Uuid
+  resultCenterId String? @map("result_center_id") @db.Uuid
+  projectId      String? @map("project_id") @db.Uuid
+  businessUnitId String? @map("business_unit_id") @db.Uuid
+  categoryId     String? @map("category_id") @db.Uuid
+  accountPlanId  String? @map("account_plan_id") @db.Uuid
+
+  /// Preenchido quando o critério da regra é `PERCENTAGE`.
+  percentage  Decimal? @db.Decimal(7, 4)
+  /// Preenchido para `FIXED_AMOUNT`.
+  fixedAmount Decimal? @map("fixed_amount") @db.Decimal(18, 2)
+  /// Peso bruto para `QUANTITY`/`HOURS`/`WEIGHT`/`CUSTOM` — o percentual é derivado da soma.
+  weight      Decimal? @db.Decimal(18, 4)
+
+  sortOrder Int     @default(0) @map("sort_order")
+  notes     String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  allocationRule AllocationRule        @relation(fields: [allocationRuleId], references: [id], onDelete: Cascade)
+  costCenter     CostCenter?           @relation("AllocationLineCostCenter", fields: [costCenterId], references: [id])
+  resultCenter   ResultCenter?         @relation("AllocationLineResultCenter", fields: [resultCenterId], references: [id])
+  project        Project?              @relation("AllocationLineProject", fields: [projectId], references: [id])
+  businessUnit   BusinessUnit?         @relation("AllocationLineBusinessUnit", fields: [businessUnitId], references: [id])
+  category       Category?             @relation("AllocationLineCategory", fields: [categoryId], references: [id])
+  accountPlan    FinancialAccountPlan? @relation("AllocationLineAccountPlan", fields: [accountPlanId], references: [id])
+
+  @@index([allocationRuleId])
+  @@map("allocation_rule_lines")
+}
+
+/// Snapshot versionado de uma árvore/estrutura, gravado antes de alterações estruturais
+/// (mover, renumerar, importar) para permitir auditoria e restauração.
+model FinancialHierarchyVersion {
+  id             String  @id @default(uuid()) @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  companyId      String? @map("company_id") @db.Uuid
+
+  entity        HierarchyEntity
+  versionNumber Int             @map("version_number")
+  label         String?
+  reason        String?
+
+  /// Estrutura completa serializada no momento do snapshot.
+  snapshot Json
+
+  itemCount Int @default(0) @map("item_count")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  createdBy String?  @map("created_by") @db.Uuid
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company      Company?     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, companyId, entity, versionNumber])
+  @@index([organizationId])
+  @@index([companyId, entity])
+  @@map("financial_hierarchy_versions")
+}
+
+/// Lote de importação da estrutura financeira (Excel/CSV/modelos de ERPs).
+/// A importação é sempre validada antes de ser aplicada.
+model FinancialStructureImport {
+  id             String  @id @default(uuid()) @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  companyId      String? @map("company_id") @db.Uuid
+
+  entity   HierarchyEntity
+  format   StructureImportFormat @default(CSV)
+  status   StructureImportStatus @default(PENDING)
+  fileName String?               @map("file_name")
+
+  totalRows   Int @default(0) @map("total_rows")
+  validRows   Int @default(0) @map("valid_rows")
+  invalidRows Int @default(0) @map("invalid_rows")
+  createdRows Int @default(0) @map("created_rows")
+  updatedRows Int @default(0) @map("updated_rows")
+
+  /// Erros por linha, no formato [{ line, message }].
+  errors  Json?
+  /// Pré-visualização normalizada das linhas válidas, usada ao aplicar o lote.
+  preview Json?
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  appliedAt DateTime? @map("applied_at")
+  createdBy String?   @map("created_by") @db.Uuid
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company      Company?     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([companyId, entity])
+  @@map("financial_structure_imports")
 }

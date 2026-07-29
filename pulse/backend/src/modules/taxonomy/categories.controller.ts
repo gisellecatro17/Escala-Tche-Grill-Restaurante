@@ -1,17 +1,33 @@
-import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { ApiMessage } from '../../common/decorators/api-message.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { RequestUser } from '../../common/types/authenticated-request';
 import { assertCompanyPermission } from '../../common/utils/access-control.util';
+import {
+  DuplicateNodeDto,
+  MoveNodeDto,
+} from '../financial-structure/dto/common.dto';
 import { CategoriesService } from './categories.service';
-import { CreateCategoryDto } from './dto/create-category.dto';
+import {
+  CreateCategoryDto,
+  UpdateCategoryDto,
+} from './dto/create-category.dto';
 
 /**
- * Estrutura mínima e reutilizável de categorias financeiras (seção 29 do prompt de
- * fornecedores) — suporta o cadastro rápido a partir do vínculo de fornecedor com a
- * empresa. O módulo completo de categorias fica para uma etapa futura.
+ * Categorias financeiras e subcategorias (hierarquia de profundidade ilimitada no mesmo
+ * cadastro). Continua atendendo o cadastro rápido a partir dos vínculos de fornecedor e
+ * de cliente, agora com CRUD completo, árvore, movimentação e duplicação.
  */
 @ApiTags('Categorias financeiras')
 @ApiBearerAuth()
@@ -24,10 +40,41 @@ export class CategoriesController {
   findAll(
     @Query('companyId') companyId: string,
     @Query('search') search: string | undefined,
+    @Query('includeInactive') includeInactive: string | undefined,
     @CurrentUser() actor: RequestUser,
   ) {
     assertCompanyPermission(actor, companyId, 'categories.view');
-    return this.categoriesService.findAll(companyId, search);
+    return this.categoriesService.findAll(
+      companyId,
+      search,
+      includeInactive === 'true',
+    );
+  }
+
+  @Get('tree')
+  @ApiOperation({
+    summary: 'Retorna a árvore completa de categorias e subcategorias.',
+  })
+  findTree(
+    @Query('companyId') companyId: string,
+    @Query('includeInactive') includeInactive: string | undefined,
+    @CurrentUser() actor: RequestUser,
+  ) {
+    assertCompanyPermission(actor, companyId, 'categories.view');
+    return this.categoriesService.findTree(
+      companyId,
+      includeInactive === 'true',
+    );
+  }
+
+  @Get(':id')
+  @ApiOperation({
+    summary: 'Detalha uma categoria, com dimensões e regras padrão.',
+  })
+  async findOne(@Param('id') id: string, @CurrentUser() actor: RequestUser) {
+    const category = await this.categoriesService.findOne(id);
+    assertCompanyPermission(actor, category.companyId, 'categories.view');
+    return category;
   }
 
   @Post()
@@ -37,6 +84,72 @@ export class CategoriesController {
   })
   create(@Body() dto: CreateCategoryDto, @CurrentUser() actor: RequestUser) {
     assertCompanyPermission(actor, dto.companyId, 'categories.manage');
-    return this.categoriesService.create(dto);
+    return this.categoriesService.create(dto, actor);
+  }
+
+  @Patch(':id')
+  @ApiMessage('Categoria atualizada com sucesso.')
+  @ApiOperation({ summary: 'Atualiza uma categoria financeira.' })
+  async update(
+    @Param('id') id: string,
+    @Body() dto: UpdateCategoryDto,
+    @CurrentUser() actor: RequestUser,
+  ) {
+    const category = await this.categoriesService.findOne(id);
+    assertCompanyPermission(actor, category.companyId, 'categories.manage');
+    return this.categoriesService.update(id, dto, actor);
+  }
+
+  @Post(':id/move')
+  @ApiMessage('Categoria movida com sucesso.')
+  @ApiOperation({
+    summary:
+      'Move a categoria na árvore (exige permissão específica de estrutura).',
+  })
+  async move(
+    @Param('id') id: string,
+    @Body() dto: MoveNodeDto,
+    @CurrentUser() actor: RequestUser,
+  ) {
+    const category = await this.categoriesService.findOne(id);
+    assertCompanyPermission(
+      actor,
+      category.companyId,
+      'categories.manage_tree',
+    );
+    return this.categoriesService.move(id, dto, actor);
+  }
+
+  @Post(':id/duplicate')
+  @ApiMessage('Categoria duplicada com sucesso.')
+  @ApiOperation({
+    summary: 'Duplica a categoria, opcionalmente para outra empresa.',
+  })
+  async duplicate(
+    @Param('id') id: string,
+    @Body() dto: DuplicateNodeDto,
+    @CurrentUser() actor: RequestUser,
+  ) {
+    const category = await this.categoriesService.findOne(id);
+    assertCompanyPermission(
+      actor,
+      category.companyId,
+      'financial-structure.duplicate',
+    );
+    if (dto.targetCompanyId) {
+      assertCompanyPermission(actor, dto.targetCompanyId, 'categories.manage');
+    }
+    return this.categoriesService.duplicate(id, dto, actor);
+  }
+
+  @Delete(':id')
+  @ApiMessage('Categoria excluída com sucesso.')
+  @ApiOperation({
+    summary: 'Exclui (logicamente) uma categoria sem subcategorias nem uso.',
+  })
+  async remove(@Param('id') id: string, @CurrentUser() actor: RequestUser) {
+    const category = await this.categoriesService.findOne(id);
+    assertCompanyPermission(actor, category.companyId, 'categories.delete');
+    return this.categoriesService.remove(id, actor);
   }
 }

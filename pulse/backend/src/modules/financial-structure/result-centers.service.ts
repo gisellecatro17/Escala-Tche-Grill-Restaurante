@@ -8,45 +8,53 @@ import { HierarchyEntity, Prisma, RecordStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { RequestUser } from '../../common/types/authenticated-request';
 import { AuditService } from '../audit/audit.service';
-import { HierarchyVersionsService } from '../financial-structure/hierarchy-versions.service';
+import {
+  CreateResultCenterDto,
+  UpdateResultCenterDto,
+} from './dto/result-center.dto';
 import {
   DuplicateNodeDto,
   MoveNodeDto,
-} from '../financial-structure/dto/common.dto';
+  StructureQueryDto,
+} from './dto/common.dto';
+import { HierarchyVersionsService } from './hierarchy-versions.service';
 import {
   assertNoCycle,
   buildTree,
   collectSubtreeIds,
   computeLevelAndPath,
-} from '../financial-structure/utils/tree.util';
-import {
-  CreateCostCenterDto,
-  UpdateCostCenterDto,
-} from './dto/create-cost-center.dto';
+} from './utils/tree.util';
 
 @Injectable()
-export class CostCentersService {
+export class ResultCentersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly versions: HierarchyVersionsService,
   ) {}
 
-  /** Assinatura original preservada para o cadastro rápido de Fornecedores/Clientes. */
-  findAll(companyId: string, search?: string, includeInactive = false) {
-    return this.prisma.costCenter.findMany({
+  findAll(companyId: string, query: StructureQueryDto) {
+    return this.prisma.resultCenter.findMany({
       where: {
         companyId,
         deletedAt: null,
-        ...(includeInactive ? {} : { status: RecordStatus.ACTIVE }),
-        ...(search ? { name: { contains: search, mode: 'insensitive' } } : {}),
+        ...(query.includeInactive ? {} : { status: RecordStatus.ACTIVE }),
+        ...(query.parentId ? { parentResultCenterId: query.parentId } : {}),
+        ...(query.search
+          ? {
+              OR: [
+                { name: { contains: query.search, mode: 'insensitive' } },
+                { code: { contains: query.search, mode: 'insensitive' } },
+              ],
+            }
+          : {}),
       },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
     });
   }
 
   async findTree(companyId: string, includeInactive = false) {
-    const items = await this.prisma.costCenter.findMany({
+    const items = await this.prisma.resultCenter.findMany({
       where: {
         companyId,
         deletedAt: null,
@@ -58,56 +66,44 @@ export class CostCentersService {
     return buildTree(
       items,
       (i) => i.id,
-      (i) => i.parentCostCenterId,
+      (i) => i.parentResultCenterId,
     );
   }
 
   async findOne(id: string) {
-    const costCenter = await this.prisma.costCenter.findFirst({
+    const center = await this.prisma.resultCenter.findFirst({
       where: { id, deletedAt: null },
       include: {
-        parentCostCenter: { select: { id: true, code: true, name: true } },
+        parentResultCenter: { select: { id: true, code: true, name: true } },
         children: {
           where: { deletedAt: null },
-          select: { id: true, code: true, name: true, status: true },
+          select: { id: true, code: true, name: true },
           orderBy: { name: 'asc' },
         },
         tagLinks: { include: { tag: true } },
       },
     });
 
-    if (!costCenter)
-      throw new NotFoundException('Centro de custo não encontrado.');
-    return costCenter;
+    if (!center)
+      throw new NotFoundException('Centro de resultado não encontrado.');
+    return center;
   }
 
-  async create(dto: CreateCostCenterDto, actor?: RequestUser) {
-    if (dto.parentCostCenterId) {
-      const parent = await this.prisma.costCenter.findFirst({
-        where: {
-          id: dto.parentCostCenterId,
-          companyId: dto.companyId,
-          deletedAt: null,
-        },
-      });
-      if (!parent) {
-        throw new NotFoundException('Centro de custo pai não encontrado.');
-      }
-    }
-
+  async create(dto: CreateResultCenterDto, actor: RequestUser) {
+    await this.assertParentExists(dto.parentResultCenterId, dto.companyId);
     const { level, path } = await this.resolveLevelAndPath(
-      dto.parentCostCenterId ?? null,
+      dto.parentResultCenterId ?? null,
       dto.companyId,
       dto.name,
     );
 
     try {
-      const costCenter = await this.prisma.costCenter.create({
+      const center = await this.prisma.resultCenter.create({
         data: {
           companyId: dto.companyId,
-          parentCostCenterId: dto.parentCostCenterId,
-          name: dto.name.trim(),
+          parentResultCenterId: dto.parentResultCenterId ?? null,
           code: dto.code?.trim(),
+          name: dto.name.trim(),
           description: dto.description,
           color: dto.color,
           icon: dto.icon,
@@ -118,43 +114,43 @@ export class CostCentersService {
           status: dto.status,
           level,
           path,
-          createdBy: actor?.id,
+          createdBy: actor.id,
         },
       });
 
-      // Um pai deixa de ser folha: passa a apenas agrupar.
-      if (dto.parentCostCenterId) {
-        await this.prisma.costCenter.update({
-          where: { id: dto.parentCostCenterId },
+      // Um pai deixa de ser folha e passa a apenas agrupar.
+      if (dto.parentResultCenterId) {
+        await this.prisma.resultCenter.update({
+          where: { id: dto.parentResultCenterId },
           data: { acceptsEntries: false },
         });
       }
 
       await this.audit.log({
         companyId: dto.companyId,
-        userId: actor?.id,
+        userId: actor.id,
         action: 'CREATE',
-        entity: 'CostCenter',
-        entityId: costCenter.id,
-        newValue: { name: costCenter.name, code: costCenter.code },
+        entity: 'ResultCenter',
+        entityId: center.id,
+        newValue: { code: center.code, name: center.name },
       });
 
-      return costCenter;
+      return center;
     } catch (error) {
       this.rethrowDuplicateCode(error);
       throw error;
     }
   }
 
-  async update(id: string, dto: UpdateCostCenterDto, actor: RequestUser) {
+  async update(id: string, dto: UpdateResultCenterDto, actor: RequestUser) {
     const current = await this.findOne(id);
 
     try {
-      const costCenter = await this.prisma.costCenter.update({
+      const center = await this.prisma.resultCenter.update({
         where: { id },
         data: {
-          name: dto.name?.trim(),
           code: dto.code?.trim(),
+          name: dto.name?.trim(),
           description: dto.description,
           color: dto.color,
           icon: dto.icon,
@@ -175,13 +171,13 @@ export class CostCentersService {
         companyId: current.companyId,
         userId: actor.id,
         action: 'UPDATE',
-        entity: 'CostCenter',
+        entity: 'ResultCenter',
         entityId: id,
-        oldValue: { name: current.name, code: current.code },
-        newValue: { name: costCenter.name, code: costCenter.code },
+        oldValue: { code: current.code, name: current.name },
+        newValue: { code: center.code, name: center.name },
       });
 
-      return costCenter;
+      return center;
     } catch (error) {
       this.rethrowDuplicateCode(error);
       throw error;
@@ -192,16 +188,16 @@ export class CostCentersService {
     const current = await this.findOne(id);
     const newParentId = dto.parentId ?? null;
 
-    const all = await this.prisma.costCenter.findMany({
+    const all = await this.prisma.resultCenter.findMany({
       where: { companyId: current.companyId, deletedAt: null },
-      select: { id: true, parentCostCenterId: true },
+      select: { id: true, parentResultCenterId: true },
     });
 
     assertNoCycle(
       id,
       newParentId,
-      new Map(all.map((c) => [c.id, c.parentCostCenterId])),
-      'Não é possível mover um centro de custo para dentro dele mesmo ou de um centro filho.',
+      new Map(all.map((i) => [i.id, i.parentResultCenterId])),
+      'Não é possível mover um centro de resultado para dentro dele mesmo ou de um centro filho.',
     );
 
     const company = await this.prisma.company.findUnique({
@@ -213,16 +209,16 @@ export class CostCentersService {
       await this.versions.snapshot({
         organizationId: company.organizationId,
         companyId: current.companyId,
-        entity: HierarchyEntity.COST_CENTER,
-        reason: dto.reason ?? 'Movimentação de centro de custo',
+        entity: HierarchyEntity.RESULT_CENTER,
+        reason: dto.reason ?? 'Movimentação de centro de resultado',
         actorId: actor.id,
       });
     }
 
-    const updated = await this.prisma.costCenter.update({
+    const updated = await this.prisma.resultCenter.update({
       where: { id },
       data: {
-        parentCostCenterId: newParentId,
+        parentResultCenterId: newParentId,
         sortOrder: dto.sortOrder ?? current.sortOrder,
         updatedBy: actor.id,
       },
@@ -234,11 +230,11 @@ export class CostCentersService {
       companyId: current.companyId,
       userId: actor.id,
       action: 'MOVE',
-      entity: 'CostCenter',
+      entity: 'ResultCenter',
       entityId: id,
-      field: 'parentCostCenterId',
-      oldValue: { parentCostCenterId: current.parentCostCenterId },
-      newValue: { parentCostCenterId: newParentId },
+      field: 'parentResultCenterId',
+      oldValue: { parentResultCenterId: current.parentResultCenterId },
+      newValue: { parentResultCenterId: newParentId },
       reason: dto.reason,
     });
 
@@ -249,17 +245,18 @@ export class CostCentersService {
     const source = await this.findOne(id);
     const targetCompanyId = dto.targetCompanyId ?? source.companyId;
 
-    const created = await this.prisma.costCenter.create({
+    const created = await this.prisma.resultCenter.create({
       data: {
         companyId: targetCompanyId,
-        parentCostCenterId:
+        // Em outra empresa a árvore de destino é diferente: o item nasce na raiz.
+        parentResultCenterId:
           targetCompanyId === source.companyId
-            ? source.parentCostCenterId
+            ? source.parentResultCenterId
             : null,
-        name: dto.name?.trim() ?? `${source.name} (cópia)`,
         code:
           dto.code?.trim() ??
           (source.code ? `${source.code}-COPIA` : undefined),
+        name: dto.name?.trim() ?? `${source.name} (cópia)`,
         description: source.description,
         color: source.color,
         icon: source.icon,
@@ -276,7 +273,7 @@ export class CostCentersService {
       companyId: targetCompanyId,
       userId: actor.id,
       action: 'DUPLICATE',
-      entity: 'CostCenter',
+      entity: 'ResultCenter',
       entityId: created.id,
       oldValue: { sourceId: id },
       newValue: { name: created.name },
@@ -286,50 +283,40 @@ export class CostCentersService {
   }
 
   async remove(id: string, actor: RequestUser) {
-    const costCenter = await this.findOne(id);
+    const center = await this.findOne(id);
 
-    if (costCenter.isSystem) {
+    if (center.isSystem) {
       throw new ConflictException(
-        'Este é um centro de custo padrão do sistema e não pode ser excluído.',
+        'Este é um centro de resultado padrão do sistema e não pode ser excluído.',
       );
     }
 
-    if (costCenter.children.length > 0) {
+    if (center.children.length > 0) {
       throw new ConflictException(
-        'Este centro de custo possui centros filhos e não pode ser excluído. Exclua ou mova os filhos primeiro.',
+        'Este centro de resultado possui centros filhos e não pode ser excluído. Exclua ou mova os filhos primeiro.',
       );
     }
 
-    const [supplierLinks, customerLinks, categories, projects, rules, lines] =
-      await Promise.all([
-        this.prisma.supplierCompanyLink.count({
-          where: { defaultCostCenterId: id },
-        }),
-        this.prisma.customerCompanyLink.count({
-          where: { defaultResultCenterId: id },
-        }),
-        this.prisma.category.count({
-          where: { defaultCostCenterId: id, deletedAt: null },
-        }),
-        this.prisma.project.count({
-          where: { costCenterId: id, deletedAt: null },
-        }),
-        this.prisma.classificationRule.count({
-          where: { costCenterId: id, deletedAt: null },
-        }),
-        this.prisma.allocationRuleLine.count({ where: { costCenterId: id } }),
-      ]);
+    const [categories, projects, rules, allocationLines] = await Promise.all([
+      this.prisma.category.count({
+        where: { defaultResultCenterId: id, deletedAt: null },
+      }),
+      this.prisma.project.count({
+        where: { resultCenterId: id, deletedAt: null },
+      }),
+      this.prisma.classificationRule.count({
+        where: { resultCenterId: id, deletedAt: null },
+      }),
+      this.prisma.allocationRuleLine.count({ where: { resultCenterId: id } }),
+    ]);
 
-    if (
-      supplierLinks + customerLinks + categories + projects + rules + lines >
-      0
-    ) {
+    if (categories + projects + rules + allocationLines > 0) {
       throw new ConflictException(
-        'Este centro de custo está em uso e não pode ser excluído. Utilize a opção Inativar.',
+        'Este centro de resultado está em uso e não pode ser excluído. Utilize a opção Inativar.',
       );
     }
 
-    await this.prisma.costCenter.update({
+    await this.prisma.resultCenter.update({
       where: { id },
       data: {
         deletedAt: new Date(),
@@ -339,12 +326,12 @@ export class CostCentersService {
     });
 
     await this.audit.log({
-      companyId: costCenter.companyId,
+      companyId: center.companyId,
       userId: actor.id,
       action: 'DELETE',
-      entity: 'CostCenter',
+      entity: 'ResultCenter',
       entityId: id,
-      oldValue: { name: costCenter.name, code: costCenter.code },
+      oldValue: { code: center.code, name: center.name },
     });
 
     return { id };
@@ -352,22 +339,37 @@ export class CostCentersService {
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
+  private async assertParentExists(
+    parentId: string | undefined,
+    companyId: string,
+  ) {
+    if (!parentId) return;
+
+    const parent = await this.prisma.resultCenter.findFirst({
+      where: { id: parentId, companyId, deletedAt: null },
+    });
+
+    if (!parent) {
+      throw new NotFoundException('Centro de resultado pai não encontrado.');
+    }
+  }
+
   private async resolveLevelAndPath(
     parentId: string | null,
     companyId: string,
     name: string,
   ) {
-    const all = await this.prisma.costCenter.findMany({
+    const all = await this.prisma.resultCenter.findMany({
       where: { companyId, deletedAt: null },
-      select: { id: true, name: true, parentCostCenterId: true },
+      select: { id: true, name: true, parentResultCenterId: true },
     });
 
     return computeLevelAndPath(
       parentId,
       new Map(
-        all.map((c) => [
-          c.id,
-          { name: c.name, parentId: c.parentCostCenterId },
+        all.map((i) => [
+          i.id,
+          { name: i.name, parentId: i.parentResultCenterId },
         ]),
       ),
       name,
@@ -375,20 +377,23 @@ export class CostCentersService {
   }
 
   private async recalculateSubtree(rootId: string, companyId: string) {
-    const all = await this.prisma.costCenter.findMany({
+    const all = await this.prisma.resultCenter.findMany({
       where: { companyId, deletedAt: null },
-      select: { id: true, name: true, parentCostCenterId: true },
+      select: { id: true, name: true, parentResultCenterId: true },
     });
 
     const nodesById = new Map(
-      all.map((c) => [c.id, { name: c.name, parentId: c.parentCostCenterId }]),
+      all.map((i) => [
+        i.id,
+        { name: i.name, parentId: i.parentResultCenterId },
+      ]),
     );
     const childrenOf = new Map<string, string[]>();
     for (const item of all) {
-      if (!item.parentCostCenterId) continue;
-      const list = childrenOf.get(item.parentCostCenterId) ?? [];
+      if (!item.parentResultCenterId) continue;
+      const list = childrenOf.get(item.parentResultCenterId) ?? [];
       list.push(item.id);
-      childrenOf.set(item.parentCostCenterId, list);
+      childrenOf.set(item.parentResultCenterId, list);
     }
 
     const affected = collectSubtreeIds(rootId, childrenOf);
@@ -401,7 +406,7 @@ export class CostCentersService {
           nodesById,
           node?.name ?? '',
         );
-        return this.prisma.costCenter.update({
+        return this.prisma.resultCenter.update({
           where: { id: itemId },
           data: { level, path },
         });
@@ -415,7 +420,7 @@ export class CostCentersService {
       error.code === 'P2002'
     ) {
       throw new ConflictException(
-        'Já existe um centro de custo com este código nesta empresa.',
+        'Já existe um centro de resultado com este código nesta empresa.',
       );
     }
   }

@@ -25,10 +25,13 @@ Este repositório está sendo desenvolvido **módulo por módulo**. Já foram en
    condições de recebimento, crédito com permissão dedicada, regras de cobrança,
    contratos e recorrências (preparadas para o futuro módulo de contas a receber). Ver
    seção dedicada abaixo.
+5. **Estrutura Financeira** — plano de contas, categorias/subcategorias, centros de
+   custo, centros de resultado, projetos, unidades de negócio, naturezas financeiras,
+   tags, rateios e regras de classificação automática, com árvores de profundidade
+   ilimitada, importação/exportação e versionamento. Ver seção dedicada abaixo.
 
-Os demais módulos financeiros (categorias/centros de custo completos, contas a
-pagar/receber, importação OFX, conciliação, inteligência financeira) serão adicionados em
-etapas futuras, mediante aprovação.
+Os demais módulos financeiros (contas a pagar/receber, importação OFX, conciliação,
+inteligência financeira) serão adicionados em etapas futuras, mediante aprovação.
 
 ## Visão geral
 
@@ -38,9 +41,9 @@ etapas futuras, mediante aprovação.
   primeira empresa de uma organização nova), via vínculo direto por organização
   (`organizationMemberships`).
 - **Módulos do menu**: Visão Geral, Cadastros, Financeiro, Inteligência Financeira e
-  Configurações. Nesta etapa, o **Dashboard** (Visão Geral) e **Cadastros → Empresas /
-  Fornecedores / Clientes** estão navegáveis; os demais itens aparecem no menu como "Em
-  breve".
+  Configurações. Nesta etapa, o **Dashboard** (Visão Geral) e todo o bloco **Cadastros**
+  exceto contas bancárias, formas de pagamento e adquirentes estão navegáveis; os demais
+  itens aparecem no menu como "Em breve".
 
 ## Tecnologias
 
@@ -75,7 +78,8 @@ pulse/
 │   │   ├── layout/             Sidebar, Header, Seletor de empresa
 │   │   ├── companies/          Cadastro de Empresas: listagem, ações, wizard em etapas, diálogos
 │   │   ├── suppliers/          Cadastro de Fornecedores: listagem, ações, wizard em 10 etapas, seleção rápida de categoria/centro de custo
-│   │   └── customers/          Cadastro de Clientes: listagem, ações (com conversão de prospect), wizard em 10 etapas
+│   │   ├── customers/          Cadastro de Clientes: listagem, ações (com conversão de prospect), wizard em 10 etapas
+│   │   └── financial-structure/ Árvore reutilizável (expandir/recolher/mover), diálogos de nó e página padrão dos cadastros estruturais
 │   ├── lib/
 │   │   ├── supabase/          Clientes Supabase (browser, server, proxy)
 │   │   ├── auth/               Contexto de sessão (usuário, empresa selecionada, permissões)
@@ -88,7 +92,7 @@ pulse/
 ├── backend/                  NestJS
 │   ├── prisma/
 │   │   ├── schema.prisma      Modelo de dados
-│   │   ├── migrations/        Fundação + Cadastro de Empresas + Fornecedores + Clientes (incremental)
+│   │   ├── migrations/        Fundação + Empresas + Fornecedores + Clientes + Estrutura Financeira (incremental)
 │   │   └── seed.ts             Perfis, permissões e organização/empresa de demonstração
 │   └── src/
 │       ├── common/             Decorators, guards, filtros, interceptor de resposta padrão, controle de acesso
@@ -102,7 +106,8 @@ pulse/
 │       │   ├── companies/       Cadastro de Empresas completo (ver seção dedicada abaixo)
 │       │   ├── suppliers/       Cadastro de Fornecedores completo (ver seção dedicada abaixo)
 │       │   ├── customers/       Cadastro de Clientes completo (ver seção dedicada abaixo)
-│       │   ├── taxonomy/        Categorias e centros de custo (estrutura mínima reutilizável, com cadastro rápido; reaproveitada por Fornecedores e Clientes)
+│       │   ├── financial-structure/ Plano de contas, centros de resultado, projetos, unidades, naturezas, tags, rateios, regras, importação/exportação e versionamento
+│       │   ├── taxonomy/        Categorias (com subcategorias) e centros de custo — em árvore, com cadastro rápido reaproveitado por Fornecedores e Clientes
 │       │   ├── financial-institutions/  Catálogo de bancos (seed + busca)
 │       │   ├── users/           Convite de usuários e gestão de vínculos/perfis
 │       │   ├── roles/           Listagem de perfis e permissões
@@ -327,6 +332,79 @@ crédito tem uma permissão **separada** da classificação geral (`update_credi
 mascarados (`null`) do back-end; usuários sem `view_sensitive_contacts` recebem
 telefone/e-mail dos contatos mascarados.
 
+## Estrutura Financeira
+
+Este é o módulo que alimenta praticamente todo o resto do sistema. A ideia central é
+separar dimensões que os ERPs tradicionais costumam misturar, de modo que um mesmo
+lançamento possa ser analisado por vários ângulos ao mesmo tempo:
+
+```
+Plano de contas → Categoria → Subcategoria → Centro de custo → Centro de resultado
+                → Projeto → Unidade de negócio → Natureza financeira → Tags
+```
+
+Rotas do front-end: `/cadastros/plano-de-contas`, `/cadastros/categorias`,
+`/cadastros/centros-de-custo`, `/cadastros/centros-de-resultado`, `/cadastros/projetos`,
+`/cadastros/unidades-de-negocio`, `/cadastros/naturezas-financeiras`,
+`/cadastros/tags-financeiras`, `/cadastros/rateios` e
+`/cadastros/regras-de-classificacao`.
+
+Todas as árvores (plano de contas, categorias, centros de custo, centros de resultado e
+unidades de negócio) têm **profundidade ilimitada**, podem ser expandidas/recolhidas,
+movidas, duplicadas, importadas e exportadas — e qualquer movimentação grava
+automaticamente uma **versão** da estrutura anterior, que pode ser restaurada depois.
+
+Principais endpoints da API (todos documentados no Swagger):
+
+| Rota | Descrição |
+| --- | --- |
+| `GET/POST /account-plans` · `GET /account-plans/tree` | Plano de contas (lista e árvore aninhada) |
+| `PATCH/DELETE /account-plans/:id` | Edição e exclusão lógica (bloqueada se houver filhas ou uso) |
+| `POST /account-plans/:id/move` \| `/duplicate` | Movimentação na árvore (versiona antes) e duplicação com subárvore |
+| `GET/POST /categories` · `GET /categories/tree` · `POST /categories/:id/move` \| `/duplicate` | Categorias e subcategorias (mesma hierarquia) |
+| `GET/POST /cost-centers` · `GET /cost-centers/tree` · `POST /cost-centers/:id/move` | Centros de custo |
+| `GET/POST /result-centers` · `GET /result-centers/tree` · `POST /result-centers/:id/move` | Centros de resultado |
+| `GET/POST/PATCH/DELETE /projects` | Projetos (valor realizado e margem ficam a cargo do módulo financeiro futuro) |
+| `GET/POST /business-units` · `GET /business-units/tree` | Unidades de negócio |
+| `GET/POST/PATCH/DELETE /financial-natures` | Catálogo de naturezas financeiras |
+| `GET/POST/PATCH/DELETE /financial-tags` · `POST /financial-tags/link` \| `/unlink` · `GET /financial-tags/:id/entities` | Tags e seus vínculos com qualquer cadastro da estrutura |
+| `GET/POST/PATCH/DELETE /allocation-rules` | Rateios padrão (percentuais validados para fechar 100%) |
+| `GET/POST/PATCH/DELETE /classification-rules` | Regras de classificação automática |
+| `POST /classification-rules/simulate` | Simula a classificação de um lançamento hipotético — **nada é persistido** |
+| `POST /financial-structure/imports` · `POST /financial-structure/imports/:id/apply` | Importação em duas etapas: valida e pré-visualiza, depois aplica |
+| `GET /financial-structure/export` | Exportação em CSV ou JSON |
+| `GET/POST /financial-structure/versions` · `POST /financial-structure/versions/:id/restore` | Versionamento e restauração das árvores |
+
+Permissões granulares (todas por cadastro e por tipo de operação):
+`account-plan.{view,manage,manage_tree,delete}`,
+`categories.{view,manage,manage_tree,manage_rules,delete}`,
+`cost-centers.{view,manage,manage_tree,delete}`,
+`result-centers.{view,manage,manage_tree,delete}`,
+`projects.{view,manage,delete}`, `business-units.{view,manage,delete}`,
+`financial-natures.{view,manage,delete}`, `financial-tags.{view,manage,delete}`,
+`allocation-rules.{view,manage,delete}`, `classification-rules.{view,manage,delete}` e
+`financial-structure.{import,export,duplicate,manage_versions,view_audit}`.
+A reorganização da árvore é uma permissão **separada** da edição do cadastro
+(`manage_tree` ≠ `manage`), porque mover contas altera relatórios históricos.
+
+**Rateios**: aceitam percentual, valor, quantidade, horas, peso ou critério
+personalizado. Rateios percentuais são validados para fechar exatamente 100% (com
+tolerância de 0,01% para arredondamento), destinos repetidos são recusados e cada linha
+precisa apontar para o tipo de dimensão que declarou.
+
+**Classificação automática**: nesta etapa as regras são apenas **cadastradas e
+simuláveis**. Nenhum lançamento é classificado automaticamente, porque os módulos de
+importação bancária e de contas a pagar/receber ainda não existem. A estrutura de
+aprendizado (`matchCount`, `confirmedCount`, `rejectedCount`, `confidenceThreshold`,
+`source: LEARNED`) já está no schema, pronta para o motor de inteligência financeira
+futuro.
+
+**Importação**: aceita CSV/TSV com separador `,`, `;` ou tabulação, e reconhece
+cabeçalhos em português e inglês. Os "modelos" de Conta Azul, Omie, SAP e TOTVS não são
+integrações — apenas mapeiam nomes de coluna diferentes para o mesmo formato tabular. A
+importação é sempre feita em duas etapas (validar/pré-visualizar e depois aplicar) e
+versiona a árvore antes de aplicar.
+
 ## Banco de dados e migrations
 
 O schema fica em `backend/prisma/schema.prisma`. Tabelas principais:
@@ -341,8 +419,12 @@ O schema fica em `backend/prisma/schema.prisma`. Tabelas principais:
 `customer_cnaes`, `customer_bank_identifiers`, `customer_billing_rules`,
 `customer_collection_history`, `payment_promises`, `customer_contracts`,
 `customer_contract_amendments`, `customer_recurring_receivables`,
-`customer_registry_queries`, `customer_status_history`, `financial_institutions`,
-`categories`, `cost_centers`, `attachments` (anexos genéricos), `users`, `roles`,
+`customer_registry_queries`, `customer_status_history`, `financial_account_plans`,
+`categories` (categorias **e** subcategorias, na mesma hierarquia), `cost_centers`,
+`result_centers`, `projects`, `business_units`, `financial_natures`, `financial_tags`,
+`financial_tag_links`, `classification_rules`, `allocation_rules`,
+`allocation_rule_lines`, `financial_hierarchy_versions`, `financial_structure_imports`,
+`financial_institutions`, `attachments` (anexos genéricos), `users`, `roles`,
 `permissions`, `role_permissions`, `user_organization_roles`, `user_company_roles` e
 `audit_logs`.
 
@@ -364,9 +446,30 @@ npm test        # testes unitários: isolamento multiempresa/organização, perm
                  # empresas, vínculo duplicado, conta/PIX de terceiro, mascaramento de
                  # dados bancários e de contatos sensíveis, soma de rateios (até 100%),
                  # bloqueio/motivo obrigatório do vínculo, mascaramento de crédito por
-                 # permissão dedicada, conversão de prospect com validação de pendências
+                 # permissão dedicada, conversão de prospect com validação de pendências,
+                 # ciclos na árvore, rateio fechando 100%, parsing de importação CSV,
+                 # versionamento e simulação de classificação automática
 npm run test:e2e
 ```
+
+### Testar manualmente a Estrutura Financeira
+
+1. Suba backend e frontend, faça login e selecione a empresa "Tchê Grill".
+2. Acesse **Cadastros → Plano de contas** — o seed já traz os grupos 1 Ativo, 2 Passivo,
+   3 Receitas, 4 Custos e 5 Despesas. Clique no `+` de uma conta para criar uma conta
+   filha e observe que o pai vira automaticamente **sintética** (deixa de aceitar
+   lançamentos).
+3. Use "Mover na árvore" para reorganizar uma conta e tente movê-la para dentro de uma
+   conta filha — a operação deve ser recusada. Depois confira em
+   `GET /financial-structure/versions` que a estrutura anterior foi versionada.
+4. Em **Cadastros → Rateios**, crie um rateio de energia com 60% Restaurante e 40%
+   Administrativo; tente salvar com 60% + 30% e confirme que o sistema recusa por não
+   fechar 100%.
+5. Em **Cadastros → Regras de classificação**, crie a regra "descrição contém COELBA →
+   categoria Energia" e use o botão **Simular** com a descrição `COELBA FATURA 09/2026`.
+   Confirme que a simulação indica a regra aplicada e avisa que nada foi persistido.
+6. Em qualquer árvore, use **Exportar** para baixar o CSV e depois reenvie o mesmo
+   arquivo em `POST /financial-structure/imports` para ver a validação em duas etapas.
 
 ### Testar manualmente o Cadastro de Clientes
 
@@ -443,6 +546,6 @@ Com o back-end rodando, o Swagger fica disponível em `http://localhost:3333/doc
 
 ## Próxima etapa recomendada
 
-Módulo completo de **Categorias e Centros de Custo/Resultado** (hierarquias, orçamento,
-relatórios) ou o início de **Contas a Pagar/Receber**, que passam a consumir os cadastros
-de Fornecedores e Clientes já entregues.
+Módulo **Financeiro (Contas a Pagar e Contas a Receber)**, que passa a consumir todos os
+cadastros já entregues — fornecedores, clientes e as dimensões da estrutura financeira —
+e finalmente ativa o motor de classificação automática, hoje apenas simulável.

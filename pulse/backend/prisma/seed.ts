@@ -1,4 +1,8 @@
-import { PrismaClient } from '@prisma/client';
+import {
+  PrismaClient,
+  type AccountPlanType,
+  type FinancialNatureKind,
+} from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -83,6 +87,44 @@ const PERMISSIONS: PermissionSeed[] = [
   { slug: 'categories.manage', module: 'cadastros', description: 'Incluir/editar categorias financeiras' },
   { slug: 'cost-centers.view', module: 'cadastros', description: 'Visualizar centros de custo' },
   { slug: 'cost-centers.manage', module: 'cadastros', description: 'Incluir/editar centros de custo' },
+
+  // Estrutura financeira
+  { slug: 'account-plan.view', module: 'cadastros', description: 'Visualizar o plano de contas' },
+  { slug: 'account-plan.manage', module: 'cadastros', description: 'Incluir/editar contas do plano de contas' },
+  { slug: 'account-plan.manage_tree', module: 'cadastros', description: 'Mover/reorganizar a árvore do plano de contas' },
+  { slug: 'account-plan.delete', module: 'cadastros', description: 'Excluir contas do plano de contas' },
+  { slug: 'categories.manage_tree', module: 'cadastros', description: 'Mover/reorganizar a árvore de categorias' },
+  { slug: 'categories.delete', module: 'cadastros', description: 'Excluir categorias financeiras' },
+  { slug: 'categories.manage_rules', module: 'cadastros', description: 'Gerenciar regras automáticas das categorias' },
+  { slug: 'cost-centers.manage_tree', module: 'cadastros', description: 'Mover/reorganizar a árvore de centros de custo' },
+  { slug: 'cost-centers.delete', module: 'cadastros', description: 'Excluir centros de custo' },
+  { slug: 'result-centers.view', module: 'cadastros', description: 'Visualizar centros de resultado' },
+  { slug: 'result-centers.manage', module: 'cadastros', description: 'Incluir/editar centros de resultado' },
+  { slug: 'result-centers.manage_tree', module: 'cadastros', description: 'Mover/reorganizar a árvore de centros de resultado' },
+  { slug: 'result-centers.delete', module: 'cadastros', description: 'Excluir centros de resultado' },
+  { slug: 'projects.view', module: 'cadastros', description: 'Visualizar projetos' },
+  { slug: 'projects.manage', module: 'cadastros', description: 'Incluir/editar projetos' },
+  { slug: 'projects.delete', module: 'cadastros', description: 'Excluir projetos' },
+  { slug: 'business-units.view', module: 'cadastros', description: 'Visualizar unidades de negócio' },
+  { slug: 'business-units.manage', module: 'cadastros', description: 'Incluir/editar unidades de negócio' },
+  { slug: 'business-units.delete', module: 'cadastros', description: 'Excluir unidades de negócio' },
+  { slug: 'financial-natures.view', module: 'cadastros', description: 'Visualizar naturezas financeiras' },
+  { slug: 'financial-natures.manage', module: 'cadastros', description: 'Incluir/editar naturezas financeiras' },
+  { slug: 'financial-natures.delete', module: 'cadastros', description: 'Excluir naturezas financeiras' },
+  { slug: 'financial-tags.view', module: 'cadastros', description: 'Visualizar tags financeiras' },
+  { slug: 'financial-tags.manage', module: 'cadastros', description: 'Incluir/editar e vincular tags financeiras' },
+  { slug: 'financial-tags.delete', module: 'cadastros', description: 'Excluir tags financeiras' },
+  { slug: 'allocation-rules.view', module: 'cadastros', description: 'Visualizar rateios padrão' },
+  { slug: 'allocation-rules.manage', module: 'cadastros', description: 'Incluir/editar rateios padrão' },
+  { slug: 'allocation-rules.delete', module: 'cadastros', description: 'Excluir rateios padrão' },
+  { slug: 'classification-rules.view', module: 'cadastros', description: 'Visualizar regras de classificação automática' },
+  { slug: 'classification-rules.manage', module: 'cadastros', description: 'Incluir/editar regras de classificação automática' },
+  { slug: 'classification-rules.delete', module: 'cadastros', description: 'Excluir regras de classificação automática' },
+  { slug: 'financial-structure.import', module: 'cadastros', description: 'Importar estrutura financeira (Excel/CSV/ERPs)' },
+  { slug: 'financial-structure.export', module: 'cadastros', description: 'Exportar estrutura financeira' },
+  { slug: 'financial-structure.duplicate', module: 'cadastros', description: 'Duplicar cadastros da estrutura financeira' },
+  { slug: 'financial-structure.manage_versions', module: 'cadastros', description: 'Versionar e restaurar estruturas financeiras' },
+  { slug: 'financial-structure.view_audit', module: 'cadastros', description: 'Consultar auditoria da estrutura financeira' },
   { slug: 'bank-accounts.view', module: 'cadastros', description: 'Visualizar contas bancárias' },
   { slug: 'bank-accounts.manage', module: 'cadastros', description: 'Incluir/editar contas bancárias' },
   { slug: 'payment-methods.view', module: 'cadastros', description: 'Visualizar formas de pagamento' },
@@ -229,7 +271,19 @@ const ROLES: {
       'customer.manage_payment_promises',
       'customer.convert_prospect',
       'categories.view',
+      'categories.manage',
       'cost-centers.view',
+      'cost-centers.manage',
+      'account-plan.view',
+      'result-centers.view',
+      'projects.view',
+      'business-units.view',
+      'financial-natures.view',
+      'financial-tags.view',
+      'financial-tags.manage',
+      'allocation-rules.view',
+      'classification-rules.view',
+      'financial-structure.export',
       'bank-accounts.view',
       'payment-methods.view',
       'financial.view',
@@ -436,6 +490,158 @@ async function main() {
       autoReconciliationEnabled: false,
       confirmationThreshold: 95,
     },
+  });
+
+  // ── Estrutura financeira de demonstração ────────────────────────────────────
+  // Naturezas financeiras padrão (catálogo da organização).
+  const NATURES: { id: string; name: string; kind: FinancialNatureKind; affectsResult: boolean; affectsCashFlow: boolean }[] = [
+    { id: '00000000-0000-0000-0000-000000000301', name: 'Receita', kind: 'REVENUE', affectsResult: true, affectsCashFlow: true },
+    { id: '00000000-0000-0000-0000-000000000302', name: 'Despesa', kind: 'EXPENSE', affectsResult: true, affectsCashFlow: true },
+    { id: '00000000-0000-0000-0000-000000000303', name: 'Custo', kind: 'COST', affectsResult: true, affectsCashFlow: true },
+    { id: '00000000-0000-0000-0000-000000000304', name: 'Investimento', kind: 'INVESTMENT', affectsResult: false, affectsCashFlow: true },
+    { id: '00000000-0000-0000-0000-000000000305', name: 'Tributo', kind: 'TAX', affectsResult: true, affectsCashFlow: true },
+    { id: '00000000-0000-0000-0000-000000000306', name: 'Transferência', kind: 'TRANSFER', affectsResult: false, affectsCashFlow: false },
+    { id: '00000000-0000-0000-0000-000000000307', name: 'Reembolso', kind: 'REIMBURSEMENT', affectsResult: false, affectsCashFlow: true },
+    { id: '00000000-0000-0000-0000-000000000308', name: 'Empréstimo', kind: 'LOAN', affectsResult: false, affectsCashFlow: true },
+    { id: '00000000-0000-0000-0000-000000000309', name: 'Aplicação', kind: 'FINANCIAL_APPLICATION', affectsResult: false, affectsCashFlow: true },
+    { id: '00000000-0000-0000-0000-000000000310', name: 'Retirada de sócios', kind: 'PARTNER_WITHDRAWAL', affectsResult: false, affectsCashFlow: true },
+    { id: '00000000-0000-0000-0000-000000000311', name: 'Aporte', kind: 'CAPITAL_CONTRIBUTION', affectsResult: false, affectsCashFlow: true },
+    { id: '00000000-0000-0000-0000-000000000312', name: 'Outros', kind: 'OTHER', affectsResult: true, affectsCashFlow: true },
+  ];
+
+  for (const [index, nature] of NATURES.entries()) {
+    await prisma.financialNatureCatalog.upsert({
+      where: { id: nature.id },
+      update: {},
+      create: {
+        id: nature.id,
+        organizationId: organization.id,
+        name: nature.name,
+        kind: nature.kind,
+        affectsResult: nature.affectsResult,
+        affectsCashFlow: nature.affectsCashFlow,
+        sortOrder: index,
+        isSystem: true,
+      },
+    });
+  }
+
+  // Plano de contas raiz (1 Ativo, 2 Passivo, 3 Receitas, 4 Custos, 5 Despesas).
+  const ACCOUNT_ROOTS: { id: string; code: string; name: string; type: AccountPlanType }[] = [
+    { id: '00000000-0000-0000-0000-000000000401', code: '1', name: 'Ativo', type: 'ASSET' },
+    { id: '00000000-0000-0000-0000-000000000402', code: '2', name: 'Passivo', type: 'LIABILITY' },
+    { id: '00000000-0000-0000-0000-000000000403', code: '3', name: 'Receitas', type: 'REVENUE' },
+    { id: '00000000-0000-0000-0000-000000000404', code: '4', name: 'Custos', type: 'COST' },
+    { id: '00000000-0000-0000-0000-000000000405', code: '5', name: 'Despesas', type: 'EXPENSE' },
+  ];
+
+  for (const [index, account] of ACCOUNT_ROOTS.entries()) {
+    await prisma.financialAccountPlan.upsert({
+      where: { id: account.id },
+      update: {},
+      create: {
+        id: account.id,
+        organizationId: organization.id,
+        code: account.code,
+        name: account.name,
+        accountType: account.type,
+        accountKind: 'SYNTHETIC',
+        acceptsEntries: false,
+        level: 0,
+        path: account.name,
+        sortOrder: index,
+        isSystem: true,
+      },
+    });
+  }
+
+  // Contas analíticas de exemplo sob "1 Ativo" e "4 Custos".
+  const ACCOUNT_CHILDREN: { id: string; parentId: string; code: string; name: string; type: AccountPlanType }[] = [
+    { id: '00000000-0000-0000-0000-000000000411', parentId: '00000000-0000-0000-0000-000000000401', code: '1.1', name: 'Ativo Circulante', type: 'ASSET' },
+    { id: '00000000-0000-0000-0000-000000000412', parentId: '00000000-0000-0000-0000-000000000404', code: '4.1', name: 'Custo de Mercadoria Vendida', type: 'COST' },
+  ];
+
+  for (const child of ACCOUNT_CHILDREN) {
+    await prisma.financialAccountPlan.upsert({
+      where: { id: child.id },
+      update: {},
+      create: {
+        id: child.id,
+        organizationId: organization.id,
+        parentAccountId: child.parentId,
+        code: child.code,
+        name: child.name,
+        accountType: child.type,
+        accountKind: 'ANALYTICAL',
+        acceptsEntries: true,
+        level: 1,
+        path: `${ACCOUNT_ROOTS.find((r) => r.id === child.parentId)?.name} > ${child.name}`,
+      },
+    });
+  }
+
+  // Centro de resultado, unidade de negócio e tags de demonstração.
+  await prisma.resultCenter.upsert({
+    where: { id: '00000000-0000-0000-0000-000000000501' },
+    update: {},
+    create: {
+      id: '00000000-0000-0000-0000-000000000501',
+      companyId: company.id,
+      code: 'RES-REST',
+      name: 'Receitas Restaurante',
+      level: 0,
+      path: 'Receitas Restaurante',
+    },
+  });
+
+  await prisma.businessUnit.upsert({
+    where: { id: '00000000-0000-0000-0000-000000000601' },
+    update: {},
+    create: {
+      id: '00000000-0000-0000-0000-000000000601',
+      organizationId: organization.id,
+      companyId: company.id,
+      code: 'UN-REST',
+      name: 'Restaurante',
+      level: 0,
+      path: 'Restaurante',
+    },
+  });
+
+  for (const tag of [
+    { id: '00000000-0000-0000-0000-000000000701', name: 'Recorrente' },
+    { id: '00000000-0000-0000-0000-000000000702', name: 'Urgente' },
+    { id: '00000000-0000-0000-0000-000000000703', name: 'Fiscal' },
+  ]) {
+    await prisma.financialTag.upsert({
+      where: { id: tag.id },
+      update: {},
+      create: {
+        id: tag.id,
+        organizationId: organization.id,
+        companyId: company.id,
+        name: tag.name,
+        slug: tag.name.toLowerCase(),
+      },
+    });
+  }
+
+  // Vincula a categoria de demonstração ao plano de contas/natureza correspondentes.
+  await prisma.category.update({
+    where: { id: carnesCategory.id },
+    data: {
+      code: 'CAT-CARNES',
+      accountPlanId: '00000000-0000-0000-0000-000000000412',
+      financialNatureId: '00000000-0000-0000-0000-000000000303',
+      defaultCostCenterId: churrasqueiraCostCenter.id,
+      level: 0,
+      path: 'Carnes e proteínas',
+    },
+  });
+
+  await prisma.costCenter.update({
+    where: { id: churrasqueiraCostCenter.id },
+    data: { code: 'CC-CHURRAS', level: 0, path: 'Churrasqueira' },
   });
 
   console.log('Seed concluído com sucesso.');

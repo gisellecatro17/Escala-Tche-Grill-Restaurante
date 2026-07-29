@@ -163,6 +163,129 @@ nesta etapa). `preferredCompanyBankAccountId`/`companyBankAccountId` e
 colunas `String @db.Uuid` sem relação Prisma, para reconhecimento bancário futuro (OFX) sem
 bloquear o cadastro atual.
 
+## Estrutura Financeira
+
+### Dimensões separadas, não aninhadas
+
+O ponto central do módulo é que **plano de contas, categoria, centro de custo, centro de
+resultado, projeto, unidade de negócio, natureza e tags são dimensões independentes** —
+não níveis de uma mesma hierarquia. Um lançamento futuro carregará todas simultaneamente,
+o que permite responder "quanto gastamos com energia" (categoria), "onde gastamos"
+(centro de custo), "de onde veio a receita" (centro de resultado) e "quanto custou o
+projeto X" sem precisar de estruturas paralelas. Cada dimensão tem sua própria tabela,
+sua própria árvore e suas próprias permissões.
+
+### Três decisões de reaproveitamento (regra 7 do prompt: não recriar o que já existe)
+
+O prompt lista `financial_categories` e `financial_subcategories` entre as tabelas a
+criar. Três estruturas equivalentes já existiam e estavam em uso pelos módulos entregues,
+então foram **estendidas em vez de recriadas** — recriá-las exigiria migrations
+destrutivas (proibidas pela regra 8) e órfãos das FKs de Fornecedores e Clientes:
+
+1. **`categories` continua sendo a tabela de categorias financeiras**, agora com código,
+   cor, ícone, nível, caminho materializado, vínculo com plano de contas/natureza e todas
+   as dimensões e regras automáticas padrão. Renomeá-la para `financial_categories`
+   quebraria as FKs vivas de `supplier_company_links.default_category_id` e
+   `customer_company_links.default_revenue_category_id`.
+2. **Subcategorias continuam sendo a própria hierarquia de `categories`**
+   (`parent_category_id`, profundidade ilimitada), e não uma tabela
+   `financial_subcategories` separada. Os dois módulos já entregues apontam
+   `default_subcategory_id` para `categories.id`; uma tabela paralela duplicaria o
+   conceito e deixaria essas FKs sem destino.
+3. **`cost_centers` já existia com exatamente o nome pedido** e ganhou hierarquia,
+   código, cor, ícone e controle de conta analítica/sintética.
+
+Os demais cadastros são tabelas novas, com os nomes exatos do prompt:
+`financial_account_plans`, `result_centers`, `projects`, `business_units`,
+`financial_natures`, `financial_tags`, `financial_tag_links`, `classification_rules`,
+`allocation_rules` (+ `allocation_rule_lines`) e `financial_hierarchy_versions`.
+
+Uma quarta colisão foi de **nome de model, não de tabela**: o enum `FinancialNature`
+(entregue no módulo de Fornecedores e ainda usado por `SupplierCompanyLink`) já ocupava
+esse identificador no Prisma. O novo catálogo virou o model `FinancialNatureCatalog`
+mapeado para a tabela `financial_natures` — o nome exigido pelo prompt é preservado no
+banco, e nada do módulo anterior precisou ser tocado.
+
+### Centro de resultado: estrutura nova, migração pendente
+
+O Cadastro de Clientes (etapa anterior) apontava seu "centro de resultado" para
+`cost_centers`, por ainda não existir estrutura própria. Este módulo cria `result_centers`
+como a estrutura definitiva e separada exigida pelo prompt, mas
+`customer_company_links.default_result_center_id` **continua apontando para
+`cost_centers`** — trocar a FK exige migração de dados e é uma alteração de comportamento
+para registros já criados. A troca está documentada como pendência e deve acontecer junto
+com o módulo de Contas a Receber, que é quem efetivamente consome esse campo.
+
+### Árvores: caminho materializado e detecção de ciclo
+
+Todas as cinco árvores usam a mesma abordagem: além de `parentId`, cada nó guarda `level`
+(profundidade) e `path` (caminho materializado, ex.: `"Ativo > Ativo Circulante >
+Caixa"`), recalculados por `recalculateSubtree` sempre que o nó é renomeado ou movido.
+Isso torna listagens e buscas hierárquicas baratas sem exigir CTE recursiva.
+`common`/`utils/tree.util.ts` concentra a lógica pura — `buildTree` (aninhamento),
+`assertNoCycle` (impede mover um nó para dentro de si mesmo ou de um descendente),
+`computeLevelAndPath` e `collectSubtreeIds` — e é coberto por testes unitários próprios.
+`buildTree` promove a raiz qualquer nó cujo pai foi filtrado (por exemplo, um pai
+inativo), para que nenhum registro desapareça silenciosamente da tela.
+
+### Contas sintéticas x analíticas
+
+Uma conta do plano de contas só aceita lançamentos se for **analítica** (folha). O
+serviço força `acceptsEntries: false` sempre que a conta é sintética, ignorando o que
+vier no payload, e converte automaticamente um pai em sintético quando ele ganha a
+primeira conta filha. A mesma regra vale para centros de custo e de resultado.
+
+### Versionamento das árvores
+
+Toda alteração estrutural (mover um nó, aplicar uma importação, restaurar uma versão)
+grava antes um snapshot em `financial_hierarchy_versions` — a estrutura completa
+serializada em JSON, com número de versão sequencial por organização/empresa/entidade. A
+restauração reaplica pai, ordem, nível e caminho de cada item que ainda existe e
+**preserva registros criados depois do snapshot** (nada é excluído); itens já removidos
+são ignorados silenciosamente (`P2025`). Antes de restaurar, o estado atual também é
+versionado, de modo que a operação sempre pode ser desfeita.
+
+### Rateios
+
+`AllocationRule` (cabeçalho) + `AllocationRuleLine` (linhas) suportam seis critérios.
+Para `PERCENTAGE`, a soma das linhas precisa fechar 100% com tolerância de 0,01% — o
+suficiente para aceitar 33,33 + 33,33 + 33,34 sem aceitar erros reais. Para
+`QUANTITY`/`HOURS`/`WEIGHT`/`CUSTOM`, as linhas guardam pesos brutos e o percentual é
+derivado da soma no momento do uso. Cada linha declara `targetType` e precisa preencher a
+coluna correspondente, validado no serviço com mensagem em português nomeando a dimensão
+que faltou.
+
+### Classificação automática: preparada, não ativa
+
+`ClassificationRule` armazena a condição (campo, comparação, valor, faixa de valores,
+origem) e as dimensões a aplicar. Nesta etapa o módulo **não classifica nada
+automaticamente** — os módulos de importação bancária e de contas a pagar/receber ainda
+não existem. O que existe é `POST /classification-rules/simulate`, que roda o motor de
+comparação real sobre um lançamento hipotético e devolve qual regra venceria (menor
+`priority`), quais outras casaram e o aviso explícito `persisted: false`. Os contadores de
+aprendizado (`matchCount`, `confirmedCount`, `rejectedCount`) e o campo
+`source: LEARNED` já existem para o motor de inteligência financeira futuro. Uma expressão
+regular inválida gravada no passado nunca derruba a simulação: `safeRegexTest` a trata
+como "não casou".
+
+### Importação em duas etapas
+
+`POST /financial-structure/imports` apenas **valida** o arquivo e grava a pré-visualização
+com os erros por linha; `POST /financial-structure/imports/:id/apply` é que efetivamente
+cria os registros, versionando a árvore antes. As linhas são ordenadas por profundidade do
+código (`1` antes de `1.1`) para que o pai exista quando o filho for criado. Os "modelos"
+de Conta Azul, Omie, SAP e TOTVS não são integrações com esses ERPs — são apenas mapas de
+sinônimos de cabeçalho (`codigo`/`code`/`conta`, `nome`/`descricao`/`name`, ...) para o
+mesmo formato tabular interno.
+
+### Permissão separada para alterar a árvore
+
+Editar o cadastro de uma conta (`account-plan.manage`) e reorganizar a árvore
+(`account-plan.manage_tree`) são permissões distintas, e o mesmo vale para categorias,
+centros de custo e centros de resultado. O motivo é prático: renomear uma conta é
+reversível e local, mas mover uma conta muda a composição de todos os relatórios
+históricos que a agregam.
+
 ## Autenticação
 
 - Login, sessão, recuperação de senha e confirmação de e-mail são delegados ao **Supabase

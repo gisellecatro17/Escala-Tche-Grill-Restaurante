@@ -6,7 +6,6 @@ import {
 } from '@nestjs/swagger';
 import { RecordStatus } from '@prisma/client';
 import {
-  IsBoolean,
   IsEnum,
   IsInt,
   IsNotEmpty,
@@ -17,34 +16,35 @@ import {
   Min,
 } from 'class-validator';
 
-/**
- * Centro de custo. Mantém `companyId`/`name` do cadastro rápido original e acrescenta a
- * hierarquia de profundidade ilimitada exigida pelo módulo de estrutura financeira.
- */
-export class CreateCostCenterDto {
+/** Unidade de negócio — dimensão independente (BPO, Tecnologia, Holding, ...). */
+export class CreateBusinessUnitDto {
   @ApiProperty()
   @IsUUID()
-  companyId: string;
-
-  @ApiProperty()
-  @IsString()
-  @IsNotEmpty({ message: 'Informe o nome do centro de custo.' })
-  @MaxLength(150)
-  name: string;
+  organizationId: string;
 
   @ApiPropertyOptional({
-    description:
-      'Centro de custo pai. A hierarquia não tem limite de profundidade.',
+    description: 'Ausente = unidade compartilhada por toda a organização.',
   })
   @IsOptional()
   @IsUUID()
-  parentCostCenterId?: string;
+  companyId?: string;
 
-  @ApiPropertyOptional({ example: 'CC-COZINHA' })
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  parentBusinessUnitId?: string;
+
+  @ApiPropertyOptional({ example: 'UN-BPO' })
   @IsOptional()
   @IsString()
   @MaxLength(50)
   code?: string;
+
+  @ApiProperty({ example: 'BPO Financeiro' })
+  @IsString()
+  @IsNotEmpty({ message: 'Informe o nome da unidade de negócio.' })
+  @MaxLength(255)
+  name: string;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -69,15 +69,6 @@ export class CreateCostCenterDto {
   @Min(0)
   sortOrder?: number;
 
-  @ApiPropertyOptional({
-    default: true,
-    description:
-      'Apenas centros analíticos (folhas) aceitam lançamentos diretos.',
-  })
-  @IsOptional()
-  @IsBoolean()
-  acceptsEntries?: boolean;
-
   @ApiPropertyOptional()
   @IsOptional()
   @IsUUID()
@@ -94,6 +85,6 @@ export class CreateCostCenterDto {
   status?: RecordStatus;
 }
 
-export class UpdateCostCenterDto extends PartialType(
-  OmitType(CreateCostCenterDto, ['companyId'] as const),
+export class UpdateBusinessUnitDto extends PartialType(
+  OmitType(CreateBusinessUnitDto, ['organizationId', 'companyId'] as const),
 ) {}
