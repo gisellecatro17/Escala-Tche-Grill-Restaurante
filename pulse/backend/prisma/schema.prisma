@@ -271,6 +271,216 @@ enum SupplierContractStatus {
   @@map("supplier_contract_status")
 }
 
+// ── Cadastro de Clientes ────────────────────────────────────────────────────
+
+/// Pessoa física, jurídica ou cliente estrangeiro.
+enum CustomerPersonType {
+  INDIVIDUAL
+  LEGAL_ENTITY
+  FOREIGN
+
+  @@map("customer_person_type")
+}
+
+/// Status interno do cadastro geral do cliente (distinto do status do vínculo por empresa).
+enum CustomerSystemStatus {
+  DRAFT
+  PENDING_VALIDATION
+  ACTIVE
+  SUSPENDED
+  INACTIVE
+
+  @@map("customer_system_status")
+}
+
+/// Status do vínculo de um cliente com uma empresa — inclui PROSPECT, já que prospect e
+/// cliente compartilham o mesmo cadastro geral (seção 64 do prompt de clientes).
+enum CustomerLinkStatus {
+  PROSPECT
+  DRAFT
+  ACTIVE
+  BLOCKED
+  SUSPENDED
+  INACTIVE
+
+  @@map("customer_link_status")
+}
+
+/// Status financeiro do vínculo — separado do status cadastral (seção 41).
+enum CustomerFinancialStatus {
+  ON_TIME
+  ATTENTION
+  OVERDUE
+  DELINQUENT
+  NEGOTIATING
+  BLOCKED
+  SUSPENDED
+  NO_ACTIVITY
+
+  @@map("customer_financial_status")
+}
+
+enum CustomerAddressType {
+  FISCAL
+  BILLING
+  DELIVERY
+  OPERATIONAL
+  CORRESPONDENCE
+
+  @@map("customer_address_type")
+}
+
+enum AbcClassification {
+  A
+  B
+  C
+  NOT_CLASSIFIED
+
+  @@map("abc_classification")
+}
+
+enum RevenuePotentialLevel {
+  LOW
+  MEDIUM
+  HIGH
+  STRATEGIC
+
+  @@map("revenue_potential_level")
+}
+
+enum CustomerRiskLevel {
+  VERY_LOW
+  LOW
+  MODERATE
+  HIGH
+  VERY_HIGH
+  NOT_ASSESSED
+
+  @@map("customer_risk_level")
+}
+
+/// Periodicidade de faturamento/recorrência (seção 31).
+enum RecurrencePeriodicity {
+  ONCE
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+  BIMONTHLY
+  QUARTERLY
+  SEMIANNUAL
+  ANNUAL
+  CUSTOM
+
+  @@map("recurrence_periodicity")
+}
+
+enum CustomerPaymentMethod {
+  PIX
+  BOLETO
+  BANK_TRANSFER
+  CREDIT_CARD
+  DEBIT_CARD
+  CASH
+  DIRECT_DEBIT
+  PAYMENT_LINK
+  CHECK
+  OTHER
+
+  @@map("customer_payment_method")
+}
+
+enum CustomerOrigin {
+  REFERRAL
+  ACTIVE_PROSPECTING
+  WEBSITE
+  SOCIAL_MEDIA
+  EVENT
+  PARTNER
+  CAMPAIGN
+  OLD_CUSTOMER
+  SYSTEM_MIGRATION
+  OTHER
+
+  @@map("customer_origin")
+}
+
+/// Classificação do cliente quanto ao tipo (múltipla escolha, por vínculo).
+enum CustomerType {
+  INDIVIDUAL
+  PRIVATE_COMPANY
+  GOVERNMENT_AGENCY
+  AUTARCHY
+  FOUNDATION
+  ASSOCIATION
+  CONDOMINIUM
+  COOPERATIVE
+  INDUSTRY
+  COMMERCE
+  SERVICE_PROVIDER
+  ECONOMIC_GROUP
+  INTERNAL_CUSTOMER
+  OTHER
+
+  @@map("customer_type")
+}
+
+enum AdjustmentType {
+  ECONOMIC_INDEX
+  FIXED_PERCENTAGE
+  FIXED_AMOUNT
+  MANUAL_NEGOTIATION
+  NONE
+
+  @@map("adjustment_type")
+}
+
+enum CustomerContractStatus {
+  DRAFT
+  NEGOTIATING
+  PENDING_SIGNATURE
+  ACTIVE
+  SUSPENDED
+  CLOSED
+  CANCELLED
+  EXPIRED
+
+  @@map("customer_contract_status")
+}
+
+enum PaymentPromiseStatus {
+  OPEN
+  FULFILLED
+  PARTIALLY_FULFILLED
+  NOT_FULFILLED
+  CANCELLED
+  RENEGOTIATED
+
+  @@map("payment_promise_status")
+}
+
+enum CollectionChannel {
+  EMAIL
+  WHATSAPP
+  SMS
+  INTERNAL_NOTIFICATION
+  MANUAL_CALL
+  LETTER
+  OTHER
+
+  @@map("collection_channel")
+}
+
+/// Status de processamento da recorrência — permanece `PENDING_FINANCIAL_MODULE` até o
+/// módulo de contas a receber existir (seção 84 do prompt de clientes).
+enum RecurrenceProcessingStatus {
+  PENDING_FINANCIAL_MODULE
+  ACTIVE
+  PAUSED
+  FINISHED
+
+  @@map("recurrence_processing_status")
+}
+
 /// Cliente/grupo contratante da plataforma Pulse. Pode possuir várias empresas (CNPJs).
 model Organization {
   id     String       @id @default(uuid()) @db.Uuid
@@ -289,6 +499,8 @@ model Organization {
   companyRegistryQueries  CompanyRegistryQuery[]
   suppliers               Supplier[]
   supplierRegistryQueries SupplierRegistryQuery[]
+  customers               Customer[]
+  customerRegistryQueries CustomerRegistryQuery[]
 
   @@map("organizations")
 }
@@ -392,6 +604,7 @@ model Company {
   userMemberships UserCompanyRole[]
   auditLogs       AuditLog[]
   supplierLinks   SupplierCompanyLink[]
+  customerLinks   CustomerCompanyLink[]
   categories      Category[]
   costCenters     CostCenter[]
 
@@ -667,12 +880,18 @@ model AuditLog {
   @@map("audit_logs")
 }
 
-// ── Cadastro de Fornecedores ────────────────────────────────────────────────
+// ── Cadastro de Fornecedores / Cadastro de Clientes ─────────────────────────
 // Estrutura mínima reutilizável de categorias e centros de custo financeiros
 // (seção 29 do prompt de fornecedores) — escopo restrito ao necessário para a
-// classificação padrão de fornecedores; o módulo completo fica para etapa futura.
+// classificação padrão de fornecedores e clientes; o módulo completo de
+// categorias/centros de custo/resultado fica para etapa futura. O Cadastro de
+// Clientes reaproveita as mesmas tabelas para "categoria de receita" e "centro
+// de resultado" (seção 25 do prompt de clientes) em vez de criar catálogos
+// paralelos — ver docs/arquitetura.md.
 
 /// Categoria financeira mínima, com suporte a subcategorias (parentCategoryId).
+/// Reaproveitada tanto como categoria de despesa (fornecedores) quanto como
+/// categoria de receita (clientes).
 model Category {
   id               String       @id @default(uuid()) @db.Uuid
   companyId        String       @map("company_id") @db.Uuid
@@ -690,11 +909,16 @@ model Category {
   defaultForLinks    SupplierCompanyLink[] @relation("LinkDefaultCategory")
   defaultSubForLinks SupplierCompanyLink[] @relation("LinkDefaultSubcategory")
 
+  defaultRevenueForLinks    CustomerCompanyLink[] @relation("CustomerLinkDefaultRevenueCategory")
+  defaultRevenueSubForLinks CustomerCompanyLink[] @relation("CustomerLinkDefaultSubcategory")
+  defaultForContracts       CustomerContract[]    @relation("ContractRevenueCategory")
+
   @@index([companyId])
   @@map("categories")
 }
 
-/// Centro de custo mínimo.
+/// Centro de custo mínimo. Reaproveitado como "centro de resultado" no Cadastro de
+/// Clientes (seção 25 do prompt de clientes).
 model CostCenter {
   id        String       @id @default(uuid()) @db.Uuid
   companyId String       @map("company_id") @db.Uuid
@@ -704,8 +928,10 @@ model CostCenter {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  company Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  links   SupplierCompanyLink[]
+  company       Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  links         SupplierCompanyLink[]
+  customerLinks CustomerCompanyLink[]
+  contracts     CustomerContract[]
 
   @@index([companyId])
   @@map("cost_centers")
@@ -1288,4 +1514,547 @@ model Attachment {
 
   @@index([entityType, entityId])
   @@map("attachments")
+}
+
+// ── Cadastro de Clientes ────────────────────────────────────────────────────
+
+/// Cadastro geral do cliente (identidade fiscal/cadastral) — não deve ser duplicado por
+/// CPF/CNPJ. Prospects e clientes ativos compartilham este mesmo cadastro (seção 64 do
+/// prompt de clientes); cada empresa que se relaciona com ele possui seu próprio vínculo
+/// (CustomerCompanyLink) com classificação comercial e financeira independente.
+model Customer {
+  id             String             @id @default(uuid()) @db.Uuid
+  organizationId String             @map("organization_id") @db.Uuid
+  personType     CustomerPersonType @default(LEGAL_ENTITY) @map("person_type")
+
+  documentNumber           String? @map("document_number")
+  normalizedDocumentNumber String? @unique @map("normalized_document_number")
+  legalName                String? @map("legal_name")
+  tradeName                String? @map("trade_name")
+  displayName              String? @map("display_name")
+
+  stateRegistration     String?   @map("state_registration")
+  municipalRegistration String?   @map("municipal_registration")
+  openingDate           DateTime? @map("opening_date")
+  birthDate             DateTime? @map("birth_date")
+  legalNature           String?   @map("legal_nature")
+  companySize           String?   @map("company_size")
+  shareCapital          Decimal?  @map("share_capital") @db.Decimal(18, 2)
+
+  externalRegistrationStatus     String?   @map("external_registration_status")
+  externalRegistrationStatusDate DateTime? @map("external_registration_status_date")
+  mainCnae                       String?   @map("main_cnae")
+  countryCode                    String    @default("BR") @map("country_code")
+  preferredLanguage              String?   @map("preferred_language")
+  segment                        String?
+
+  // Pessoa estrangeira (seção 13)
+  foreignDocument String? @map("foreign_document")
+  billingCurrency String? @map("billing_currency")
+
+  systemStatus CustomerSystemStatus @default(DRAFT) @map("system_status")
+  generalNotes String?              @map("general_notes")
+
+  // Contatos gerais (seção 23)
+  phone          String?
+  whatsapp       String?
+  email          String?
+  emailFinancial String? @map("email_financial")
+  emailBilling   String? @map("email_billing")
+  emailFiscal    String? @map("email_fiscal")
+  website        String?
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  addresses       CustomerAddress[]
+  contacts        CustomerContact[]
+  cnaes           CustomerCnae[]
+  bankIdentifiers CustomerBankIdentifier[]
+  companyLinks    CustomerCompanyLink[]
+  registryQueries CustomerRegistryQuery[]
+  statusHistory   CustomerStatusHistory[]
+
+  @@index([organizationId])
+  @@index([systemStatus])
+  @@map("customers")
+}
+
+/// Endereço do cliente (fiscal, cobrança, entrega, operacional, correspondência).
+model CustomerAddress {
+  id         String @id @default(uuid()) @db.Uuid
+  customerId String @map("customer_id") @db.Uuid
+
+  addressType          CustomerAddressType @map("address_type")
+  postalCode           String              @map("postal_code")
+  normalizedPostalCode String              @map("normalized_postal_code")
+  street               String
+  number               String?
+  complement           String?
+  district             String?
+  city                 String
+  state                String
+  country              String              @default("BR")
+  cityCode             String?             @map("city_code")
+  reference            String?
+  isPrimary            Boolean             @default(false) @map("is_primary")
+  sameAsAddressId      String?             @map("same_as_address_id") @db.Uuid
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+
+  customer      Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  sameAsAddress CustomerAddress?  @relation("CustomerAddressCopy", fields: [sameAsAddressId], references: [id])
+  copiedBy      CustomerAddress[] @relation("CustomerAddressCopy")
+
+  @@index([customerId])
+  @@map("customer_addresses")
+}
+
+/// Contato do cliente.
+model CustomerContact {
+  id         String @id @default(uuid()) @db.Uuid
+  customerId String @map("customer_id") @db.Uuid
+
+  name                 String
+  position             String?
+  department           String?
+  phone                String?
+  whatsapp             String?
+  email                String?
+  isPrimary            Boolean      @default(false) @map("is_primary")
+  isFinancialContact   Boolean      @default(false) @map("is_financial_contact")
+  isBillingContact     Boolean      @default(false) @map("is_billing_contact")
+  isContractContact    Boolean      @default(false) @map("is_contract_contact")
+  isTaxContact         Boolean      @default(false) @map("is_tax_contact")
+  isOperationalContact Boolean      @default(false) @map("is_operational_contact")
+  receivesInvoices     Boolean      @default(false) @map("receives_invoices")
+  receivesBilling      Boolean      @default(false) @map("receives_billing")
+  receivesTaxDocuments Boolean      @default(false) @map("receives_tax_documents")
+  receivesContracts    Boolean      @default(false) @map("receives_contracts")
+  receivesReports      Boolean      @default(false) @map("receives_reports")
+  status               RecordStatus @default(ACTIVE)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+
+  customer  Customer           @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  contracts CustomerContract[]
+  promises  PaymentPromise[]
+
+  @@index([customerId])
+  @@map("customer_contacts")
+}
+
+/// CNAE (principal ou secundário) do cliente.
+model CustomerCnae {
+  id          String  @id @default(uuid()) @db.Uuid
+  customerId  String  @map("customer_id") @db.Uuid
+  cnaeCode    String  @map("cnae_code")
+  description String?
+  isMain      Boolean @default(false) @map("is_main")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([customerId, cnaeCode])
+  @@index([customerId])
+  @@map("customer_cnaes")
+}
+
+/// Identificador bancário aprendido/cadastrado para reconhecimento futuro do cliente em
+/// recebimentos (OFX/extratos) — mesma estrutura do módulo de Fornecedores (seção 36-38
+/// do prompt de clientes). Nesta etapa apenas a estrutura de dados é criada.
+model CustomerBankIdentifier {
+  id         String  @id @default(uuid()) @db.Uuid
+  customerId String  @map("customer_id") @db.Uuid
+  companyId  String? @map("company_id") @db.Uuid
+
+  identifierType  String
+  identifierValue String       @map("identifier_value")
+  normalizedValue String       @map("normalized_value")
+  source          String?
+  priority        Int          @default(100)
+  confidence      Decimal?     @db.Decimal(5, 2)
+  confirmedCount  Int          @default(0) @map("confirmed_count")
+  rejectedCount   Int          @default(0) @map("rejected_count")
+  lastConfirmedAt DateTime?    @map("last_confirmed_at")
+  status          RecordStatus @default(ACTIVE)
+
+  createdBy String?  @map("created_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@index([normalizedValue])
+  @@map("customer_bank_identifiers")
+}
+
+/// Vínculo de um cliente global com uma empresa — cada empresa possui sua própria
+/// classificação comercial, condições de recebimento, crédito, regras de cobrança,
+/// contratos e recorrências (seção 3.2 do prompt de clientes). Prospects (sem contrato
+/// ainda) e clientes ativos usam o mesmo registro, distinguidos por `status`.
+model CustomerCompanyLink {
+  id         String @id @default(uuid()) @db.Uuid
+  customerId String @map("customer_id") @db.Uuid
+  companyId  String @map("company_id") @db.Uuid
+
+  internalCode              String?         @map("internal_code")
+  relationshipType          String?         @map("relationship_type")
+  customerTypes             CustomerType[]  @map("customer_types")
+  source                    CustomerOrigin? @map("source")
+  segment                   String?
+  commercialResponsibleId   String?         @map("commercial_responsible_id") @db.Uuid
+  relationshipResponsibleId String?         @map("relationship_responsible_id") @db.Uuid
+
+  defaultRevenueCategoryId  String?                @map("default_revenue_category_id") @db.Uuid
+  defaultSubcategoryId      String?                @map("default_subcategory_id") @db.Uuid
+  defaultResultCenterId     String?                @map("default_result_center_id") @db.Uuid
+  defaultAccountingAccount  String?                @map("default_accounting_account")
+  defaultProductService     String?                @map("default_product_service")
+  defaultDescription        String?                @map("default_description")
+  defaultHistory            String?                @map("default_history")
+  abcClassification         AbcClassification      @default(NOT_CLASSIFIED) @map("abc_classification")
+  revenuePotentialLevel     RevenuePotentialLevel? @map("revenue_potential_level")
+  estimatedMonthlyRevenue   Decimal?               @map("estimated_monthly_revenue") @db.Decimal(18, 2)
+  estimatedAnnualRevenue    Decimal?               @map("estimated_annual_revenue") @db.Decimal(18, 2)
+  estimatedAverageTicket    Decimal?               @map("estimated_average_ticket") @db.Decimal(18, 2)
+  estimatedMarginPercentage Decimal?               @map("estimated_margin_percentage") @db.Decimal(5, 2)
+
+  paymentTermDays                  Int?                   @map("payment_term_days")
+  defaultDueDay                    Int?                   @map("default_due_day")
+  billingFrequency                 RecurrencePeriodicity? @map("billing_frequency")
+  preferredPaymentMethod           CustomerPaymentMethod? @map("preferred_payment_method")
+  preferredCompanyBankAccountId    String?                @map("preferred_company_bank_account_id") @db.Uuid
+  preferredCompanyPixKeyId         String?                @map("preferred_company_pix_key_id") @db.Uuid
+  defaultLateFeePercentage         Decimal?               @map("default_late_fee_percentage") @db.Decimal(5, 2)
+  defaultMonthlyInterestPercentage Decimal?               @map("default_monthly_interest_percentage") @db.Decimal(5, 2)
+  defaultDiscountPercentage        Decimal?               @map("default_discount_percentage") @db.Decimal(5, 2)
+  earlyPaymentDiscountPercentage   Decimal?               @map("early_payment_discount_percentage") @db.Decimal(5, 2)
+  earlyPaymentDays                 Int?                   @map("early_payment_days")
+  gracePeriodDays                  Int?                   @default(0) @map("grace_period_days")
+
+  creditLimit               Decimal?          @map("credit_limit") @db.Decimal(18, 2)
+  riskLevel                 CustomerRiskLevel @default(NOT_ASSESSED) @map("risk_level")
+  allowOverCreditLimit      Boolean           @default(false) @map("allow_over_credit_limit")
+  requiresOverLimitApproval Boolean           @default(true) @map("requires_over_limit_approval")
+  maximumPaymentTermDays    Int?              @map("maximum_payment_term_days")
+  automaticBlockEnabled     Boolean           @default(false) @map("automatic_block_enabled")
+  automaticBlockDays        Int?              @map("automatic_block_days")
+  billingRulesEnabled       Boolean           @default(false) @map("billing_rules_enabled")
+
+  autoIdentificationEnabled        Boolean @default(true) @map("auto_identification_enabled")
+  autoRevenueClassificationEnabled Boolean @default(true) @map("auto_revenue_classification_enabled")
+  autoResultCenterEnabled          Boolean @default(true) @map("auto_result_center_enabled")
+  receivableSuggestionEnabled      Boolean @default(true) @map("receivable_suggestion_enabled")
+  autoReceivableCreationEnabled    Boolean @default(false) @map("auto_receivable_creation_enabled")
+  autoReceiptMatchingEnabled       Boolean @default(false) @map("auto_receipt_matching_enabled")
+  confirmationThreshold            Decimal @default(95) @map("confirmation_threshold") @db.Decimal(5, 2)
+
+  status           CustomerLinkStatus      @default(PROSPECT)
+  financialStatus  CustomerFinancialStatus @default(NO_ACTIVITY) @map("financial_status")
+  blockReason      String?                 @map("block_reason")
+  suspensionReason String?                 @map("suspension_reason")
+  internalNotes    String?                 @map("internal_notes")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+
+  customer               Customer    @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  company                Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  defaultRevenueCategory Category?   @relation("CustomerLinkDefaultRevenueCategory", fields: [defaultRevenueCategoryId], references: [id])
+  defaultSubcategory     Category?   @relation("CustomerLinkDefaultSubcategory", fields: [defaultSubcategoryId], references: [id])
+  defaultResultCenter    CostCenter? @relation(fields: [defaultResultCenterId], references: [id])
+
+  billingRules         CustomerBillingRule[]
+  collectionHistory    CustomerCollectionHistory[]
+  paymentPromises      PaymentPromise[]
+  contracts            CustomerContract[]
+  recurringReceivables CustomerRecurringReceivable[]
+  statusHistory        CustomerStatusHistory[]
+
+  @@unique([customerId, companyId])
+  @@index([companyId])
+  @@index([customerId])
+  @@map("customer_company_links")
+}
+
+/// Regra de cobrança configurável do vínculo (seção 47-49 do prompt de clientes). Nesta
+/// etapa apenas cria a configuração e o histórico — nenhum envio real é disparado.
+model CustomerBillingRule {
+  id                    String @id @default(uuid()) @db.Uuid
+  customerCompanyLinkId String @map("customer_company_link_id") @db.Uuid
+
+  ruleType          String?
+  referenceEvent    String            @map("reference_event")
+  daysOffset        Int               @map("days_offset")
+  channel           CollectionChannel
+  messageTemplateId String?           @map("message_template_id") @db.Uuid
+  preferredHour     Int?              @map("preferred_hour")
+  allowedWeekdays   Int[]             @map("allowed_weekdays")
+  automatic         Boolean           @default(false)
+  requiresApproval  Boolean           @default(true) @map("requires_approval")
+  responsibleUserId String?           @map("responsible_user_id") @db.Uuid
+  priority          Int               @default(100)
+  status            RecordStatus      @default(ACTIVE)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+
+  link CustomerCompanyLink @relation(fields: [customerCompanyLinkId], references: [id], onDelete: Cascade)
+
+  @@index([customerCompanyLinkId])
+  @@map("customer_billing_rules")
+}
+
+/// Histórico de cobranças registradas (seção 50) — o envio real (e-mail/WhatsApp/SMS)
+/// depende de integração futura; aqui apenas o registro é criado.
+model CustomerCollectionHistory {
+  id                    String  @id @default(uuid()) @db.Uuid
+  organizationId        String? @map("organization_id") @db.Uuid
+  companyId             String? @map("company_id") @db.Uuid
+  customerCompanyLinkId String  @map("customer_company_link_id") @db.Uuid
+  financialEntryId      String? @map("financial_entry_id") @db.Uuid
+  contractId            String? @map("contract_id") @db.Uuid
+
+  channel           CollectionChannel
+  recipientName     String?           @map("recipient_name")
+  recipientAddress  String?           @map("recipient_address")
+  subject           String?
+  message           String?
+  sentAt            DateTime?         @map("sent_at")
+  deliveryStatus    String?           @map("delivery_status")
+  response          String?
+  responsibleUserId String?           @map("responsible_user_id") @db.Uuid
+  notes             String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  link     CustomerCompanyLink @relation(fields: [customerCompanyLinkId], references: [id], onDelete: Cascade)
+  contract CustomerContract?   @relation(fields: [contractId], references: [id])
+  promises PaymentPromise[]
+
+  @@index([customerCompanyLinkId])
+  @@map("customer_collection_history")
+}
+
+/// Promessa de pagamento (seção 51-52) — atualização de status é manual nesta etapa.
+model PaymentPromise {
+  id                    String  @id @default(uuid()) @db.Uuid
+  organizationId        String? @map("organization_id") @db.Uuid
+  companyId             String? @map("company_id") @db.Uuid
+  customerCompanyLinkId String  @map("customer_company_link_id") @db.Uuid
+  financialEntryId      String? @map("financial_entry_id") @db.Uuid
+  collectionHistoryId   String? @map("collection_history_id") @db.Uuid
+
+  promisedAmount    Decimal              @map("promised_amount") @db.Decimal(18, 2)
+  promisedDate      DateTime             @map("promised_date")
+  fulfilledAmount   Decimal?             @map("fulfilled_amount") @db.Decimal(18, 2)
+  fulfilledAt       DateTime?            @map("fulfilled_at")
+  status            PaymentPromiseStatus @default(OPEN)
+  customerContactId String?              @map("customer_contact_id") @db.Uuid
+  responsibleUserId String?              @map("responsible_user_id") @db.Uuid
+  notes             String?
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  link              CustomerCompanyLink        @relation(fields: [customerCompanyLinkId], references: [id], onDelete: Cascade)
+  collectionHistory CustomerCollectionHistory? @relation(fields: [collectionHistoryId], references: [id])
+  customerContact   CustomerContact?           @relation(fields: [customerContactId], references: [id])
+
+  @@index([customerCompanyLinkId])
+  @@map("payment_promises")
+}
+
+/// Contrato do cliente com a empresa (seção 53-58 do prompt de clientes).
+model CustomerContract {
+  id                    String @id @default(uuid()) @db.Uuid
+  customerCompanyLinkId String @map("customer_company_link_id") @db.Uuid
+
+  contractNumber         String?
+  description            String?
+  object                 String?
+  productService         String?                @map("product_service")
+  planName               String?                @map("plan_name")
+  initialValue           Decimal?               @map("initial_value") @db.Decimal(18, 2)
+  currentValue           Decimal?               @map("current_value") @db.Decimal(18, 2)
+  signatureDate          DateTime?              @map("signature_date")
+  startDate              DateTime?              @map("start_date")
+  endDate                DateTime?              @map("end_date")
+  isIndefiniteTerm       Boolean                @default(false) @map("is_indefinite_term")
+  automaticRenewal       Boolean                @default(false) @map("automatic_renewal")
+  renewalNoticeDays      Int?                   @map("renewal_notice_days")
+  billingFrequency       RecurrencePeriodicity? @map("billing_frequency")
+  dueDay                 Int?                   @map("due_day")
+  adjustmentType         AdjustmentType?        @map("adjustment_type")
+  adjustmentIndex        String?                @map("adjustment_index")
+  adjustmentPercentage   Decimal?               @map("adjustment_percentage") @db.Decimal(5, 2)
+  adjustmentBaseDate     DateTime?              @map("adjustment_base_date")
+  nextAdjustmentDate     DateTime?              @map("next_adjustment_date")
+  preferredPaymentMethod CustomerPaymentMethod? @map("preferred_payment_method")
+  companyBankAccountId   String?                @map("company_bank_account_id") @db.Uuid
+  revenueCategoryId      String?                @map("revenue_category_id") @db.Uuid
+  resultCenterId         String?                @map("result_center_id") @db.Uuid
+  internalResponsibleId  String?                @map("internal_responsible_id") @db.Uuid
+  customerContactId      String?                @map("customer_contact_id") @db.Uuid
+  status                 CustomerContractStatus @default(DRAFT)
+  notes                  String?
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+
+  link                 CustomerCompanyLink           @relation(fields: [customerCompanyLinkId], references: [id], onDelete: Cascade)
+  revenueCategory      Category?                     @relation("ContractRevenueCategory", fields: [revenueCategoryId], references: [id])
+  resultCenter         CostCenter?                   @relation(fields: [resultCenterId], references: [id])
+  customerContact      CustomerContact?              @relation(fields: [customerContactId], references: [id])
+  amendments           CustomerContractAmendment[]
+  collectionHistory    CustomerCollectionHistory[]
+  recurringReceivables CustomerRecurringReceivable[]
+
+  @@index([customerCompanyLinkId])
+  @@map("customer_contracts")
+}
+
+/// Aditivo contratual (seção 58).
+model CustomerContractAmendment {
+  id         String @id @default(uuid()) @db.Uuid
+  contractId String @map("contract_id") @db.Uuid
+
+  amendmentNumber      String?      @map("amendment_number")
+  description          String?
+  effectiveDate        DateTime?    @map("effective_date")
+  previousValue        Decimal?     @map("previous_value") @db.Decimal(18, 2)
+  newValue             Decimal?     @map("new_value") @db.Decimal(18, 2)
+  previousEndDate      DateTime?    @map("previous_end_date")
+  newEndDate           DateTime?    @map("new_end_date")
+  scopeChanged         Boolean      @default(false) @map("scope_changed")
+  documentAttachmentId String?      @map("document_attachment_id") @db.Uuid
+  status               RecordStatus @default(ACTIVE)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+
+  contract CustomerContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@index([contractId])
+  @@map("customer_contract_amendments")
+}
+
+/// Recorrência financeira vinculada ao contrato (seção 56). Enquanto o módulo de contas a
+/// receber não existir, `processingStatus` permanece `PENDING_FINANCIAL_MODULE` — nenhum
+/// lançamento financeiro definitivo é gerado nesta etapa.
+model CustomerRecurringReceivable {
+  id                    String  @id @default(uuid()) @db.Uuid
+  customerCompanyLinkId String  @map("customer_company_link_id") @db.Uuid
+  contractId            String? @map("contract_id") @db.Uuid
+
+  description                    String?
+  amount                         Decimal                    @db.Decimal(18, 2)
+  frequency                      RecurrencePeriodicity
+  firstDueDate                   DateTime?                  @map("first_due_date")
+  fixedDueDay                    Int?                       @map("fixed_due_day")
+  startDate                      DateTime?                  @map("start_date")
+  endDate                        DateTime?                  @map("end_date")
+  installmentCount               Int?                       @map("installment_count")
+  revenueCategoryId              String?                    @map("revenue_category_id") @db.Uuid
+  subcategoryId                  String?                    @map("subcategory_id") @db.Uuid
+  resultCenterId                 String?                    @map("result_center_id") @db.Uuid
+  companyBankAccountId           String?                    @map("company_bank_account_id") @db.Uuid
+  paymentMethod                  CustomerPaymentMethod?     @map("payment_method")
+  lateFeePercentage              Decimal?                   @map("late_fee_percentage") @db.Decimal(5, 2)
+  monthlyInterestPercentage      Decimal?                   @map("monthly_interest_percentage") @db.Decimal(5, 2)
+  discountPercentage             Decimal?                   @map("discount_percentage") @db.Decimal(5, 2)
+  earlyPaymentDiscountPercentage Decimal?                   @map("early_payment_discount_percentage") @db.Decimal(5, 2)
+  generationAdvanceDays          Int?                       @map("generation_advance_days")
+  automaticGenerationEnabled     Boolean                    @default(false) @map("automatic_generation_enabled")
+  processingStatus               RecurrenceProcessingStatus @default(PENDING_FINANCIAL_MODULE) @map("processing_status")
+  status                         RecordStatus               @default(ACTIVE)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+
+  link     CustomerCompanyLink @relation(fields: [customerCompanyLinkId], references: [id], onDelete: Cascade)
+  contract CustomerContract?   @relation(fields: [contractId], references: [id])
+
+  @@index([customerCompanyLinkId])
+  @@map("customer_recurring_receivables")
+}
+
+/// Histórico de consultas cadastrais (CPF/CNPJ) de clientes via provider externo
+/// desacoplado — reaproveita o mesmo provider do Cadastro de Empresas/Fornecedores.
+model CustomerRegistryQuery {
+  id             String  @id @default(uuid()) @db.Uuid
+  organizationId String? @map("organization_id") @db.Uuid
+  customerId     String? @map("customer_id") @db.Uuid
+
+  documentNumber  String              @map("document_number")
+  provider        String
+  requestStatus   RegistryQueryStatus @map("request_status")
+  responseSummary Json?               @map("response_summary")
+  queriedBy       String?             @map("queried_by") @db.Uuid
+  queriedAt       DateTime            @default(now()) @map("queried_at")
+  errorCode       String?             @map("error_code")
+  errorMessage    String?             @map("error_message")
+
+  organization Organization? @relation(fields: [organizationId], references: [id])
+  customer     Customer?     @relation(fields: [customerId], references: [id])
+
+  @@index([documentNumber])
+  @@index([customerId])
+  @@map("customer_registry_queries")
+}
+
+/// Histórico de mudanças de status — cadastro geral e/ou vínculo (status cadastral e
+/// status financeiro, seção 41 e 87 do prompt de clientes).
+model CustomerStatusHistory {
+  id                      String   @id @default(uuid()) @db.Uuid
+  customerId              String?  @map("customer_id") @db.Uuid
+  customerCompanyLinkId   String?  @map("customer_company_link_id") @db.Uuid
+  previousStatus          String?  @map("previous_status")
+  newStatus               String   @map("new_status")
+  previousFinancialStatus String?  @map("previous_financial_status")
+  newFinancialStatus      String?  @map("new_financial_status")
+  reason                  String?
+  changedBy               String?  @map("changed_by") @db.Uuid
+  changedAt               DateTime @default(now()) @map("changed_at")
+
+  customer Customer?            @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  link     CustomerCompanyLink? @relation(fields: [customerCompanyLinkId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@index([customerCompanyLinkId])
+  @@map("customer_status_history")
 }

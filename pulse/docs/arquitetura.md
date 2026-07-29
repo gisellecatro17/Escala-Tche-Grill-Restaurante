@@ -106,6 +106,63 @@ fornecedor, o cadastro não é bloqueado — mas exige que o usuário confirme e
 schema para quando o fluxo completo de dupla aprovação for construído; por ora, alterações
 em dados bancários marcam `changeStatus: PENDING` mas não bloqueiam o uso imediato.
 
+### Cadastro global vs. vínculo por empresa (módulo Cadastro de Clientes)
+
+Mesmo padrão do Cadastro de Fornecedores, aplicado a `Customer`/`CustomerCompanyLink`
+(`customer_id + company_id` único). A diferença de domínio é o ciclo de vida do vínculo:
+`CustomerLinkStatus` inclui `PROSPECT` como status **inicial padrão** (em vez de `ACTIVE`,
+como em Fornecedores), porque um cliente em prospecção e um cliente ativo são o mesmo
+cadastro — a promoção `PROSPECT → ACTIVE` é feita por `CustomerCompanyLinksService.
+convertProspect()`, uma transição de status (nunca um novo registro), que valida
+pendências mínimas (categoria de receita padrão, uma condição de recebimento, um contato
+com `isFinancialContact: true` e dados cadastrais completos) antes de promover.
+`CustomerFinancialStatus` é um eixo de status **separado** de `CustomerLinkStatus` —
+"vínculo Ativo" e "situação financeira Em atraso" podem coexistir, refletindo o
+comportamento de pagamento do cliente independentemente do estágio comercial do vínculo.
+
+### Reaproveitamento de Categoria/Centro de Custo para "categoria de receita" e "centro de resultado"
+
+O prompt de Clientes pede uma categoria de receita e um centro de resultado padrão por
+vínculo — conceitualmente equivalentes à categoria/centro de custo já modelados em
+`modules/taxonomy` para Fornecedores. Em vez de criar tabelas paralelas
+(`RevenueCategory`/`ResultCenter`), `Category` e `CostCenter` foram estendidos com novos
+relacionamentos nomeados (`CustomerLinkDefaultRevenueCategory`,
+`CustomerLinkDefaultRevenueSubcategory`, `CustomerLinkDefaultResultCenter`, e os
+equivalentes em `CustomerContract`) — a mesma tabela, os mesmos endpoints
+(`GET/POST /categories` e `/cost-centers`) e o mesmo componente de seleção rápida
+(`components/suppliers/category-select.tsx`/`cost-center-select.tsx`, reaproveitados sem
+alteração pelo wizard de Clientes) atendem os dois módulos. Isso segue a regra do prompt
+mestre de não recriar estruturas já existentes sem necessidade (seção 7); o módulo
+completo de categorias/centros de custo, quando existir, estende este schema para ambos os
+domínios ao mesmo tempo.
+
+### Limite de crédito: permissão dedicada e mascaramento
+
+O limite de crédito e os campos de risco/estimativas de faturamento (`creditLimit`,
+`riskLevel`, `allowOverCreditLimit`, `requiresOverLimitApproval`,
+`automaticBlockEnabled`, `automaticBlockDays`) foram deliberadamente extraídos de
+`CreateCompanyLinkDto`/`UpdateCompanyLinkDto` para um `UpdateCreditDto` próprio, exposto
+apenas em `PATCH /customer-company-links/:id/credit` e protegido pela permissão
+**dedicada** `customer.update_credit_limit` — distinta de `customer.manage_credit`, que
+cobre apenas leitura/edição das demais regras comerciais do vínculo. Sem a permissão
+`customer.view_credit_information`, `CustomerCompanyLinksService.getLink()` retorna esses
+campos como `null` (mascarados) em vez de omitir a resposta inteira, para que o restante
+do vínculo continue visível. O mesmo serviço mascara telefone/e-mail dos contatos
+(`CustomerContact`) para usuários sem `customer.view_sensitive_contacts`.
+
+### Contratos e recorrências "preparados", não "ativos"
+
+Contratos (`CustomerContract`) e recorrências (`CustomerRecurringReceivable`) já podem ser
+cadastrados nesta etapa, mas `CustomerRecurringReceivable.processingStatus` nasce e
+permanece em `PENDING_FINANCIAL_MODULE` — nenhum lançamento de conta a receber é criado,
+pois o módulo de contas a receber ainda não existe. O mesmo vale para
+`CustomerBillingRule`/`CustomerCollectionHistory`: registram a configuração e o histórico
+manual de cobrança, mas nenhuma mensagem real é enviada (sem integração de e-mail/WhatsApp
+nesta etapa). `preferredCompanyBankAccountId`/`companyBankAccountId` e
+`CustomerBankIdentifier` seguem o mesmo padrão de "FK de espera" já usado em Fornecedores:
+colunas `String @db.Uuid` sem relação Prisma, para reconhecimento bancário futuro (OFX) sem
+bloquear o cadastro atual.
+
 ## Autenticação
 
 - Login, sessão, recuperação de senha e confirmação de e-mail são delegados ao **Supabase

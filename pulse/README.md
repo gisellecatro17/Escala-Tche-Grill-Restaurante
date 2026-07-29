@@ -20,8 +20,13 @@ Este repositório está sendo desenvolvido **módulo por módulo**. Já foram en
    vínculo independente por empresa (classificação financeira, condições comerciais,
    dados bancários/PIX com proteção por permissão, retenções, rateios, regras de
    automação, contratos e documentos). Ver seção dedicada abaixo.
+4. **Cadastro de Clientes** — mesmo padrão de cadastro global + vínculo por empresa,
+   incluindo o ciclo de vida Prospect → Cliente ativo, classificação comercial,
+   condições de recebimento, crédito com permissão dedicada, regras de cobrança,
+   contratos e recorrências (preparadas para o futuro módulo de contas a receber). Ver
+   seção dedicada abaixo.
 
-Os demais módulos financeiros (clientes, categorias/centros de custo completos, contas a
+Os demais módulos financeiros (categorias/centros de custo completos, contas a
 pagar/receber, importação OFX, conciliação, inteligência financeira) serão adicionados em
 etapas futuras, mediante aprovação.
 
@@ -34,7 +39,8 @@ etapas futuras, mediante aprovação.
   (`organizationMemberships`).
 - **Módulos do menu**: Visão Geral, Cadastros, Financeiro, Inteligência Financeira e
   Configurações. Nesta etapa, o **Dashboard** (Visão Geral) e **Cadastros → Empresas /
-  Fornecedores** estão navegáveis; os demais itens aparecem no menu como "Em breve".
+  Fornecedores / Clientes** estão navegáveis; os demais itens aparecem no menu como "Em
+  breve".
 
 ## Tecnologias
 
@@ -68,12 +74,13 @@ pulse/
 │   │   ├── ui/                Primitivas de UI (button, input, table, sheet, dialog, form, checkbox, switch...)
 │   │   ├── layout/             Sidebar, Header, Seletor de empresa
 │   │   ├── companies/          Cadastro de Empresas: listagem, ações, wizard em etapas, diálogos
-│   │   └── suppliers/          Cadastro de Fornecedores: listagem, ações, wizard em 10 etapas, seleção rápida de categoria/centro de custo
+│   │   ├── suppliers/          Cadastro de Fornecedores: listagem, ações, wizard em 10 etapas, seleção rápida de categoria/centro de custo
+│   │   └── customers/          Cadastro de Clientes: listagem, ações (com conversão de prospect), wizard em 10 etapas
 │   ├── lib/
 │   │   ├── supabase/          Clientes Supabase (browser, server, proxy)
 │   │   ├── auth/               Contexto de sessão (usuário, empresa selecionada, permissões)
 │   │   ├── api/                 Cliente HTTP da API do Pulse + hooks TanStack Query por módulo
-│   │   ├── validation/          Schemas Zod (cadastro de empresa, cadastro de fornecedor)
+│   │   ├── validation/          Schemas Zod (cadastro de empresa, fornecedor, cliente)
 │   │   ├── mappers/              Conversão entre entidades da API e valores de formulário
 │   │   ├── format/              Formatação BRL/datas/documentos/máscaras (CNPJ, CPF, CEP, telefone)
 │   │   └── menu.ts              Estrutura do menu lateral (módulos do prompt mestre)
@@ -81,7 +88,7 @@ pulse/
 ├── backend/                  NestJS
 │   ├── prisma/
 │   │   ├── schema.prisma      Modelo de dados
-│   │   ├── migrations/        Fundação + Cadastro de Empresas + Cadastro de Fornecedores (incremental)
+│   │   ├── migrations/        Fundação + Cadastro de Empresas + Fornecedores + Clientes (incremental)
 │   │   └── seed.ts             Perfis, permissões e organização/empresa de demonstração
 │   └── src/
 │       ├── common/             Decorators, guards, filtros, interceptor de resposta padrão, controle de acesso
@@ -94,7 +101,8 @@ pulse/
 │       │   ├── organizations/   CRUD de organizações
 │       │   ├── companies/       Cadastro de Empresas completo (ver seção dedicada abaixo)
 │       │   ├── suppliers/       Cadastro de Fornecedores completo (ver seção dedicada abaixo)
-│       │   ├── taxonomy/        Categorias e centros de custo (estrutura mínima reutilizável, com cadastro rápido)
+│       │   ├── customers/       Cadastro de Clientes completo (ver seção dedicada abaixo)
+│       │   ├── taxonomy/        Categorias e centros de custo (estrutura mínima reutilizável, com cadastro rápido; reaproveitada por Fornecedores e Clientes)
 │       │   ├── financial-institutions/  Catálogo de bancos (seed + busca)
 │       │   ├── users/           Convite de usuários e gestão de vínculos/perfis
 │       │   ├── roles/           Listagem de perfis e permissões
@@ -257,6 +265,68 @@ confirmação) já existe (`supplier_alternative_names`, `supplier_bank_identifi
 automática é tomada, e a simples identificação do fornecedor nunca gera conciliação
 automática sozinha.
 
+## Cadastro de Clientes
+
+Mesma arquitetura em duas camadas do Cadastro de Fornecedores: o **cadastro global**
+(`customers` — identidade fiscal por CPF/CNPJ, nunca duplicada) e o **vínculo com a
+empresa** (`customer_company_links` — classificação comercial, condições de recebimento,
+crédito, regras de cobrança, contratos e recorrências, independentes por empresa;
+`customer_id + company_id` é único). Um cliente **prospect** e um **cliente ativo** são o
+mesmo cadastro — a diferença é apenas o `status` do vínculo (`PROSPECT` é o status inicial
+padrão), convertido via `POST /customer-company-links/:id/convert-prospect` depois que as
+pendências mínimas forem resolvidas (categoria de receita padrão, condição de recebimento,
+um contato financeiro e dados cadastrais completos).
+
+Nesta etapa o módulo **não** emite boletos/PIX/notas fiscais, não envia e-mail/WhatsApp
+real, não faz cobrança jurídica, não importa OFX e não tem motor de baixa automática ou
+CRM comercial — mas já está preparado para essas integrações futuras (ver
+`docs/arquitetura.md`).
+
+Rotas do front-end: `/cadastros/clientes` (listagem, sempre por empresa selecionada),
+`/cadastros/clientes/novo` (wizard de 10 etapas, com `?draftId=` para retomar),
+`/cadastros/clientes/:id` (detalhes, com abas), `/cadastros/clientes/:id/editar` (dados
+cadastrais globais) e `/cadastros/clientes/:id/empresas/:companyLinkId` (configuração do
+vínculo — classificação, condições de recebimento, crédito, regras de cobrança, contratos
+e recorrências, histórico).
+
+Principais endpoints da API (todos documentados no Swagger):
+
+| Rota | Descrição |
+| --- | --- |
+| `GET /customers` | Lista os **vínculos** (cliente + empresa), com busca, filtros (status, situação financeira, categoria, centro de resultado, cidade/UF) e paginação |
+| `POST /customers` | Cria o cadastro global (opcionalmente já com o vínculo inicial embutido, criado como `PROSPECT`) |
+| `POST /customers/drafts` | Cria/atualiza um rascunho |
+| `GET/PATCH/DELETE /customers/:id` | Consulta/atualiza/exclui o cadastro global (exclusão só em rascunho sem vínculos) |
+| `POST /customers/document-query` | Consulta CPF/CNPJ — reaproveita o mesmo provider do Cadastro de Empresas/Fornecedores |
+| `POST /customers/:id/company-links` | Vincula um cliente já existente a uma empresa (como `PROSPECT`) |
+| `POST /customers/:id/addresses` \| `/contacts` | Inclui um endereço/contato (não substitui a lista existente) |
+| `GET/PATCH/DELETE /customer-company-links/:id` | Consulta/edita/exclui um vínculo (exclusão só em rascunho/prospect sem uso) |
+| `PATCH /customer-company-links/:id/credit` | Atualiza limite de crédito/risco — protegido pela permissão dedicada `customer.update_credit_limit` |
+| `POST /customer-company-links/:id/convert-prospect` | Converte prospect em cliente ativo (valida pendências mínimas) |
+| `POST /customer-company-links/:id/{activate,deactivate,suspend,block,unblock}` | Transições de status do vínculo (bloqueio/suspensão/inativação exigem motivo) |
+| `POST /customer-company-links/:id/duplicate` | Duplica o vínculo para outra empresa (nunca duplica o cadastro global) |
+| `POST /customer-company-links/:id/billing-rules` \| `/collection-history` \| `/payment-promises` | Regras de cobrança, histórico de contato e promessas de pagamento (nenhuma mensagem real é enviada) |
+| `POST /customer-company-links/:id/contracts` \| `/contracts/:contractId/amendments` \| `/recurring-receivables` | Contratos, aditivos e recorrências (ficam com `processingStatus: PENDING_FINANCIAL_MODULE` até o módulo de contas a receber existir) |
+| `POST /customers/:id/documents` | Upload de documentos (Supabase Storage) |
+| `GET /customer-company-links/:id/audit` | Auditoria do vínculo (somente leitura) |
+
+Permissões granulares: `customer.view`, `customer.create`, `customer.update`,
+`customer.activate`, `customer.deactivate`, `customer.suspend`, `customer.block`,
+`customer.unblock`, `customer.delete`, `customer.query_document`,
+`customer.manage_company_link`, `customer.manage_classification`,
+`customer.manage_payment_terms`, `customer.manage_credit`, `customer.manage_risk`,
+`customer.manage_billing_rules`, `customer.manage_contracts`,
+`customer.manage_recurring_rules`, `customer.manage_documents`,
+`customer.manage_payment_promises`, `customer.view_financial_history`,
+`customer.view_receivables`, `customer.view_collections`, `customer.view_audit`,
+`customer.duplicate_link`, `customer.convert_prospect`,
+`customer.view_credit_information`, `customer.update_credit_limit`,
+`customer.authorize_over_credit_limit` e `customer.view_sensitive_contacts`. O limite de
+crédito tem uma permissão **separada** da classificação geral (`update_credit_limit` ≠
+`manage_credit`), e usuários sem `view_credit_information` recebem os campos de crédito
+mascarados (`null`) do back-end; usuários sem `view_sensitive_contacts` recebem
+telefone/e-mail dos contatos mascarados.
+
 ## Banco de dados e migrations
 
 O schema fica em `backend/prisma/schema.prisma`. Tabelas principais:
@@ -267,9 +337,14 @@ O schema fica em `backend/prisma/schema.prisma`. Tabelas principais:
 `supplier_bank_identifiers`, `supplier_classification_rules`,
 `supplier_default_allocations`, `supplier_tax_withholdings`, `supplier_contracts`,
 `supplier_registry_queries`, `supplier_status_history`, `supplier_recognition_learning`,
-`financial_institutions`, `categories`, `cost_centers`, `attachments` (anexos genéricos),
-`users`, `roles`, `permissions`, `role_permissions`, `user_organization_roles`,
-`user_company_roles` e `audit_logs`.
+`customers`, `customer_company_links`, `customer_addresses`, `customer_contacts`,
+`customer_cnaes`, `customer_bank_identifiers`, `customer_billing_rules`,
+`customer_collection_history`, `payment_promises`, `customer_contracts`,
+`customer_contract_amendments`, `customer_recurring_receivables`,
+`customer_registry_queries`, `customer_status_history`, `financial_institutions`,
+`categories`, `cost_centers`, `attachments` (anexos genéricos), `users`, `roles`,
+`permissions`, `role_permissions`, `user_organization_roles`, `user_company_roles` e
+`audit_logs`.
 
 ```bash
 cd backend
@@ -284,12 +359,32 @@ npm run seed               # reaplica perfis/permissões/dados de demonstração
 ```bash
 cd backend
 npm test        # testes unitários: isolamento multiempresa/organização, permissões,
-                 # validação de CPF/CNPJ, duplicidade de documento (empresas e fornecedores),
-                 # pendências de ativação, bloqueio/permissão de exclusão de empresas,
-                 # vínculo duplicado, conta/PIX de terceiro, mascaramento de dados bancários,
-                 # soma de rateios (até 100%), bloqueio/motivo obrigatório do vínculo
+                 # validação de CPF/CNPJ, duplicidade de documento (empresas, fornecedores
+                 # e clientes), pendências de ativação, bloqueio/permissão de exclusão de
+                 # empresas, vínculo duplicado, conta/PIX de terceiro, mascaramento de
+                 # dados bancários e de contatos sensíveis, soma de rateios (até 100%),
+                 # bloqueio/motivo obrigatório do vínculo, mascaramento de crédito por
+                 # permissão dedicada, conversão de prospect com validação de pendências
 npm run test:e2e
 ```
+
+### Testar manualmente o Cadastro de Clientes
+
+1. Suba backend e frontend, faça login e selecione a empresa "Tchê Grill" no cabeçalho.
+2. Acesse **Cadastros → Clientes** e clique em **+ Incluir novo cliente**. Percorra o
+   wizard informando um CPF/CNPJ válido; o vínculo criado ficará com status **Prospect**.
+3. Na tela do vínculo (`.../empresas/:companyLinkId`), tente **Converter em cliente** sem
+   preencher categoria de receita/condição de recebimento/contato financeiro — a operação
+   deve ser recusada informando a pendência. Complete os dados e converta com sucesso.
+4. Teste o limite de crédito com um usuário sem `customer.view_credit_information` (deve
+   aparecer mascarado) e depois com um usuário que tenha `customer.update_credit_limit`
+   mas não `customer.manage_credit`, confirmando que a edição do limite continua liberada
+   pela permissão dedicada.
+5. Inclua um contrato e uma recorrência — confirme que nenhum lançamento financeiro real é
+   criado (o texto informativo do wizard/tela explica que ficam pendentes do módulo de
+   contas a receber).
+6. Bloqueie o vínculo (exige motivo) e depois duplique-o para outra empresa, conferindo
+   que o cadastro global (CPF/CNPJ, endereços, contatos) não é duplicado.
 
 ### Testar manualmente o Cadastro de Fornecedores
 
@@ -348,5 +443,6 @@ Com o back-end rodando, o Swagger fica disponível em `http://localhost:3333/doc
 
 ## Próxima etapa recomendada
 
-Cadastro de **Clientes**, seguindo o mesmo padrão de cadastro global + vínculo por empresa
-já estabelecido no Cadastro de Fornecedores.
+Módulo completo de **Categorias e Centros de Custo/Resultado** (hierarquias, orçamento,
+relatórios) ou o início de **Contas a Pagar/Receber**, que passam a consumir os cadastros
+de Fornecedores e Clientes já entregues.
