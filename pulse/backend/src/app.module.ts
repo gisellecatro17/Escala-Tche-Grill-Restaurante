@@ -11,8 +11,11 @@ import { HealthController } from './health/health.controller';
 import { AuditModule } from './modules/audit/audit.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { CompaniesModule } from './modules/companies/companies.module';
+import { FinancialInstitutionsModule } from './modules/financial-institutions/financial-institutions.module';
 import { OrganizationsModule } from './modules/organizations/organizations.module';
 import { RolesModule } from './modules/roles/roles.module';
+import { SuppliersModule } from './modules/suppliers/suppliers.module';
+import { TaxonomyModule } from './modules/taxonomy/taxonomy.module';
 import { UsersModule } from './modules/users/users.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { StorageModule } from './storage/storage.module';
@@ -31,6 +34,9 @@ import { SupabaseModule } from './supabase/supabase.module';
     AuditModule,
     OrganizationsModule,
     CompaniesModule,
+    TaxonomyModule,
+    FinancialInstitutionsModule,
+    SuppliersModule,
     UsersModule,
     RolesModule,
   ],

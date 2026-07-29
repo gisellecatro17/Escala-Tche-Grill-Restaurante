@@ -16,10 +16,14 @@ Este repositório está sendo desenvolvido **módulo por módulo**. Já foram en
    usuários e revisão), consulta automática de CNPJ e de CEP, ativação/inativação/
    suspensão, upload de logo, duplicação de configurações (estrutura extensível) e
    auditoria detalhada.
+3. **Cadastro de Fornecedores** — cadastro global (por CPF/CNPJ, nunca duplicado) +
+   vínculo independente por empresa (classificação financeira, condições comerciais,
+   dados bancários/PIX com proteção por permissão, retenções, rateios, regras de
+   automação, contratos e documentos). Ver seção dedicada abaixo.
 
-Os demais módulos financeiros (fornecedores, clientes, categorias, centros de custo,
-contas bancárias, contas a pagar/receber, importação OFX, conciliação, inteligência
-financeira) serão adicionados em etapas futuras, mediante aprovação.
+Os demais módulos financeiros (clientes, categorias/centros de custo completos, contas a
+pagar/receber, importação OFX, conciliação, inteligência financeira) serão adicionados em
+etapas futuras, mediante aprovação.
 
 ## Visão geral
 
@@ -29,8 +33,8 @@ financeira) serão adicionados em etapas futuras, mediante aprovação.
   primeira empresa de uma organização nova), via vínculo direto por organização
   (`organizationMemberships`).
 - **Módulos do menu**: Visão Geral, Cadastros, Financeiro, Inteligência Financeira e
-  Configurações. Nesta etapa, o **Dashboard** (Visão Geral) e **Cadastros → Empresas**
-  estão navegáveis; os demais itens aparecem no menu como "Em breve".
+  Configurações. Nesta etapa, o **Dashboard** (Visão Geral) e **Cadastros → Empresas /
+  Fornecedores** estão navegáveis; os demais itens aparecem no menu como "Em breve".
 
 ## Tecnologias
 
@@ -63,12 +67,13 @@ pulse/
 │   ├── components/
 │   │   ├── ui/                Primitivas de UI (button, input, table, sheet, dialog, form, checkbox, switch...)
 │   │   ├── layout/             Sidebar, Header, Seletor de empresa
-│   │   └── companies/          Cadastro de Empresas: listagem, ações, wizard em etapas, diálogos
+│   │   ├── companies/          Cadastro de Empresas: listagem, ações, wizard em etapas, diálogos
+│   │   └── suppliers/          Cadastro de Fornecedores: listagem, ações, wizard em 10 etapas, seleção rápida de categoria/centro de custo
 │   ├── lib/
 │   │   ├── supabase/          Clientes Supabase (browser, server, proxy)
 │   │   ├── auth/               Contexto de sessão (usuário, empresa selecionada, permissões)
 │   │   ├── api/                 Cliente HTTP da API do Pulse + hooks TanStack Query por módulo
-│   │   ├── validation/          Schemas Zod (ex.: cadastro de empresa)
+│   │   ├── validation/          Schemas Zod (cadastro de empresa, cadastro de fornecedor)
 │   │   ├── mappers/              Conversão entre entidades da API e valores de formulário
 │   │   ├── format/              Formatação BRL/datas/documentos/máscaras (CNPJ, CPF, CEP, telefone)
 │   │   └── menu.ts              Estrutura do menu lateral (módulos do prompt mestre)
@@ -76,18 +81,21 @@ pulse/
 ├── backend/                  NestJS
 │   ├── prisma/
 │   │   ├── schema.prisma      Modelo de dados
-│   │   ├── migrations/        Fundação + Cadastro de Empresas (incremental)
+│   │   ├── migrations/        Fundação + Cadastro de Empresas + Cadastro de Fornecedores (incremental)
 │   │   └── seed.ts             Perfis, permissões e organização/empresa de demonstração
 │   └── src/
 │       ├── common/             Decorators, guards, filtros, interceptor de resposta padrão, controle de acesso
 │       ├── integrations/
 │       │   ├── company-registry/  Consulta cadastral de CNPJ (provider desacoplado: mock/BrasilAPI)
 │       │   └── postal-code/        Consulta de CEP (provider desacoplado: mock/ViaCEP)
-│       ├── storage/             Upload/remoção de arquivos no Supabase Storage (logo da empresa)
+│       ├── storage/             Upload/remoção de arquivos no Supabase Storage (logo da empresa, documentos de fornecedor)
 │       ├── modules/
 │       │   ├── auth/            Validação de sessão Supabase + carregamento de vínculos
 │       │   ├── organizations/   CRUD de organizações
 │       │   ├── companies/       Cadastro de Empresas completo (ver seção dedicada abaixo)
+│       │   ├── suppliers/       Cadastro de Fornecedores completo (ver seção dedicada abaixo)
+│       │   ├── taxonomy/        Categorias e centros de custo (estrutura mínima reutilizável, com cadastro rápido)
+│       │   ├── financial-institutions/  Catálogo de bancos (seed + busca)
 │       │   ├── users/           Convite de usuários e gestão de vínculos/perfis
 │       │   ├── roles/           Listagem de perfis e permissões
 │       │   └── audit/           Trilha de auditoria (somente leitura)
@@ -196,12 +204,72 @@ sem nenhuma chamada externa — ideal para desenvolvimento. Defina
 [ViaCEP](https://viacep.com.br) por padrão (`POSTAL_CODE_PROVIDER=viacep`), com um modo
 `mock` para testes offline. Nenhum dos dois acessa diretamente o site da Receita Federal.
 
+## Cadastro de Fornecedores
+
+O cadastro tem duas camadas: o **cadastro global** (`suppliers` — identidade fiscal por
+CPF/CNPJ, nunca duplicado na plataforma) e o **vínculo com a empresa**
+(`supplier_company_links` — classificação financeira, condições comerciais, retenções,
+rateios, regras de automação e contratos, independentes por empresa; `supplier_id +
+company_id` é único).
+
+Rotas do front-end: `/cadastros/fornecedores` (listagem, sempre por empresa selecionada),
+`/cadastros/fornecedores/novo` (wizard de 10 etapas, com `?draftId=` para retomar),
+`/cadastros/fornecedores/:id` (detalhes, com abas), `/cadastros/fornecedores/:id/editar`
+(dados cadastrais globais) e `/cadastros/fornecedores/:id/empresas/:companyLinkId`
+(configuração do vínculo com a empresa — classificação, comercial, retenções/rateios,
+automações, contratos, histórico).
+
+Principais endpoints da API (todos documentados no Swagger):
+
+| Rota | Descrição |
+| --- | --- |
+| `GET /suppliers` | Lista os **vínculos** (fornecedor + empresa), com busca, filtros e paginação |
+| `POST /suppliers` | Cria o cadastro global (opcionalmente já com o vínculo inicial embutido) |
+| `POST /suppliers/drafts` | Cria/atualiza um rascunho |
+| `GET/PATCH /suppliers/:id` | Consulta/atualiza o cadastro global |
+| `POST /suppliers/document-query` | Consulta CPF/CNPJ — reaproveita o provider do Cadastro de Empresas |
+| `POST /suppliers/:id/company-links` | Vincula um fornecedor já existente a uma empresa |
+| `GET/PATCH/DELETE /supplier-company-links/:id` | Consulta/edita/exclui um vínculo (exclusão só em rascunho sem uso) |
+| `POST /supplier-company-links/:id/{activate,deactivate,suspend,block,unblock}` | Transições de status do vínculo (bloqueio/suspensão/inativação exigem motivo) |
+| `POST /supplier-company-links/:id/duplicate` | Duplica o vínculo para outra empresa (nunca duplica o cadastro global) |
+| `POST /suppliers/:id/bank-accounts` \| `/pix-keys` | Inclui conta bancária/chave PIX — exige confirmação e motivo quando o titular é um terceiro |
+| `POST /supplier-company-links/:id/classification-rules` \| `/allocations` \| `/tax-withholdings` \| `/contracts` | Regras de classificação alternativa, rateios (validados até 100%), retenções tributárias e contratos |
+| `POST /suppliers/:id/documents` | Upload de documentos (Supabase Storage) |
+| `GET /supplier-company-links/:id/audit` | Auditoria do vínculo (somente leitura) |
+| `GET/POST /categories` \| `/cost-centers` | Estrutura mínima reutilizável para o cadastro rápido de categoria/centro de custo, sem sair do formulário |
+| `GET /financial-institutions` | Catálogo de bancos (busca por código, ISPB ou nome) |
+
+Permissões granulares: `supplier.view`, `supplier.create`, `supplier.update`,
+`supplier.activate`, `supplier.deactivate`, `supplier.suspend`, `supplier.block`,
+`supplier.unblock`, `supplier.delete`, `supplier.query_document`,
+`supplier.manage_company_link`, `supplier.manage_bank_data`, `supplier.manage_pix_keys`,
+`supplier.manage_classification`, `supplier.manage_rules`, `supplier.manage_allocations`,
+`supplier.manage_withholdings`, `supplier.manage_contracts`, `supplier.manage_documents`,
+`supplier.view_movements`, `supplier.view_audit`, `supplier.duplicate_link`,
+`supplier.allow_third_party_bank_account` e `supplier.view_bank_data`. Usuários sem
+`supplier.view_bank_data` recebem agência/conta/chave PIX mascaradas do back-end (nunca o
+valor completo).
+
+**Reconhecimento automático futuro**: a estrutura de dados para identificação em
+importações (nomes alternativos, identificadores bancários, base de aprendizado por
+confirmação) já existe (`supplier_alternative_names`, `supplier_bank_identifiers`,
+`supplier_recognition_learning`), mas nesta etapa apenas armazena — nenhuma decisão
+automática é tomada, e a simples identificação do fornecedor nunca gera conciliação
+automática sozinha.
+
 ## Banco de dados e migrations
 
 O schema fica em `backend/prisma/schema.prisma`. Tabelas principais:
 `organizations`, `companies`, `company_addresses`, `company_contacts`, `company_cnaes`,
-`company_registry_queries`, `company_status_history`, `users`, `roles`, `permissions`,
-`role_permissions`, `user_organization_roles`, `user_company_roles` e `audit_logs`.
+`company_registry_queries`, `company_status_history`, `suppliers`,
+`supplier_company_links`, `supplier_addresses`, `supplier_contacts`, `supplier_cnaes`,
+`supplier_alternative_names`, `supplier_bank_accounts`, `supplier_pix_keys`,
+`supplier_bank_identifiers`, `supplier_classification_rules`,
+`supplier_default_allocations`, `supplier_tax_withholdings`, `supplier_contracts`,
+`supplier_registry_queries`, `supplier_status_history`, `supplier_recognition_learning`,
+`financial_institutions`, `categories`, `cost_centers`, `attachments` (anexos genéricos),
+`users`, `roles`, `permissions`, `role_permissions`, `user_organization_roles`,
+`user_company_roles` e `audit_logs`.
 
 ```bash
 cd backend
@@ -216,10 +284,28 @@ npm run seed               # reaplica perfis/permissões/dados de demonstração
 ```bash
 cd backend
 npm test        # testes unitários: isolamento multiempresa/organização, permissões,
-                 # validação de CPF/CNPJ, duplicidade de documento, pendências de ativação,
-                 # bloqueio/permissão de exclusão de empresas
+                 # validação de CPF/CNPJ, duplicidade de documento (empresas e fornecedores),
+                 # pendências de ativação, bloqueio/permissão de exclusão de empresas,
+                 # vínculo duplicado, conta/PIX de terceiro, mascaramento de dados bancários,
+                 # soma de rateios (até 100%), bloqueio/motivo obrigatório do vínculo
 npm run test:e2e
 ```
+
+### Testar manualmente o Cadastro de Fornecedores
+
+1. Suba backend e frontend, faça login e selecione a empresa "Tchê Grill" no cabeçalho.
+2. Acesse **Cadastros → Fornecedores** — o fornecedor de demonstração "Frigorífico Boi
+   Forte" (criado pelo seed, já vinculado à empresa com categoria "Carnes e proteínas" e
+   centro de custo "Churrasqueira") deve aparecer na listagem.
+3. Clique em **+ Incluir novo fornecedor** e percorra o wizard: informe um CNPJ diferente
+   do já cadastrado, teste "Consultar CNPJ" (provider mock), inclua um endereço (com
+   "Buscar CEP"), uma conta bancária com titular diferente do fornecedor (deve exigir
+   confirmação de conta de terceiro) e uma categoria/centro de custo pelo cadastro rápido
+   (sem sair do formulário).
+4. Tente cadastrar novamente o mesmo CNPJ do fornecedor de demonstração — o sistema deve
+   identificar a duplicidade e oferecer vincular à empresa em vez de duplicar o cadastro.
+5. Na tela de detalhes, teste bloquear (exige motivo), desbloquear e duplicar o vínculo
+   para outra empresa.
 
 ### Testar manualmente o Cadastro de Empresas
 
@@ -262,6 +348,5 @@ Com o back-end rodando, o Swagger fica disponível em `http://localhost:3333/doc
 
 ## Próxima etapa recomendada
 
-Cadastro de **Fornecedores**, seguindo o mesmo padrão de listagem, formulário e cadastro
-rápido já estabelecido no Cadastro de Empresas — todo fornecedor deverá se vincular a uma
-empresa (`company_id`).
+Cadastro de **Clientes**, seguindo o mesmo padrão de cadastro global + vínculo por empresa
+já estabelecido no Cadastro de Fornecedores.

@@ -60,6 +60,52 @@ usada para liberar ou bloquear operações no sistema. `POST /companies` cria co
 (uma edição "de verdade" deixa de ser rascunho); apenas `POST /companies/:id/activate`
 (que valida as pendências da seção 31 do prompt mestre) leva a `ACTIVE`.
 
+### Cadastro global vs. vínculo por empresa (módulo Cadastro de Fornecedores)
+
+O módulo de Fornecedores introduz uma segunda camada de modelagem: `Supplier` (identidade
+fiscal/cadastral, único por CPF/CNPJ em toda a plataforma — nunca duplicado) e
+`SupplierCompanyLink` (configuração específica de cada empresa que utiliza aquele
+fornecedor: categoria/centro de custo padrão, condições comerciais, retenções, rateios,
+regras de automação e contratos, com `supplier_id + company_id` único). Isso permite que o
+mesmo fornecedor global tenha categorias, centros de custo e regras completamente
+diferentes em cada empresa da organização, sem duplicar CPF/CNPJ, endereços, contas
+bancárias ou chaves PIX — que pertencem ao cadastro global. `SuppliersService` cuida do
+cadastro global (e dos recursos que pertencem a ele: endereços, contatos, contas
+bancárias, PIX, documentos); `SupplierCompanyLinksService` cuida exclusivamente do vínculo
+e de tudo que é específico da empresa (classificação, regras, rateios, retenções,
+contratos, histórico de status do vínculo).
+
+### Categorias e centros de custo mínimos (`taxonomy`)
+
+O prompt de fornecedores exige que o usuário defina categoria/subcategoria e centro de
+custo padrão do vínculo, com cadastro rápido (sem sair do formulário), mas o módulo
+completo de categorias/centros de custo ainda não foi construído. `modules/taxonomy`
+implementa apenas a estrutura mínima reutilizável (`Category`, com auto-relacionamento
+para subcategorias, e `CostCenter`, ambos escopados por empresa) — reaproveitada pelo
+front-end via um componente de seleção com "+ incluir novo(a)" embutido
+(`components/suppliers/category-select.tsx` e `cost-center-select.tsx`). O módulo completo
+(hierarquias mais ricas, orçamento, relatórios) fica para uma etapa futura; os nomes das
+tabelas foram escolhidos para que o módulo completo, quando existir, possa estender este
+schema em vez de substituí-lo.
+
+### Proteção de dados bancários
+
+Contas bancárias e chaves PIX de fornecedores são tratadas como dados restritos (seção 79
+do prompt de fornecedores). Sem a permissão `supplier.view_bank_data`, o back-end nunca
+retorna os valores completos — `SuppliersService.findOne` aplica
+`common/utils/mask.util.ts` (`maskAccountFragment`, `maskPixKeyValue`) antes de responder,
+de forma que o mascaramento não dependa do front-end lembrar de escondê-los.
+
+### Titularidade de terceiro em contas bancárias/PIX
+
+Ao incluir uma conta bancária ou chave PIX cujo titular (CPF/CNPJ) não corresponde ao
+fornecedor, o cadastro não é bloqueado — mas exige que o usuário confirme explicitamente
+(`isThirdParty: true`) com uma justificativa, e a permissão adicional
+`supplier.allow_third_party_bank_account`. A estrutura de aprovação em duas etapas
+(`bank_data_change_status`: `PENDING`/`APPROVED`/`REJECTED`/`NOT_REQUIRED`) já existe no
+schema para quando o fluxo completo de dupla aprovação for construído; por ora, alterações
+em dados bancários marcam `changeStatus: PENDING` mas não bloqueiam o uso imediato.
+
 ## Autenticação
 
 - Login, sessão, recuperação de senha e confirmação de e-mail são delegados ao **Supabase

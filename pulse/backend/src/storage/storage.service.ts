@@ -10,6 +10,7 @@ const ALLOWED_LOGO_MIME_TYPES: Record<string, string> = {
 };
 
 export const MAX_LOGO_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
+export const MAX_DOCUMENT_SIZE_BYTES = 15 * 1024 * 1024; // 15MB
 
 /** Encapsula o acesso ao Supabase Storage. Estrutura preparada para migração futura
  * para Amazon S3 ou Cloudflare R2 sem alterar os consumidores deste serviço. */
@@ -60,6 +61,40 @@ export class StorageService {
       .getPublicUrl(path);
 
     return data.publicUrl;
+  }
+
+  /** Envia um documento genérico (contrato, comprovante, certidão etc.) vinculado a
+   * qualquer entidade do sistema, identificada por entityType/entityId (seção 44 do
+   * prompt de fornecedores — estrutura de anexos reutilizável). */
+  async uploadDocument(
+    entityType: string,
+    entityId: string,
+    file: Express.Multer.File,
+  ): Promise<{ storagePath: string; publicUrl: string }> {
+    if (file.size > MAX_DOCUMENT_SIZE_BYTES) {
+      throw new BadRequestException(
+        'O arquivo enviado excede o tamanho máximo permitido (15MB).',
+      );
+    }
+
+    const safeName = file.originalname.replace(/[^\w.-]+/g, '_');
+    const path = `documents/${entityType}/${entityId}/${Date.now()}-${safeName}`;
+
+    const { error } = await this.supabaseAdmin.client.storage
+      .from(this.bucket)
+      .upload(path, file.buffer, { contentType: file.mimetype, upsert: true });
+
+    if (error) {
+      throw new BadRequestException(
+        `Não foi possível enviar o documento: ${error.message}`,
+      );
+    }
+
+    const { data } = this.supabaseAdmin.client.storage
+      .from(this.bucket)
+      .getPublicUrl(path);
+
+    return { storagePath: path, publicUrl: data.publicUrl };
   }
 
   async removeCompanyLogo(logoUrl: string): Promise<void> {

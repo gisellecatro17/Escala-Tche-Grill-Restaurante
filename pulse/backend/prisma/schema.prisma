@@ -98,6 +98,179 @@ enum RegistryQueryStatus {
   @@map("registry_query_status")
 }
 
+// ── Cadastro de Fornecedores ────────────────────────────────────────────────
+
+/// Pessoa física, jurídica ou fornecedor estrangeiro.
+enum SupplierPersonType {
+  INDIVIDUAL
+  LEGAL_ENTITY
+  FOREIGN
+
+  @@map("supplier_person_type")
+}
+
+/// Status interno do cadastro global do fornecedor (distinto do status do vínculo por empresa).
+enum SupplierSystemStatus {
+  DRAFT
+  PENDING_VALIDATION
+  ACTIVE
+  SUSPENDED
+  INACTIVE
+
+  @@map("supplier_system_status")
+}
+
+/// Status do vínculo de um fornecedor com uma empresa específica.
+enum SupplierLinkStatus {
+  DRAFT
+  ACTIVE
+  BLOCKED
+  SUSPENDED
+  INACTIVE
+
+  @@map("supplier_link_status")
+}
+
+enum SupplierAddressType {
+  FISCAL
+  COMMERCIAL
+  BILLING
+  CORRESPONDENCE
+  OPERATIONAL
+
+  @@map("supplier_address_type")
+}
+
+/// Classificação do fornecedor quanto à natureza do que fornece (múltipla escolha, por vínculo).
+enum SupplierType {
+  MERCHANDISE
+  SERVICE
+  SERVICE_PROVIDER
+  UTILITY_COMPANY
+  TAX
+  EMPLOYEE
+  PARTNER
+  FINANCIAL_INSTITUTION
+  LANDLORD
+  CARRIER
+  GOVERNMENT_AGENCY
+  FREELANCER
+  OCCASIONAL_SUPPLIER
+  OTHER
+
+  @@map("supplier_type")
+}
+
+enum SupplierBankAccountType {
+  CHECKING
+  SAVINGS
+  PAYMENT
+  DIGITAL
+  THIRD_PARTY
+  OTHER
+
+  @@map("supplier_bank_account_type")
+}
+
+enum PixKeyType {
+  CPF
+  CNPJ
+  PHONE
+  EMAIL
+  RANDOM
+  BANK_DATA
+
+  @@map("pix_key_type")
+}
+
+enum BankDataVerificationStatus {
+  UNVERIFIED
+  VERIFIED
+  FAILED
+
+  @@map("bank_data_verification_status")
+}
+
+/// Status de aprovação de uma alteração de dado bancário/PIX. A estrutura já é criada
+/// nesta etapa (seção 27 do prompt de fornecedores); o fluxo de dupla aprovação em si
+/// será construído em etapa futura.
+enum BankDataChangeStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  NOT_REQUIRED
+
+  @@map("bank_data_change_status")
+}
+
+enum PaymentMethod {
+  PIX
+  BOLETO
+  BANK_TRANSFER
+  DIRECT_DEBIT
+  CARD
+  CASH
+  CHECK
+  OTHER
+
+  @@map("payment_method")
+}
+
+enum FinancialNature {
+  COST
+  EXPENSE
+  INVESTMENT
+  TAX
+  LOAN
+  DISTRIBUTION
+  REIMBURSEMENT
+  ADVANCE
+  TRANSFER
+  OTHER
+
+  @@map("financial_nature")
+}
+
+/// Política de retenção tributária do vínculo (seção 34).
+enum TaxWithholdingPolicy {
+  YES
+  NO
+  EVALUATE_PER_ENTRY
+
+  @@map("tax_withholding_policy")
+}
+
+enum TaxWithholdingType {
+  INSS
+  IRRF
+  ISS
+  PIS
+  COFINS
+  CSLL
+  OTHER
+
+  @@map("tax_withholding_type")
+}
+
+enum AllocationType {
+  PERCENTAGE
+  FIXED_AMOUNT
+
+  @@map("allocation_type")
+}
+
+enum SupplierContractStatus {
+  DRAFT
+  UNDER_REVIEW
+  ACTIVE
+  SUSPENDED
+  CLOSED
+  CANCELLED
+  EXPIRED
+
+  @@map("supplier_contract_status")
+}
+
 /// Cliente/grupo contratante da plataforma Pulse. Pode possuir várias empresas (CNPJs).
 model Organization {
   id     String       @id @default(uuid()) @db.Uuid
@@ -110,10 +283,12 @@ model Organization {
   createdBy String?   @map("created_by") @db.Uuid
   updatedBy String?   @map("updated_by") @db.Uuid
 
-  companies              Company[]
-  userMemberships        UserOrganizationRole[]
-  auditLogs              AuditLog[]
-  companyRegistryQueries CompanyRegistryQuery[]
+  companies               Company[]
+  userMemberships         UserOrganizationRole[]
+  auditLogs               AuditLog[]
+  companyRegistryQueries  CompanyRegistryQuery[]
+  suppliers               Supplier[]
+  supplierRegistryQueries SupplierRegistryQuery[]
 
   @@map("organizations")
 }
@@ -216,6 +391,9 @@ model Company {
   statusHistory   CompanyStatusHistory[]
   userMemberships UserCompanyRole[]
   auditLogs       AuditLog[]
+  supplierLinks   SupplierCompanyLink[]
+  categories      Category[]
+  costCenters     CostCenter[]
 
   @@unique([organizationId, internalCode])
   @@index([organizationId])
@@ -487,4 +665,627 @@ model AuditLog {
   @@index([entity, entityId])
   @@index([createdAt])
   @@map("audit_logs")
+}
+
+// ── Cadastro de Fornecedores ────────────────────────────────────────────────
+// Estrutura mínima reutilizável de categorias e centros de custo financeiros
+// (seção 29 do prompt de fornecedores) — escopo restrito ao necessário para a
+// classificação padrão de fornecedores; o módulo completo fica para etapa futura.
+
+/// Categoria financeira mínima, com suporte a subcategorias (parentCategoryId).
+model Category {
+  id               String       @id @default(uuid()) @db.Uuid
+  companyId        String       @map("company_id") @db.Uuid
+  parentCategoryId String?      @map("parent_category_id") @db.Uuid
+  name             String
+  status           RecordStatus @default(ACTIVE)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  company        Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  parentCategory Category?  @relation("CategoryHierarchy", fields: [parentCategoryId], references: [id])
+  subcategories  Category[] @relation("CategoryHierarchy")
+
+  defaultForLinks    SupplierCompanyLink[] @relation("LinkDefaultCategory")
+  defaultSubForLinks SupplierCompanyLink[] @relation("LinkDefaultSubcategory")
+
+  @@index([companyId])
+  @@map("categories")
+}
+
+/// Centro de custo mínimo.
+model CostCenter {
+  id        String       @id @default(uuid()) @db.Uuid
+  companyId String       @map("company_id") @db.Uuid
+  name      String
+  status    RecordStatus @default(ACTIVE)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  company Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  links   SupplierCompanyLink[]
+
+  @@index([companyId])
+  @@map("cost_centers")
+}
+
+/// Catálogo de instituições financeiras (bancos), reutilizável por outros módulos futuros.
+model FinancialInstitution {
+  id        String       @id @default(uuid()) @db.Uuid
+  compeCode String?      @map("compe_code")
+  ispb      String?
+  legalName String       @map("legal_name")
+  shortName String?      @map("short_name")
+  status    RecordStatus @default(ACTIVE)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  bankAccounts SupplierBankAccount[]
+
+  @@unique([compeCode])
+  @@index([ispb])
+  @@index([legalName])
+  @@map("financial_institutions")
+}
+
+/// Cadastro global do fornecedor (identidade fiscal/cadastral) — não deve ser duplicado
+/// por CPF/CNPJ. Cada empresa que utiliza este fornecedor possui seu próprio vínculo
+/// (SupplierCompanyLink) com configurações independentes.
+model Supplier {
+  id             String             @id @default(uuid()) @db.Uuid
+  organizationId String             @map("organization_id") @db.Uuid
+  personType     SupplierPersonType @default(LEGAL_ENTITY) @map("person_type")
+
+  documentNumber           String? @map("document_number")
+  normalizedDocumentNumber String? @unique @map("normalized_document_number")
+  legalName                String? @map("legal_name")
+  tradeName                String? @map("trade_name")
+  displayName              String? @map("display_name")
+
+  stateRegistration     String?   @map("state_registration")
+  municipalRegistration String?   @map("municipal_registration")
+  openingDate           DateTime? @map("opening_date")
+  legalNature           String?   @map("legal_nature")
+  companySize           String?   @map("company_size")
+  shareCapital          Decimal?  @map("share_capital") @db.Decimal(18, 2)
+
+  externalRegistrationStatus     String?   @map("external_registration_status")
+  externalRegistrationStatusDate DateTime? @map("external_registration_status_date")
+  mainCnae                       String?   @map("main_cnae")
+  countryCode                    String    @default("BR") @map("country_code")
+  segment                        String?
+
+  // Pessoa estrangeira (seção 13)
+  foreignTaxId    String? @map("foreign_tax_id")
+  foreignCountry  String? @map("foreign_country")
+  foreignCurrency String? @map("foreign_currency")
+
+  systemStatus SupplierSystemStatus @default(DRAFT) @map("system_status")
+  generalNotes String?              @map("general_notes")
+
+  // Contatos gerais (seção 21)
+  phone                String?
+  whatsapp             String?
+  email                String?
+  emailFinancial       String? @map("email_financial")
+  emailPaymentReceipts String? @map("email_payment_receipts")
+  website              String?
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  addresses        SupplierAddress[]
+  contacts         SupplierContact[]
+  cnaes            SupplierCnae[]
+  alternativeNames SupplierAlternativeName[]
+  bankAccounts     SupplierBankAccount[]
+  pixKeys          SupplierPixKey[]
+  bankIdentifiers  SupplierBankIdentifier[]
+  companyLinks     SupplierCompanyLink[]
+  registryQueries  SupplierRegistryQuery[]
+  statusHistory    SupplierStatusHistory[]
+
+  @@index([organizationId])
+  @@index([systemStatus])
+  @@map("suppliers")
+}
+
+/// Endereço do fornecedor (fiscal, comercial, cobrança, correspondência, operacional).
+model SupplierAddress {
+  id         String @id @default(uuid()) @db.Uuid
+  supplierId String @map("supplier_id") @db.Uuid
+
+  addressType          SupplierAddressType @map("address_type")
+  postalCode           String              @map("postal_code")
+  normalizedPostalCode String              @map("normalized_postal_code")
+  street               String
+  number               String?
+  complement           String?
+  district             String?
+  city                 String
+  state                String
+  country              String              @default("BR")
+  cityCode             String?             @map("city_code")
+  reference            String?
+  isPrimary            Boolean             @default(false) @map("is_primary")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+
+  supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@index([supplierId])
+  @@map("supplier_addresses")
+}
+
+/// Contato do fornecedor.
+model SupplierContact {
+  id         String @id @default(uuid()) @db.Uuid
+  supplierId String @map("supplier_id") @db.Uuid
+
+  name                    String
+  position                String?
+  department              String?
+  phone                   String?
+  whatsapp                String?
+  email                   String?
+  isPrimary               Boolean      @default(false) @map("is_primary")
+  isFinancialContact      Boolean      @default(false) @map("is_financial_contact")
+  isCommercialContact     Boolean      @default(false) @map("is_commercial_contact")
+  isInvoiceResponsible    Boolean      @default(false) @map("is_invoice_responsible")
+  isBillingResponsible    Boolean      @default(false) @map("is_billing_responsible")
+  receivesPaymentReceipts Boolean      @default(false) @map("receives_payment_receipts")
+  status                  RecordStatus @default(ACTIVE)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+
+  supplier  Supplier           @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  contracts SupplierContract[]
+
+  @@index([supplierId])
+  @@map("supplier_contacts")
+}
+
+/// CNAE (principal ou secundário) do fornecedor.
+model SupplierCnae {
+  id          String  @id @default(uuid()) @db.Uuid
+  supplierId  String  @map("supplier_id") @db.Uuid
+  cnaeCode    String  @map("cnae_code")
+  description String?
+  isMain      Boolean @default(false) @map("is_main")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@unique([supplierId, cnaeCode])
+  @@index([supplierId])
+  @@map("supplier_cnaes")
+}
+
+/// Nome alternativo pelo qual o fornecedor pode ser reconhecido (seção 39) — usado
+/// futuramente para identificação automática em extratos bancários.
+model SupplierAlternativeName {
+  id             String @id @default(uuid()) @db.Uuid
+  supplierId     String @map("supplier_id") @db.Uuid
+  name           String
+  normalizedName String @map("normalized_name")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@index([supplierId])
+  @@map("supplier_alternative_names")
+}
+
+/// Conta bancária do fornecedor. Pode ser de titularidade de terceiro, mediante
+/// justificativa (seção 24).
+model SupplierBankAccount {
+  id                     String  @id @default(uuid()) @db.Uuid
+  supplierId             String  @map("supplier_id") @db.Uuid
+  financialInstitutionId String? @map("financial_institution_id") @db.Uuid
+
+  branchNumber                String                     @map("branch_number")
+  branchDigit                 String?                    @map("branch_digit")
+  accountNumber               String                     @map("account_number")
+  accountDigit                String?                    @map("account_digit")
+  normalizedAccountIdentifier String?                    @map("normalized_account_identifier")
+  accountType                 SupplierBankAccountType    @map("account_type")
+  holderName                  String                     @map("holder_name")
+  holderDocument              String                     @map("holder_document")
+  normalizedHolderDocument    String                     @map("normalized_holder_document")
+  isPrimary                   Boolean                    @default(false) @map("is_primary")
+  isThirdParty                Boolean                    @default(false) @map("is_third_party")
+  thirdPartyReason            String?                    @map("third_party_reason")
+  thirdPartyApprovedBy        String?                    @map("third_party_approved_by") @db.Uuid
+  thirdPartyApprovedAt        DateTime?                  @map("third_party_approved_at")
+  verificationStatus          BankDataVerificationStatus @default(UNVERIFIED) @map("verification_status")
+  changeStatus                BankDataChangeStatus       @default(NOT_REQUIRED) @map("change_status")
+  status                      RecordStatus               @default(ACTIVE)
+  proofDocumentId             String?                    @map("proof_document_id") @db.Uuid
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+
+  supplier             Supplier              @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  financialInstitution FinancialInstitution? @relation(fields: [financialInstitutionId], references: [id])
+  pixKeys              SupplierPixKey[]
+
+  @@index([supplierId])
+  @@map("supplier_bank_accounts")
+}
+
+/// Chave PIX do fornecedor.
+model SupplierPixKey {
+  id            String  @id @default(uuid()) @db.Uuid
+  supplierId    String  @map("supplier_id") @db.Uuid
+  bankAccountId String? @map("bank_account_id") @db.Uuid
+
+  pixType                  PixKeyType                 @map("pix_type")
+  pixKey                   String                     @map("pix_key")
+  normalizedKey            String                     @unique @map("normalized_key")
+  holderName               String                     @map("holder_name")
+  holderDocument           String                     @map("holder_document")
+  normalizedHolderDocument String                     @map("normalized_holder_document")
+  isPrimary                Boolean                    @default(false) @map("is_primary")
+  isThirdParty             Boolean                    @default(false) @map("is_third_party")
+  thirdPartyReason         String?                    @map("third_party_reason")
+  verificationStatus       BankDataVerificationStatus @default(UNVERIFIED) @map("verification_status")
+  changeStatus             BankDataChangeStatus       @default(NOT_REQUIRED) @map("change_status")
+  status                   RecordStatus               @default(ACTIVE)
+  proofDocumentId          String?                    @map("proof_document_id") @db.Uuid
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+
+  supplier    Supplier             @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  bankAccount SupplierBankAccount? @relation(fields: [bankAccountId], references: [id])
+
+  @@index([supplierId])
+  @@map("supplier_pix_keys")
+}
+
+/// Identificador bancário aprendido/cadastrado para reconhecimento futuro do fornecedor em
+/// extratos (OFX), boletos e comprovantes (seção 38). Nesta etapa apenas a estrutura de
+/// dados é criada — o motor de reconhecimento automático fica para etapa futura.
+model SupplierBankIdentifier {
+  id         String  @id @default(uuid()) @db.Uuid
+  supplierId String  @map("supplier_id") @db.Uuid
+  companyId  String? @map("company_id") @db.Uuid
+
+  identifierType  String
+  identifierValue String       @map("identifier_value")
+  normalizedValue String       @map("normalized_value")
+  source          String?
+  priority        Int          @default(100)
+  confidence      Decimal?     @db.Decimal(5, 2)
+  confirmedCount  Int          @default(0) @map("confirmed_count")
+  rejectedCount   Int          @default(0) @map("rejected_count")
+  lastConfirmedAt DateTime?    @map("last_confirmed_at")
+  status          RecordStatus @default(ACTIVE)
+
+  createdBy String?  @map("created_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@index([supplierId])
+  @@index([normalizedValue])
+  @@map("supplier_bank_identifiers")
+}
+
+/// Vínculo de um fornecedor global com uma empresa — cada empresa possui sua própria
+/// classificação financeira, condições comerciais, retenções, rateios e automações
+/// (seção 3.2 do prompt de fornecedores).
+model SupplierCompanyLink {
+  id         String @id @default(uuid()) @db.Uuid
+  supplierId String @map("supplier_id") @db.Uuid
+  companyId  String @map("company_id") @db.Uuid
+
+  internalCode  String?        @map("internal_code")
+  supplierTypes SupplierType[] @map("supplier_types")
+
+  defaultCategoryId        String?          @map("default_category_id") @db.Uuid
+  defaultSubcategoryId     String?          @map("default_subcategory_id") @db.Uuid
+  defaultCostCenterId      String?          @map("default_cost_center_id") @db.Uuid
+  defaultAccountingAccount String?          @map("default_accounting_account")
+  defaultDescription       String?          @map("default_description")
+  defaultHistory           String?          @map("default_history")
+  financialNature          FinancialNature? @map("financial_nature")
+  categoryRequired         Boolean          @default(false) @map("category_required")
+  costCenterRequired       Boolean          @default(false) @map("cost_center_required")
+
+  preferredPaymentMethod       PaymentMethod? @map("preferred_payment_method")
+  paymentTermDays              Int?           @map("payment_term_days")
+  paymentTermFixedDueDay       Int?           @map("payment_term_fixed_due_day")
+  paymentTermPeriodicity       String?        @map("payment_term_periodicity")
+  preferredBankAccountId       String?        @map("preferred_bank_account_id") @db.Uuid
+  preferredPixKeyId            String?        @map("preferred_pix_key_id") @db.Uuid
+  minimumAmount                Decimal?       @map("minimum_amount") @db.Decimal(18, 2)
+  maximumAmountWithoutApproval Decimal?       @map("maximum_amount_without_approval") @db.Decimal(18, 2)
+
+  hasContract                 Boolean @default(false) @map("has_contract")
+  requiresMatchingBeneficiary Boolean @default(true) @map("requires_matching_beneficiary")
+  allowsThirdPartyPayment     Boolean @default(false) @map("allows_third_party_payment")
+
+  taxWithholdingPolicy TaxWithholdingPolicy? @map("tax_withholding_policy")
+  allocationEnabled    Boolean               @default(false) @map("allocation_enabled")
+
+  // Regras automáticas (seção 36-37) — apenas preferências/estrutura nesta etapa.
+  autoIdentificationEnabled       Boolean @default(true) @map("auto_identification_enabled")
+  autoClassificationEnabled       Boolean @default(true) @map("auto_classification_enabled")
+  autoCostCenterEnabled           Boolean @default(true) @map("auto_cost_center_enabled")
+  autoAllocationEnabled           Boolean @default(true) @map("auto_allocation_enabled")
+  reconciliationSuggestionEnabled Boolean @default(true) @map("reconciliation_suggestion_enabled")
+  autoEntryCreationEnabled        Boolean @default(false) @map("auto_entry_creation_enabled")
+  autoReconciliationEnabled       Boolean @default(false) @map("auto_reconciliation_enabled")
+  confirmationThreshold           Decimal @default(95) @map("confirmation_threshold") @db.Decimal(5, 2)
+
+  status           SupplierLinkStatus @default(DRAFT)
+  blockReason      String?            @map("block_reason")
+  suspensionReason String?            @map("suspension_reason")
+  internalNotes    String?            @map("internal_notes")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+
+  supplier           Supplier    @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  company            Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  defaultCategory    Category?   @relation("LinkDefaultCategory", fields: [defaultCategoryId], references: [id])
+  defaultSubcategory Category?   @relation("LinkDefaultSubcategory", fields: [defaultSubcategoryId], references: [id])
+  defaultCostCenter  CostCenter? @relation(fields: [defaultCostCenterId], references: [id])
+
+  classificationRules SupplierClassificationRule[]
+  allocations         SupplierDefaultAllocation[]
+  taxWithholdings     SupplierTaxWithholding[]
+  contracts           SupplierContract[]
+  statusHistory       SupplierStatusHistory[]
+
+  @@unique([supplierId, companyId])
+  @@index([companyId])
+  @@index([supplierId])
+  @@map("supplier_company_links")
+}
+
+/// Regra de classificação automática alternativa por condição (seção 31).
+model SupplierClassificationRule {
+  id                    String @id @default(uuid()) @db.Uuid
+  supplierCompanyLinkId String @map("supplier_company_link_id") @db.Uuid
+
+  ruleType             String?
+  conditionField       String       @map("condition_field")
+  conditionOperator    String       @map("condition_operator")
+  conditionValue       String       @map("condition_value")
+  normalizedValue      String?      @map("normalized_value")
+  categoryId           String?      @map("category_id") @db.Uuid
+  subcategoryId        String?      @map("subcategory_id") @db.Uuid
+  costCenterId         String?      @map("cost_center_id") @db.Uuid
+  priority             Int          @default(100)
+  confidence           Decimal?     @db.Decimal(5, 2)
+  automatic            Boolean      @default(false)
+  requiresConfirmation Boolean      @default(true) @map("requires_confirmation")
+  status               RecordStatus @default(ACTIVE)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+
+  link SupplierCompanyLink @relation(fields: [supplierCompanyLinkId], references: [id], onDelete: Cascade)
+
+  @@index([supplierCompanyLinkId])
+  @@map("supplier_classification_rules")
+}
+
+/// Item de rateio padrão do vínculo (seção 35).
+model SupplierDefaultAllocation {
+  id                    String @id @default(uuid()) @db.Uuid
+  supplierCompanyLinkId String @map("supplier_company_link_id") @db.Uuid
+
+  categoryId     String?        @map("category_id") @db.Uuid
+  costCenterId   String?        @map("cost_center_id") @db.Uuid
+  allocationType AllocationType @map("allocation_type")
+  percentage     Decimal?       @db.Decimal(5, 2)
+  fixedAmount    Decimal?       @map("fixed_amount") @db.Decimal(18, 2)
+  priority       Int            @default(100)
+  status         RecordStatus   @default(ACTIVE)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  link SupplierCompanyLink @relation(fields: [supplierCompanyLinkId], references: [id], onDelete: Cascade)
+
+  @@index([supplierCompanyLinkId])
+  @@map("supplier_default_allocations")
+}
+
+/// Retenção tributária padrão do vínculo (seção 34) — funciona como sugestão, podendo ser
+/// alterada em cada lançamento futuro.
+model SupplierTaxWithholding {
+  id                    String @id @default(uuid()) @db.Uuid
+  supplierCompanyLinkId String @map("supplier_company_link_id") @db.Uuid
+
+  taxType              TaxWithholdingType @map("tax_type")
+  rate                 Decimal?           @db.Decimal(5, 2)
+  minimumAmount        Decimal?           @map("minimum_amount") @db.Decimal(18, 2)
+  calculationBase      String?            @map("calculation_base")
+  serviceCode          String?            @map("service_code")
+  cityCode             String?            @map("city_code")
+  revenueCode          String?            @map("revenue_code")
+  automatic            Boolean            @default(false)
+  requiresConfirmation Boolean            @default(true) @map("requires_confirmation")
+  notes                String?
+  status               RecordStatus       @default(ACTIVE)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  link SupplierCompanyLink @relation(fields: [supplierCompanyLinkId], references: [id], onDelete: Cascade)
+
+  @@index([supplierCompanyLinkId])
+  @@map("supplier_tax_withholdings")
+}
+
+/// Contrato do fornecedor com a empresa (seção 43).
+model SupplierContract {
+  id                    String @id @default(uuid()) @db.Uuid
+  supplierCompanyLinkId String @map("supplier_company_link_id") @db.Uuid
+
+  contractNumber        String?                @map("contract_number")
+  description           String?
+  object                String?
+  contractValue         Decimal?               @map("contract_value") @db.Decimal(18, 2)
+  startDate             DateTime?              @map("start_date")
+  endDate               DateTime?              @map("end_date")
+  automaticRenewal      Boolean                @default(false) @map("automatic_renewal")
+  billingFrequency      String?                @map("billing_frequency")
+  adjustmentIndex       String?                @map("adjustment_index")
+  adjustmentDate        DateTime?              @map("adjustment_date")
+  internalResponsibleId String?                @map("internal_responsible_id") @db.Uuid
+  supplierContactId     String?                @map("supplier_contact_id") @db.Uuid
+  status                SupplierContractStatus @default(DRAFT)
+  notes                 String?
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+
+  link            SupplierCompanyLink @relation(fields: [supplierCompanyLinkId], references: [id], onDelete: Cascade)
+  supplierContact SupplierContact?    @relation(fields: [supplierContactId], references: [id])
+
+  @@index([supplierCompanyLinkId])
+  @@map("supplier_contracts")
+}
+
+/// Histórico de consultas cadastrais (CPF/CNPJ) de fornecedores via provider externo
+/// desacoplado — reaproveita o mesmo provider do Cadastro de Empresas.
+model SupplierRegistryQuery {
+  id             String  @id @default(uuid()) @db.Uuid
+  organizationId String? @map("organization_id") @db.Uuid
+  supplierId     String? @map("supplier_id") @db.Uuid
+
+  documentNumber  String              @map("document_number")
+  provider        String
+  requestStatus   RegistryQueryStatus @map("request_status")
+  responseSummary Json?               @map("response_summary")
+  queriedBy       String?             @map("queried_by") @db.Uuid
+  queriedAt       DateTime            @default(now()) @map("queried_at")
+  errorCode       String?             @map("error_code")
+  errorMessage    String?             @map("error_message")
+
+  organization Organization? @relation(fields: [organizationId], references: [id])
+  supplier     Supplier?     @relation(fields: [supplierId], references: [id])
+
+  @@index([documentNumber])
+  @@index([supplierId])
+  @@map("supplier_registry_queries")
+}
+
+/// Histórico de mudanças de status — tanto do cadastro global quanto de um vínculo
+/// específico com uma empresa (bloqueio, desbloqueio, ativação, inativação, suspensão).
+model SupplierStatusHistory {
+  id                    String   @id @default(uuid()) @db.Uuid
+  supplierId            String?  @map("supplier_id") @db.Uuid
+  supplierCompanyLinkId String?  @map("supplier_company_link_id") @db.Uuid
+  previousStatus        String?  @map("previous_status")
+  newStatus             String   @map("new_status")
+  reason                String?
+  changedBy             String?  @map("changed_by") @db.Uuid
+  changedAt             DateTime @default(now()) @map("changed_at")
+
+  supplier Supplier?            @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  link     SupplierCompanyLink? @relation(fields: [supplierCompanyLinkId], references: [id], onDelete: Cascade)
+
+  @@index([supplierId])
+  @@index([supplierCompanyLinkId])
+  @@map("supplier_status_history")
+}
+
+/// Base de aprendizado para reconhecimento futuro de fornecedores a partir de descrições
+/// bancárias confirmadas manualmente (seção 42). Nesta etapa apenas a estrutura de dados e
+/// os serviços de registro são criados — nenhuma decisão autônoma é tomada a partir dela.
+model SupplierRecognitionLearning {
+  id                    String  @id @default(uuid()) @db.Uuid
+  organizationId        String? @map("organization_id") @db.Uuid
+  companyId             String? @map("company_id") @db.Uuid
+  supplierId            String? @map("supplier_id") @db.Uuid
+  supplierCompanyLinkId String? @map("supplier_company_link_id") @db.Uuid
+
+  originalText    String       @map("original_text")
+  normalizedText  String       @map("normalized_text")
+  sourceType      String?      @map("source_type")
+  categoryId      String?      @map("category_id") @db.Uuid
+  costCenterId    String?      @map("cost_center_id") @db.Uuid
+  confirmedCount  Int          @default(0) @map("confirmed_count")
+  rejectedCount   Int          @default(0) @map("rejected_count")
+  confidence      Decimal?     @db.Decimal(5, 2)
+  lastConfirmedBy String?      @map("last_confirmed_by") @db.Uuid
+  lastConfirmedAt DateTime?    @map("last_confirmed_at")
+  status          RecordStatus @default(ACTIVE)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([supplierId])
+  @@map("supplier_recognition_learning")
+}
+
+/// Estrutura genérica de anexos, reutilizável por qualquer entidade do sistema
+/// (fornecedor, vínculo, conta bancária, chave PIX, contrato...) via entityType/entityId.
+model Attachment {
+  id             String  @id @default(uuid()) @db.Uuid
+  organizationId String? @map("organization_id") @db.Uuid
+  companyId      String? @map("company_id") @db.Uuid
+
+  entityType     String       @map("entity_type")
+  entityId       String       @map("entity_id") @db.Uuid
+  documentType   String?      @map("document_type")
+  fileName       String       @map("file_name")
+  storagePath    String       @map("storage_path")
+  mimeType       String?      @map("mime_type")
+  fileSize       Int?         @map("file_size")
+  issueDate      DateTime?    @map("issue_date")
+  expirationDate DateTime?    @map("expiration_date")
+  status         RecordStatus @default(ACTIVE)
+  notes          String?
+  uploadedBy     String?      @map("uploaded_by") @db.Uuid
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@index([entityType, entityId])
+  @@map("attachments")
 }

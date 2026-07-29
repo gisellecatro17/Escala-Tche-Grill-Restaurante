@@ -71,7 +71,7 @@ export const MENU: MenuModule[] = [
     label: "Cadastros",
     items: [
       { label: "Empresas", href: "/cadastros/empresas", icon: Building2, permission: "company.view", implemented: true },
-      { label: "Fornecedores", href: "/cadastros/fornecedores", icon: Truck, permission: "suppliers.view" },
+      { label: "Fornecedores", href: "/cadastros/fornecedores", icon: Truck, permission: "supplier.view", implemented: true },
       { label: "Clientes", href: "/cadastros/clientes", icon: Users, permission: "customers.view" },
       { label: "Categorias financeiras", href: "/cadastros/categorias", icon: Tags, permission: "categories.view" },
       { label: "Centros de custo", href: "/cadastros/centros-de-custo", icon: Layers, permission: "cost-centers.view" },
