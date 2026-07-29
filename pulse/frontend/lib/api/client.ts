@@ -30,8 +30,11 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     data: { session },
   } = await supabase.auth.getSession();
 
+  const isFormData = options.body instanceof FormData;
   const headers = new Headers(options.headers);
-  headers.set("Content-Type", "application/json");
+  if (!isFormData) {
+    headers.set("Content-Type", "application/json");
+  }
 
   if (session?.access_token) {
     headers.set("Authorization", `Bearer ${session.access_token}`);
@@ -44,7 +47,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   const response = await fetch(`${API_URL}${path}`, {
     ...options,
     headers,
-    body: options.body ? JSON.stringify(options.body) : undefined,
+    body: isFormData ? (options.body as FormData) : options.body ? JSON.stringify(options.body) : undefined,
   });
 
   const payload = (await response.json()) as ApiResponse<T>;
@@ -54,6 +57,19 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   }
 
   return payload.data;
+}
+
+/** Monta a query string a partir de um objeto de filtros, ignorando valores vazios. */
+export function buildQueryString(params: Record<string, string | number | boolean | undefined | null>): string {
+  const search = new URLSearchParams();
+
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === null || value === "") continue;
+    search.set(key, String(value));
+  }
+
+  const query = search.toString();
+  return query ? `?${query}` : "";
 }
 
 export const api = {

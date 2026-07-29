@@ -15,6 +15,7 @@ import { OrganizationsModule } from './modules/organizations/organizations.modul
 import { RolesModule } from './modules/roles/roles.module';
 import { UsersModule } from './modules/users/users.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { StorageModule } from './storage/storage.module';
 import { SupabaseModule } from './supabase/supabase.module';
 
 @Module({
@@ -25,6 +26,7 @@ import { SupabaseModule } from './supabase/supabase.module';
     }),
     PrismaModule,
     SupabaseModule,
+    StorageModule,
     AuthModule,
     AuditModule,
     OrganizationsModule,

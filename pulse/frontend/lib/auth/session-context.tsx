@@ -15,7 +15,14 @@ interface SessionContextValue {
   currentMembership: UserCompanyMembership | undefined;
   selectedCompanyId: string | null;
   selectCompany: (companyId: string) => void;
+  /** Permissão na empresa atualmente selecionada. */
   hasPermission: (permissionSlug: string) => boolean;
+  /** Permissão em qualquer organização/empresa vinculada — usado para ações que ainda
+   * não têm uma empresa em contexto (ex.: botão "Incluir nova empresa"). */
+  hasPermissionAnywhere: (permissionSlug: string) => boolean;
+  /** Permissão em uma empresa específica — usado em listagens que exibem várias empresas
+   * ao mesmo tempo (não depende da empresa selecionada no cabeçalho). */
+  hasPermissionForCompany: (companyId: string, permissionSlug: string) => boolean;
 }
 
 const SessionContext = React.createContext<SessionContextValue | null>(null);
@@ -60,11 +67,32 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   const hasPermission = React.useCallback(
     (permissionSlug: string) => {
+      if (user?.isPlatformAdmin) return true;
       if (!currentMembership) return false;
-      if (currentMembership.role.slug === "platform_admin") return true;
       return currentMembership.permissions.includes(permissionSlug);
     },
-    [currentMembership],
+    [user, currentMembership],
+  );
+
+  const hasPermissionAnywhere = React.useCallback(
+    (permissionSlug: string) => {
+      if (!user) return false;
+      if (user.isPlatformAdmin) return true;
+      return (
+        user.organizationMemberships.some((m) => m.permissions.includes(permissionSlug)) ||
+        user.memberships.some((m) => m.permissions.includes(permissionSlug))
+      );
+    },
+    [user],
+  );
+
+  const hasPermissionForCompany = React.useCallback(
+    (companyId: string, permissionSlug: string) => {
+      if (user?.isPlatformAdmin) return true;
+      const membership = user?.memberships.find((m) => m.companyId === companyId);
+      return membership?.permissions.includes(permissionSlug) ?? false;
+    },
+    [user],
   );
 
   const value = React.useMemo<SessionContextValue>(
@@ -76,8 +104,20 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       selectedCompanyId,
       selectCompany,
       hasPermission,
+      hasPermissionAnywhere,
+      hasPermissionForCompany,
     }),
-    [user, isLoading, isError, currentMembership, selectedCompanyId, selectCompany, hasPermission],
+    [
+      user,
+      isLoading,
+      isError,
+      currentMembership,
+      selectedCompanyId,
+      selectCompany,
+      hasPermission,
+      hasPermissionAnywhere,
+      hasPermissionForCompany,
+    ],
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

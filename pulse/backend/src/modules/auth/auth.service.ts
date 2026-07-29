@@ -4,6 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { SupabaseAdminService } from '../../supabase/supabase-admin.service';
 import type {
   RequestMembership,
+  RequestOrganizationMembership,
   RequestUser,
 } from '../../common/types/authenticated-request';
 import { RoleSlug } from '../roles/role-slug.enum';
@@ -74,7 +75,11 @@ export class AuthService {
         where: { userId: user.id, status: 'ACTIVE' },
         include: {
           organization: {
-            include: { companies: { where: { status: { not: 'INACTIVE' } } } },
+            include: {
+              companies: {
+                where: { systemStatus: { notIn: ['INACTIVE', 'CLOSED'] } },
+              },
+            },
           },
           role: { include: { permissions: { include: { permission: true } } } },
         },
@@ -100,7 +105,8 @@ export class AuthService {
       for (const company of orgMembership.organization.companies) {
         membershipsByCompany.set(company.id, {
           companyId: company.id,
-          companyName: company.name,
+          companyName:
+            company.displayName ?? company.legalName ?? 'Empresa sem nome',
           organizationId: orgMembership.organization.id,
           organizationName: orgMembership.organization.name,
           role: {
@@ -121,7 +127,10 @@ export class AuthService {
 
       membershipsByCompany.set(companyMembership.company.id, {
         companyId: companyMembership.company.id,
-        companyName: companyMembership.company.name,
+        companyName:
+          companyMembership.company.displayName ??
+          companyMembership.company.legalName ??
+          'Empresa sem nome',
         organizationId: companyMembership.company.organization.id,
         organizationName: companyMembership.company.organization.name,
         role: {
@@ -134,6 +143,23 @@ export class AuthService {
     }
 
     const memberships = Array.from(membershipsByCompany.values());
+
+    // Vínculo direto por organização — necessário para autorizar ações que ainda não
+    // possuem uma empresa associada (ex.: criar a primeira empresa de uma organização nova).
+    const requestOrganizationMemberships: RequestOrganizationMembership[] =
+      organizationMemberships.map((orgMembership) => ({
+        organizationId: orgMembership.organization.id,
+        organizationName: orgMembership.organization.name,
+        role: {
+          id: orgMembership.role.id,
+          name: orgMembership.role.name,
+          slug: orgMembership.role.slug as RoleSlug,
+        },
+        permissions: orgMembership.role.permissions.map(
+          (p) => p.permission.slug,
+        ),
+      }));
+
     const isPlatformAdmin = organizationMemberships.some(
       (m) => (m.role.slug as RoleSlug) === RoleSlug.PLATFORM_ADMIN,
     );
@@ -144,6 +170,7 @@ export class AuthService {
       email: user.email,
       avatarUrl: user.avatarUrl,
       memberships,
+      organizationMemberships: requestOrganizationMemberships,
       isPlatformAdmin,
     };
   }

@@ -95,7 +95,9 @@ export class OrganizationsController {
   private assertCanManage(organizationId: string, actor: RequestUser) {
     if (actor.isPlatformAdmin) return;
 
-    const isOrganizationAdmin = actor.memberships.some(
+    // Verifica o vínculo direto por organização (não o derivado por empresa), pois uma
+    // organização recém-criada pode ainda não ter nenhuma empresa cadastrada.
+    const isOrganizationAdmin = actor.organizationMemberships.some(
       (m) =>
         m.organizationId === organizationId &&
         m.role.slug === RoleSlug.ORGANIZATION_ADMIN,

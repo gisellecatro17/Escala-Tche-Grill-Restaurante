@@ -183,6 +183,42 @@ export class UsersService {
     return membership;
   }
 
+  /** Remove (soft delete) o vínculo de um usuário com uma empresa, inativando o acesso. */
+  async removeFromCompany(
+    companyId: string,
+    userId: string,
+    actor: RequestUser,
+  ) {
+    const membership = await this.prisma.userCompanyRole.findUnique({
+      where: { userId_companyId: { userId, companyId } },
+      include: { company: true },
+    });
+
+    if (!membership) {
+      throw new NotFoundException(
+        'Este usuário não está vinculado a esta empresa.',
+      );
+    }
+
+    const updated = await this.prisma.userCompanyRole.update({
+      where: { id: membership.id },
+      data: { status: 'INACTIVE' },
+    });
+
+    await this.audit.log({
+      organizationId: membership.company.organizationId,
+      companyId,
+      userId: actor.id,
+      action: 'REMOVE_USER',
+      entity: 'UserCompanyRole',
+      entityId: membership.id,
+      oldValue: { status: membership.status },
+      newValue: { status: updated.status },
+    });
+
+    return updated;
+  }
+
   private async findMembershipOrFail(membershipId: string) {
     const membership = await this.prisma.userCompanyRole.findUnique({
       where: { id: membershipId },

@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   ForbiddenException,
   Get,
   Param,
@@ -17,6 +18,7 @@ import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import type { RequestUser } from '../../common/types/authenticated-request';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RoleSlug } from '../roles/role-slug.enum';
+import { AddCompanyUserDto } from './dto/add-company-user.dto';
 import { InviteUserDto } from './dto/invite-user.dto';
 import { UpdateMembershipDto } from './dto/update-membership.dto';
 import { UsersService } from './users.service';
@@ -39,6 +41,35 @@ export class UsersController {
   ) {
     await this.assertCanManageCompanyUsers(companyId, actor);
     return this.usersService.findAllForCompany(companyId, query);
+  }
+
+  @Post('companies/:companyId/users')
+  @ApiMessage('Usuário incluído com sucesso.')
+  @ApiOperation({
+    summary:
+      'Vincula (convida) um usuário a uma empresa — etapa 7 do cadastro de empresas.',
+  })
+  async addUserToCompany(
+    @Param('companyId', ParseUUIDPipe) companyId: string,
+    @Body() dto: AddCompanyUserDto,
+    @CurrentUser() actor: RequestUser,
+  ) {
+    await this.assertCanManageCompanyUsers(companyId, actor);
+    return this.usersService.invite({ ...dto, companyId }, actor);
+  }
+
+  @Delete('companies/:companyId/users/:userId')
+  @ApiMessage('Usuário removido da empresa com sucesso.')
+  @ApiOperation({
+    summary: 'Remove (inativa) o vínculo de um usuário com uma empresa.',
+  })
+  async removeUserFromCompany(
+    @Param('companyId', ParseUUIDPipe) companyId: string,
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @CurrentUser() actor: RequestUser,
+  ) {
+    await this.assertCanManageCompanyUsers(companyId, actor);
+    return this.usersService.removeFromCompany(companyId, userId, actor);
   }
 
   @Post('users/invite')

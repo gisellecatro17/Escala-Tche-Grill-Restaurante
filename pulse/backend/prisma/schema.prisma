@@ -1,4 +1,4 @@
-// Pulse — schema de fundação (organizações, empresas, usuários, perfis, permissões e auditoria).
+// Pulse — schema de fundação + Cadastro de Empresas.
 // Módulos financeiros (contas a pagar/receber, conciliação etc.) serão adicionados em etapas futuras.
 
 generator client {
@@ -17,6 +17,87 @@ enum RecordStatus {
   @@map("record_status")
 }
 
+/// Pessoa física ou jurídica.
+enum PersonType {
+  INDIVIDUAL
+  LEGAL_ENTITY
+
+  @@map("person_type")
+}
+
+/// Matriz, filial ou unidade operacional.
+enum EstablishmentType {
+  HEADQUARTERS
+  BRANCH
+  OPERATING_UNIT
+
+  @@map("establishment_type")
+}
+
+/// Status interno da empresa no Pulse (distinto da situação cadastral externa/Receita).
+enum CompanySystemStatus {
+  DRAFT
+  IMPLEMENTATION
+  ACTIVE
+  SUSPENDED
+  INACTIVE
+  CLOSED
+
+  @@map("company_system_status")
+}
+
+/// Regime tributário.
+enum TaxRegime {
+  SIMPLES_NACIONAL
+  LUCRO_PRESUMIDO
+  LUCRO_REAL
+  MEI
+  IMUNE
+  ISENTA
+  OUTRO
+
+  @@map("tax_regime")
+}
+
+/// Critério contábil/fiscal — usado tanto no regime de apuração fiscal quanto no
+/// critério financeiro dos lançamentos.
+enum AccountingCriterion {
+  ACCRUAL
+  CASH
+  MIXED
+  NOT_INFORMED
+
+  @@map("accounting_criterion")
+}
+
+enum CompanyAddressType {
+  FISCAL
+  OPERATIONAL
+  BILLING
+  CORRESPONDENCE
+
+  @@map("company_address_type")
+}
+
+enum CompanyContactType {
+  PRIMARY
+  FINANCIAL
+  FISCAL
+  ACCOUNTING
+  ADMINISTRATIVE
+  OPERATIONAL
+  OTHER
+
+  @@map("company_contact_type")
+}
+
+enum RegistryQueryStatus {
+  SUCCESS
+  ERROR
+
+  @@map("registry_query_status")
+}
+
 /// Cliente/grupo contratante da plataforma Pulse. Pode possuir várias empresas (CNPJs).
 model Organization {
   id     String       @id @default(uuid()) @db.Uuid
@@ -29,24 +110,93 @@ model Organization {
   createdBy String?   @map("created_by") @db.Uuid
   updatedBy String?   @map("updated_by") @db.Uuid
 
-  companies       Company[]
-  userMemberships UserOrganizationRole[]
-  auditLogs       AuditLog[]
+  companies              Company[]
+  userMemberships        UserOrganizationRole[]
+  auditLogs              AuditLog[]
+  companyRegistryQueries CompanyRegistryQuery[]
 
   @@map("organizations")
 }
 
-/// Uma empresa (CNPJ/unidade) pertencente a uma organização.
+/// Uma empresa (CNPJ/CPF, matriz/filial/unidade) pertencente a uma organização.
+/// Unidade principal de operação financeira: todo registro operacional futuro
+/// (fornecedores, clientes, contas, lançamentos etc.) deverá se vincular a uma empresa.
 model Company {
-  id             String       @id @default(uuid()) @db.Uuid
-  organizationId String       @map("organization_id") @db.Uuid
-  name           String
-  tradeName      String?      @map("trade_name")
-  document       String       @unique
+  id              String  @id @default(uuid()) @db.Uuid
+  organizationId  String  @map("organization_id") @db.Uuid
+  parentCompanyId String? @map("parent_company_id") @db.Uuid
+  internalCode    String? @map("internal_code")
+
+  // Identificação
+  // documentNumber/normalizedDocumentNumber/legalName/displayName são opcionais no banco
+  // para permitir salvar rascunhos incompletos (seção 10 do prompt mestre); a completude
+  // desses campos é exigida pelas regras de negócio antes da ativação (seção 31).
+  personType               PersonType @default(LEGAL_ENTITY) @map("person_type")
+  documentNumber           String?    @map("document_number")
+  normalizedDocumentNumber String?    @unique @map("normalized_document_number")
+  legalName                String?    @map("legal_name")
+  tradeName                String?    @map("trade_name")
+  displayName              String?    @map("display_name")
+
+  establishmentType EstablishmentType @default(HEADQUARTERS) @map("establishment_type")
+
+  externalRegistrationStatus     String?             @map("external_registration_status")
+  externalRegistrationStatusDate DateTime?           @map("external_registration_status_date")
+  systemStatus                   CompanySystemStatus @default(DRAFT) @map("system_status")
+
+  logoUrl                 String?   @map("logo_url")
+  implementationStartDate DateTime? @map("implementation_start_date")
+  deactivationReason      String?   @map("deactivation_reason")
+  suspensionReason        String?   @map("suspension_reason")
+  registrationNotes       String?   @map("registration_notes")
+
+  // Dados cadastrais
+  openingDate           DateTime? @map("opening_date")
+  legalNature           String?   @map("legal_nature")
+  companySize           String?   @map("company_size")
+  shareCapital          Decimal?  @map("share_capital") @db.Decimal(18, 2)
+  stateRegistration     String?   @map("state_registration")
+  municipalRegistration String?   @map("municipal_registration")
+  mainCnae              String?   @map("main_cnae")
+
+  // Contatos gerais
   email          String?
   phone          String?
-  timezone       String       @default("America/Bahia")
-  status         RecordStatus @default(ACTIVE)
+  phoneSecondary String? @map("phone_secondary")
+  whatsapp       String?
+  emailFinancial String? @map("email_financial")
+  emailFiscal    String? @map("email_fiscal")
+  website        String?
+
+  // Informações fiscais
+  taxRegime                    TaxRegime?           @map("tax_regime")
+  taxAssessmentMethod          AccountingCriterion? @map("tax_assessment_method")
+  icmsTaxpayer                 Boolean?             @map("icms_taxpayer")
+  simplesNacionalOptant        Boolean?             @map("simples_nacional_optant")
+  simplesNacionalOptionDate    DateTime?            @map("simples_nacional_option_date")
+  simplesNacionalExclusionDate DateTime?            @map("simples_nacional_exclusion_date")
+  specialTaxRegime             String?              @map("special_tax_regime")
+  accountingFirmName           String?              @map("accounting_firm_name")
+  accountingResponsibleName    String?              @map("accounting_responsible_name")
+  taxNotes                     String?              @map("tax_notes")
+
+  // Configurações financeiras
+  currencyCode            String              @default("BRL") @map("currency_code")
+  dateFormat              String              @default("DD/MM/YYYY") @map("date_format")
+  timezone                String              @default("America/Bahia")
+  financialMethod         AccountingCriterion @default(ACCRUAL) @map("financial_method")
+  financialMonthStartDay  Int                 @default(1) @map("financial_month_start_day")
+  monthClosingDay         Int                 @default(31) @map("month_closing_day")
+  allowRetroactiveEntries Boolean             @default(true) @map("allow_retroactive_entries")
+  allowFutureEntries      Boolean             @default(true) @map("allow_future_entries")
+  requiresCategory        Boolean             @default(true) @map("requires_category")
+  requiresCostCenter      Boolean             @default(false) @map("requires_cost_center")
+  requiresSupplier        Boolean             @default(false) @map("requires_supplier")
+  requiresCustomer        Boolean             @default(false) @map("requires_customer")
+  requiresAttachment      Boolean             @default(false) @map("requires_attachment")
+  requiresApproval        Boolean             @default(false) @map("requires_approval")
+  approvalLevels          Int                 @default(1) @map("approval_levels")
+  automaticCodeEnabled    Boolean             @default(true) @map("automatic_code_enabled")
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
@@ -54,12 +204,142 @@ model Company {
   createdBy String?   @map("created_by") @db.Uuid
   updatedBy String?   @map("updated_by") @db.Uuid
 
-  organization    Organization      @relation(fields: [organizationId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  parentCompany Company?  @relation("CompanyHierarchy", fields: [parentCompanyId], references: [id])
+  branches      Company[] @relation("CompanyHierarchy")
+
+  addresses       CompanyAddress[]
+  contacts        CompanyContact[]
+  cnaes           CompanyCnae[]
+  registryQueries CompanyRegistryQuery[]
+  statusHistory   CompanyStatusHistory[]
   userMemberships UserCompanyRole[]
   auditLogs       AuditLog[]
 
+  @@unique([organizationId, internalCode])
   @@index([organizationId])
+  @@index([parentCompanyId])
+  @@index([systemStatus])
   @@map("companies")
+}
+
+/// Endereço de uma empresa (fiscal, operacional, cobrança, correspondência).
+model CompanyAddress {
+  id        String @id @default(uuid()) @db.Uuid
+  companyId String @map("company_id") @db.Uuid
+
+  addressType          CompanyAddressType @map("address_type")
+  postalCode           String             @map("postal_code")
+  normalizedPostalCode String             @map("normalized_postal_code")
+  street               String
+  number               String?
+  complement           String?
+  district             String?
+  city                 String
+  state                String
+  country              String             @default("BR")
+  cityCode             String?            @map("city_code")
+  reference            String?
+  isPrimary            Boolean            @default(false) @map("is_primary")
+  sameAsAddressId      String?            @map("same_as_address_id") @db.Uuid
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+
+  company       Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  sameAsAddress CompanyAddress?  @relation("CompanyAddressCopy", fields: [sameAsAddressId], references: [id])
+  copiedBy      CompanyAddress[] @relation("CompanyAddressCopy")
+
+  @@index([companyId])
+  @@map("company_addresses")
+}
+
+/// Responsável/contato de uma empresa.
+model CompanyContact {
+  id        String @id @default(uuid()) @db.Uuid
+  companyId String @map("company_id") @db.Uuid
+
+  contactType CompanyContactType @map("contact_type")
+  name        String
+  position    String?
+  department  String?
+  phone       String?
+  whatsapp    String?
+  email       String?
+  isPrimary   Boolean            @default(false) @map("is_primary")
+  status      RecordStatus       @default(ACTIVE)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@map("company_contacts")
+}
+
+/// CNAE (principal ou secundário) de uma empresa.
+model CompanyCnae {
+  id          String  @id @default(uuid()) @db.Uuid
+  companyId   String  @map("company_id") @db.Uuid
+  cnaeCode    String  @map("cnae_code")
+  description String?
+  isMain      Boolean @default(false) @map("is_main")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, cnaeCode])
+  @@index([companyId])
+  @@map("company_cnaes")
+}
+
+/// Histórico de consultas cadastrais (CNPJ/CPF) via provider externo desacoplado.
+model CompanyRegistryQuery {
+  id             String  @id @default(uuid()) @db.Uuid
+  organizationId String? @map("organization_id") @db.Uuid
+  companyId      String? @map("company_id") @db.Uuid
+
+  documentNumber  String              @map("document_number")
+  provider        String
+  requestStatus   RegistryQueryStatus @map("request_status")
+  responseSummary Json?               @map("response_summary")
+  queriedBy       String?             @map("queried_by") @db.Uuid
+  queriedAt       DateTime            @default(now()) @map("queried_at")
+  errorCode       String?             @map("error_code")
+  errorMessage    String?             @map("error_message")
+
+  organization Organization? @relation(fields: [organizationId], references: [id])
+  company      Company?      @relation(fields: [companyId], references: [id])
+
+  @@index([documentNumber])
+  @@index([companyId])
+  @@map("company_registry_queries")
+}
+
+/// Histórico de mudanças do status interno da empresa (ativação/inativação/suspensão...).
+model CompanyStatusHistory {
+  id             String               @id @default(uuid()) @db.Uuid
+  companyId      String               @map("company_id") @db.Uuid
+  previousStatus CompanySystemStatus? @map("previous_status")
+  newStatus      CompanySystemStatus  @map("new_status")
+  reason         String?
+  changedBy      String?              @map("changed_by") @db.Uuid
+  changedAt      DateTime             @default(now()) @map("changed_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@map("company_status_history")
 }
 
 /// Perfil de usuário do Pulse. O id é o mesmo id do usuário em auth.users (Supabase Auth).
@@ -101,7 +381,7 @@ model Role {
   @@map("roles")
 }
 
-/// Permissão granular (ex.: "payables.approve", "companies.view").
+/// Permissão granular (ex.: "payables.approve", "company.view").
 model Permission {
   id          String  @id @default(uuid()) @db.Uuid
   slug        String  @unique
@@ -148,13 +428,22 @@ model UserOrganizationRole {
 }
 
 /// Vínculo de um usuário a uma empresa com um perfil (o mesmo usuário pode ter perfis
-/// diferentes em empresas diferentes).
+/// diferentes em empresas diferentes), incluindo alçadas e permissões operacionais finas.
 model UserCompanyRole {
   id        String       @id @default(uuid()) @db.Uuid
   userId    String       @map("user_id") @db.Uuid
   companyId String       @map("company_id") @db.Uuid
   roleId    String       @map("role_id") @db.Uuid
   status    RecordStatus @default(ACTIVE)
+
+  approvalLimit     Decimal?  @map("approval_limit") @db.Decimal(18, 2)
+  canViewBankData   Boolean   @default(false) @map("can_view_bank_data")
+  canImportOfx      Boolean   @default(false) @map("can_import_ofx")
+  canReconcile      Boolean   @default(false) @map("can_reconcile")
+  canViewReports    Boolean   @default(false) @map("can_view_reports")
+  canManageSettings Boolean   @default(false) @map("can_manage_settings")
+  startDate         DateTime? @map("start_date")
+  endDate           DateTime? @map("end_date")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")

@@ -28,6 +28,38 @@ operacionais exige o header `X-Company-Id`, resolvido e validado contra os vínc
 do usuário autenticado (`SupabaseAuthGuard` + `PermissionsGuard`). O front-end nunca é a
 única barreira de segurança.
 
+### Autorização por organização vs. por empresa (módulo Cadastro de Empresas)
+
+O módulo de Empresas introduziu um caso que a fundação ainda não cobria: autorizar uma
+ação (criar a primeira empresa) **antes de existir uma empresa** para servir de escopo.
+Como `RequestUser.memberships` (por empresa) só existe depois que a empresa já foi
+criada, `RequestUser` passou a expor também `organizationMemberships` — o vínculo direto
+por organização, populado a partir de `UserOrganizationRole` independentemente de a
+organização já ter empresas. `common/utils/access-control.util.ts` expõe
+`assertOrganizationPermission` (usa `organizationMemberships`) e `assertCompanyPermission`
+(usa `memberships`), reaproveitados pelos controllers de Companies, Users e (na correção
+do mesmo gap) Organizations.
+
+### Provedores externos desacoplados (CNPJ e CEP)
+
+`CompanyRegistryProvider` (`integrations/company-registry`) e `PostalCodeProvider`
+(`integrations/postal-code`) são interfaces com implementação simulada (`mock`, padrão em
+desenvolvimento) e uma implementação real opcional (`brasilapi`/`viacep`), selecionadas via
+variável de ambiente e injetadas por token (`COMPANY_REGISTRY_PROVIDER`,
+`POSTAL_CODE_PROVIDER`). Nenhuma dessas integrações faz raspagem de páginas — usam APIs
+públicas documentadas — e o front-end nunca chama esses serviços diretamente nem recebe
+chaves de API.
+
+### Status interno vs. situação cadastral
+
+`Company.systemStatus` (`DRAFT` → `IMPLEMENTATION` → `ACTIVE` / `SUSPENDED` / `INACTIVE` /
+`CLOSED`) é o ciclo de vida controlado pelo Pulse. `Company.externalRegistrationStatus` é a
+situação informada pela Receita Federal (ex.: "ATIVA"), armazenada separadamente e nunca
+usada para liberar ou bloquear operações no sistema. `POST /companies` cria com
+`IMPLEMENTATION`; `PATCH /companies/:id` promove `DRAFT → IMPLEMENTATION` automaticamente
+(uma edição "de verdade" deixa de ser rascunho); apenas `POST /companies/:id/activate`
+(que valida as pendências da seção 31 do prompt mestre) leva a `ACTIVE`.
+
 ## Autenticação
 
 - Login, sessão, recuperação de senha e confirmação de e-mail são delegados ao **Supabase

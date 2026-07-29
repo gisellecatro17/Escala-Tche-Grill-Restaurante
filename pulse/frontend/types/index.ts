@@ -1,18 +1,9 @@
-export type Status = "active" | "inactive" | "blocked";
+export type RecordStatus = "ACTIVE" | "INACTIVE" | "BLOCKED";
 
 export interface Organization {
   id: string;
   name: string;
-  status: Status;
-}
-
-export interface Company {
-  id: string;
-  organizationId: string;
-  name: string;
-  tradeName: string | null;
-  document: string;
-  status: Status;
+  status: RecordStatus;
 }
 
 export interface Role {
@@ -49,12 +40,33 @@ export interface UserCompanyMembership {
   permissions: string[];
 }
 
+export interface UserOrganizationMembership {
+  organizationId: string;
+  organizationName: string;
+  role: Role;
+  permissions: string[];
+}
+
 export interface AuthenticatedUser {
   id: string;
   name: string;
   email: string;
   avatarUrl: string | null;
   memberships: UserCompanyMembership[];
+  organizationMemberships: UserOrganizationMembership[];
+  isPlatformAdmin: boolean;
+}
+
+export interface PaginatedMeta {
+  page: number;
+  perPage: number;
+  total: number;
+  totalPages: number;
+}
+
+export interface PaginatedResult<T> {
+  items: T[];
+  meta: PaginatedMeta;
 }
 
 /** Envelope padrão de resposta da API (ver seção 19 do prompt mestre). */

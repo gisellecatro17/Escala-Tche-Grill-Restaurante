@@ -9,9 +9,21 @@ interface PermissionSeed {
 }
 
 const PERMISSIONS: PermissionSeed[] = [
-  // Cadastros
-  { slug: 'companies.view', module: 'cadastros', description: 'Visualizar empresas' },
-  { slug: 'companies.manage', module: 'cadastros', description: 'Incluir/editar empresas' },
+  // Cadastros — Empresas
+  { slug: 'company.view', module: 'cadastros', description: 'Visualizar empresas' },
+  { slug: 'company.create', module: 'cadastros', description: 'Incluir novas empresas' },
+  { slug: 'company.update', module: 'cadastros', description: 'Editar empresas' },
+  { slug: 'company.activate', module: 'cadastros', description: 'Ativar/reativar empresas' },
+  { slug: 'company.deactivate', module: 'cadastros', description: 'Inativar empresas' },
+  { slug: 'company.suspend', module: 'cadastros', description: 'Suspender empresas' },
+  { slug: 'company.delete', module: 'cadastros', description: 'Excluir empresas (quando permitido)' },
+  { slug: 'company.manage_users', module: 'cadastros', description: 'Gerenciar usuários da empresa' },
+  { slug: 'company.manage_settings', module: 'cadastros', description: 'Gerenciar configurações financeiras da empresa' },
+  { slug: 'company.view_audit', module: 'cadastros', description: 'Consultar histórico/auditoria da empresa' },
+  { slug: 'company.query_document', module: 'cadastros', description: 'Consultar CNPJ/CPF em provider externo' },
+  { slug: 'company.duplicate_settings', module: 'cadastros', description: 'Duplicar configurações entre empresas' },
+  { slug: 'company.manage_logo', module: 'cadastros', description: 'Enviar/remover a logo da empresa' },
+  // Cadastros — demais itens (estrutura para próximas etapas)
   { slug: 'suppliers.view', module: 'cadastros', description: 'Visualizar fornecedores' },
   { slug: 'suppliers.manage', module: 'cadastros', description: 'Incluir/editar fornecedores' },
   { slug: 'customers.view', module: 'cadastros', description: 'Visualizar clientes' },
@@ -71,6 +83,23 @@ const ALL_SLUGS = PERMISSIONS.map((p) => p.slug);
 const CADASTROS_SLUGS = PERMISSIONS.filter((p) => p.module === 'cadastros').map((p) => p.slug);
 const BI_SLUGS = PERMISSIONS.filter((p) => p.module === 'inteligencia-financeira').map((p) => p.slug);
 
+/**
+ * Ações de empresa do dia a dia, liberadas também para perfis financeiros/operacionais.
+ * As ações reservadas a administradores (company.activate/deactivate/suspend/delete) ficam
+ * de fora — permanecem restritas a organization_admin/company_admin/platform_admin.
+ */
+const COMPANY_OPERATIONAL_SLUGS = [
+  'company.view',
+  'company.create',
+  'company.update',
+  'company.manage_users',
+  'company.manage_settings',
+  'company.view_audit',
+  'company.query_document',
+  'company.duplicate_settings',
+  'company.manage_logo',
+];
+
 const ROLES: {
   slug: string;
   name: string;
@@ -105,7 +134,8 @@ const ROLES: {
     description: 'Opera rotinas financeiras completas.',
     isSystem: true,
     permissions: [
-      ...CADASTROS_SLUGS,
+      ...CADASTROS_SLUGS.filter((s) => !s.startsWith('company.')),
+      ...COMPANY_OPERATIONAL_SLUGS,
       'financial.view',
       'financial.documents',
       'financial.process',
@@ -128,7 +158,7 @@ const ROLES: {
     description: 'Inclui e processa informações, com restrições.',
     isSystem: true,
     permissions: [
-      'companies.view',
+      'company.view',
       'suppliers.view',
       'suppliers.manage',
       'customers.view',
@@ -215,13 +245,39 @@ async function main() {
   });
 
   await prisma.company.upsert({
-    where: { document: '11222333000181' },
+    where: { normalizedDocumentNumber: '11222333000181' },
     update: {},
     create: {
       organizationId: organization.id,
-      name: 'Tchê Grill Restaurante Ltda.',
+      internalCode: 'EMP-0001',
+      personType: 'LEGAL_ENTITY',
+      documentNumber: '11222333000181',
+      normalizedDocumentNumber: '11222333000181',
+      legalName: 'Tchê Grill Restaurante Ltda.',
       tradeName: 'Tchê Grill',
-      document: '11222333000181',
+      displayName: 'Tchê Grill — Governador Mangabeira',
+      establishmentType: 'HEADQUARTERS',
+      externalRegistrationStatus: 'ATIVA',
+      systemStatus: 'ACTIVE',
+      taxRegime: 'SIMPLES_NACIONAL',
+      taxAssessmentMethod: 'ACCRUAL',
+      financialMethod: 'ACCRUAL',
+      timezone: 'America/Bahia',
+      addresses: {
+        create: [
+          {
+            addressType: 'FISCAL',
+            postalCode: '44350-000',
+            normalizedPostalCode: '44350000',
+            street: 'Avenida Governador Mangabeira',
+            number: '100',
+            district: 'Centro',
+            city: 'Governador Mangabeira',
+            state: 'BA',
+            isPrimary: true,
+          },
+        ],
+      },
     },
   });
 
