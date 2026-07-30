@@ -15,6 +15,8 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { RequestUser } from '../../common/types/authenticated-request';
 import { assertOrganizationPermission } from '../../common/utils/access-control.util';
 import { BusinessUnitsService } from './business-units.service';
+import { LifecycleController } from './structure-lifecycle.mixin';
+import { StructureLifecycleService } from './structure-lifecycle.service';
 import {
   CreateBusinessUnitDto,
   UpdateBusinessUnitDto,
@@ -25,8 +27,16 @@ import { MoveNodeDto, StructureQueryDto } from './dto/common.dto';
 @ApiTags('Unidades de negócio')
 @ApiBearerAuth()
 @Controller('business-units')
-export class BusinessUnitsController {
-  constructor(private readonly businessUnits: BusinessUnitsService) {}
+export class BusinessUnitsController extends LifecycleController(
+  'businessUnit',
+  'business_unit',
+) {
+  constructor(
+    private readonly businessUnits: BusinessUnitsService,
+    lifecycle: StructureLifecycleService,
+  ) {
+    super(lifecycle);
+  }
 
   @Get()
   @ApiOperation({ summary: 'Lista as unidades de negócio.' })

@@ -15,6 +15,8 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { RequestUser } from '../../common/types/authenticated-request';
 import { assertCompanyPermission } from '../../common/utils/access-control.util';
 import { ClassificationRulesService } from './classification-rules.service';
+import { LifecycleController } from './structure-lifecycle.mixin';
+import { StructureLifecycleService } from './structure-lifecycle.service';
 import {
   CreateClassificationRuleDto,
   SimulateClassificationDto,
@@ -31,8 +33,16 @@ import { TestRuleDto } from './dto/rule-condition-action.dto';
 @ApiTags('Regras de classificação')
 @ApiBearerAuth()
 @Controller('classification-rules')
-export class ClassificationRulesController {
-  constructor(private readonly rules: ClassificationRulesService) {}
+export class ClassificationRulesController extends LifecycleController(
+  'classificationRule',
+  'classification_rule',
+) {
+  constructor(
+    private readonly rules: ClassificationRulesService,
+    lifecycle: StructureLifecycleService,
+  ) {
+    super(lifecycle);
+  }
 
   @Get()
   @ApiOperation({

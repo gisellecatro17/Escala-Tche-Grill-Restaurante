@@ -22,6 +22,7 @@ import { ResultCentersController } from './result-centers.controller';
 import { ResultCentersService } from './result-centers.service';
 import { StructureDiagnosticsService } from './structure-diagnostics.service';
 import { StructureImportService } from './structure-import.service';
+import { StructureLifecycleService } from './structure-lifecycle.service';
 
 /**
  * Estrutura financeira: plano de contas, centros de resultado, projetos, unidades de
@@ -55,6 +56,7 @@ import { StructureImportService } from './structure-import.service';
     ClassificationRulesService,
     HierarchyVersionsService,
     StructureImportService,
+    StructureLifecycleService,
   ],
   exports: [
     AccountPlansService,
@@ -68,6 +70,7 @@ import { StructureImportService } from './structure-import.service';
     AllocationRulesService,
     ClassificationRulesService,
     HierarchyVersionsService,
+    StructureLifecycleService,
   ],
 })
 export class FinancialStructureModule {}

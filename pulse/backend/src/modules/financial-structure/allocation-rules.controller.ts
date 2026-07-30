@@ -15,6 +15,8 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { RequestUser } from '../../common/types/authenticated-request';
 import { assertCompanyPermission } from '../../common/utils/access-control.util';
 import { AllocationRulesService } from './allocation-rules.service';
+import { LifecycleController } from './structure-lifecycle.mixin';
+import { StructureLifecycleService } from './structure-lifecycle.service';
 import {
   CreateAllocationRuleDto,
   UpdateAllocationRuleDto,
@@ -28,8 +30,16 @@ import { StructureQueryDto } from './dto/common.dto';
 @ApiTags('Rateios')
 @ApiBearerAuth()
 @Controller('allocation-rules')
-export class AllocationRulesController {
-  constructor(private readonly allocationRules: AllocationRulesService) {}
+export class AllocationRulesController extends LifecycleController(
+  'allocationRule',
+  'allocation_rule',
+) {
+  constructor(
+    private readonly allocationRules: AllocationRulesService,
+    lifecycle: StructureLifecycleService,
+  ) {
+    super(lifecycle);
+  }
 
   @Get()
   @ApiOperation({ summary: 'Lista os rateios padrão de uma empresa.' })

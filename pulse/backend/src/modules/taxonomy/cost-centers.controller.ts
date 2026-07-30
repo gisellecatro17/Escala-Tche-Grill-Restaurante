@@ -19,6 +19,8 @@ import {
   MoveNodeDto,
 } from '../financial-structure/dto/common.dto';
 import { CostCentersService } from './cost-centers.service';
+import { LifecycleController } from '../financial-structure/structure-lifecycle.mixin';
+import { StructureLifecycleService } from '../financial-structure/structure-lifecycle.service';
 import {
   CreateCostCenterDto,
   UpdateCostCenterDto,
@@ -28,8 +30,16 @@ import {
 @ApiTags('Centros de custo')
 @ApiBearerAuth()
 @Controller('cost-centers')
-export class CostCentersController {
-  constructor(private readonly costCentersService: CostCentersService) {}
+export class CostCentersController extends LifecycleController(
+  'costCenter',
+  'cost_center',
+) {
+  constructor(
+    private readonly costCentersService: CostCentersService,
+    lifecycle: StructureLifecycleService,
+  ) {
+    super(lifecycle);
+  }
 
   @Get()
   @ApiOperation({ summary: 'Lista os centros de custo de uma empresa.' })

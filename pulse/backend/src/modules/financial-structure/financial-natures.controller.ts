@@ -15,6 +15,8 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { RequestUser } from '../../common/types/authenticated-request';
 import { assertOrganizationPermission } from '../../common/utils/access-control.util';
 import { FinancialNaturesService } from './financial-natures.service';
+import { LifecycleController } from './structure-lifecycle.mixin';
+import { StructureLifecycleService } from './structure-lifecycle.service';
 import {
   CreateFinancialNatureDto,
   UpdateFinancialNatureDto,
@@ -25,8 +27,16 @@ import { StructureQueryDto } from './dto/common.dto';
 @ApiTags('Naturezas financeiras')
 @ApiBearerAuth()
 @Controller('financial-natures')
-export class FinancialNaturesController {
-  constructor(private readonly natures: FinancialNaturesService) {}
+export class FinancialNaturesController extends LifecycleController(
+  'financialNatureCatalog',
+  'financial_nature',
+) {
+  constructor(
+    private readonly natures: FinancialNaturesService,
+    lifecycle: StructureLifecycleService,
+  ) {
+    super(lifecycle);
+  }
 
   @Get()
   @ApiOperation({ summary: 'Lista as naturezas financeiras.' })

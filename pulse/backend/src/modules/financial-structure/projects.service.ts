@@ -251,6 +251,106 @@ export class ProjectsService {
     return { id };
   }
 
+  // ── Ciclo operacional do projeto (seção 30) ────────────────────────────────
+
+  /**
+   * Transições permitidas. O ciclo é restrito de propósito: um projeto concluído ou
+   * cancelado não volta a andar sozinho — é preciso reabri-lo explicitamente, e isso
+   * fica registrado na auditoria.
+   */
+  private static readonly TRANSITIONS: Record<ProjectStatus, ProjectStatus[]> =
+    {
+      [ProjectStatus.DRAFT]: [ProjectStatus.PLANNING, ProjectStatus.CANCELLED],
+      [ProjectStatus.PLANNING]: [
+        ProjectStatus.IN_APPROVAL,
+        ProjectStatus.IN_PROGRESS,
+        ProjectStatus.CANCELLED,
+      ],
+      [ProjectStatus.IN_APPROVAL]: [
+        ProjectStatus.IN_PROGRESS,
+        ProjectStatus.PLANNING,
+        ProjectStatus.CANCELLED,
+      ],
+      [ProjectStatus.IN_PROGRESS]: [
+        ProjectStatus.PAUSED,
+        ProjectStatus.DELAYED,
+        ProjectStatus.COMPLETED,
+        ProjectStatus.CANCELLED,
+      ],
+      [ProjectStatus.PAUSED]: [
+        ProjectStatus.IN_PROGRESS,
+        ProjectStatus.CANCELLED,
+      ],
+      [ProjectStatus.DELAYED]: [
+        ProjectStatus.IN_PROGRESS,
+        ProjectStatus.COMPLETED,
+        ProjectStatus.CANCELLED,
+      ],
+      [ProjectStatus.COMPLETED]: [
+        ProjectStatus.ARCHIVED,
+        ProjectStatus.IN_PROGRESS,
+      ],
+      [ProjectStatus.CANCELLED]: [
+        ProjectStatus.ARCHIVED,
+        ProjectStatus.PLANNING,
+      ],
+      [ProjectStatus.ARCHIVED]: [],
+    };
+
+  private static readonly STATUS_LABELS: Record<ProjectStatus, string> = {
+    [ProjectStatus.DRAFT]: 'rascunho',
+    [ProjectStatus.PLANNING]: 'em planejamento',
+    [ProjectStatus.IN_APPROVAL]: 'em aprovação',
+    [ProjectStatus.IN_PROGRESS]: 'em andamento',
+    [ProjectStatus.PAUSED]: 'pausado',
+    [ProjectStatus.DELAYED]: 'atrasado',
+    [ProjectStatus.COMPLETED]: 'concluído',
+    [ProjectStatus.CANCELLED]: 'cancelado',
+    [ProjectStatus.ARCHIVED]: 'arquivado',
+  };
+
+  async changeStatus(
+    id: string,
+    next: ProjectStatus,
+    actor: RequestUser,
+    reason?: string,
+  ) {
+    const project = await this.findOne(id);
+    const allowed = ProjectsService.TRANSITIONS[project.status];
+
+    if (!allowed.includes(next)) {
+      throw new ConflictException(
+        `Um projeto ${ProjectsService.STATUS_LABELS[project.status]} não pode passar para "${ProjectsService.STATUS_LABELS[next]}".`,
+      );
+    }
+
+    const updated = await this.prisma.project.update({
+      where: { id },
+      data: {
+        status: next,
+        // A conclusão grava a data real de término, sem apagar a data prevista.
+        ...(next === ProjectStatus.COMPLETED
+          ? { actualEndDate: new Date(), completionPercentage: 100 }
+          : {}),
+        updatedBy: actor.id,
+      },
+    });
+
+    await this.audit.log({
+      companyId: project.companyId,
+      userId: actor.id,
+      action: 'CHANGE_STATUS',
+      entity: 'Project',
+      entityId: id,
+      field: 'status',
+      oldValue: { status: project.status },
+      newValue: { status: next },
+      reason,
+    });
+
+    return updated;
+  }
+
   // ── Helpers ────────────────────────────────────────────────────────────────
 
   private assertDates(startDate?: string | null, endDate?: string | null) {

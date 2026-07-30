@@ -19,6 +19,8 @@ import {
   MoveNodeDto,
 } from '../financial-structure/dto/common.dto';
 import { CategoriesService } from './categories.service';
+import { LifecycleController } from '../financial-structure/structure-lifecycle.mixin';
+import { StructureLifecycleService } from '../financial-structure/structure-lifecycle.service';
 import {
   CreateCategoryDto,
   UpdateCategoryDto,
@@ -32,8 +34,16 @@ import {
 @ApiTags('Categorias financeiras')
 @ApiBearerAuth()
 @Controller('financial-categories')
-export class CategoriesController {
-  constructor(private readonly categoriesService: CategoriesService) {}
+export class CategoriesController extends LifecycleController(
+  'financialCategory',
+  'financial_category',
+) {
+  constructor(
+    private readonly categoriesService: CategoriesService,
+    lifecycle: StructureLifecycleService,
+  ) {
+    super(lifecycle);
+  }
 
   @Get()
   @ApiOperation({ summary: 'Lista as categorias financeiras de uma empresa.' })

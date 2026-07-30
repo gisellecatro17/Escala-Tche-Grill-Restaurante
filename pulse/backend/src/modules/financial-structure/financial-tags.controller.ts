@@ -15,6 +15,8 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { RequestUser } from '../../common/types/authenticated-request';
 import { assertOrganizationPermission } from '../../common/utils/access-control.util';
 import { FinancialTagsService } from './financial-tags.service';
+import { LifecycleController } from './structure-lifecycle.mixin';
+import { StructureLifecycleService } from './structure-lifecycle.service';
 import {
   CreateFinancialTagDto,
   UpdateFinancialTagDto,
@@ -25,8 +27,16 @@ import { StructureQueryDto, TagLinkDto } from './dto/common.dto';
 @ApiTags('Tags financeiras')
 @ApiBearerAuth()
 @Controller('financial-tags')
-export class FinancialTagsController {
-  constructor(private readonly tags: FinancialTagsService) {}
+export class FinancialTagsController extends LifecycleController(
+  'financialTag',
+  'financial_tag',
+) {
+  constructor(
+    private readonly tags: FinancialTagsService,
+    lifecycle: StructureLifecycleService,
+  ) {
+    super(lifecycle);
+  }
 
   @Get()
   @ApiOperation({ summary: 'Lista as tags financeiras, ordenadas por uso.' })

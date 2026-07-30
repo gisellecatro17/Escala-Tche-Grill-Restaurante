@@ -15,6 +15,8 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { RequestUser } from '../../common/types/authenticated-request';
 import { assertCompanyPermission } from '../../common/utils/access-control.util';
 import { ResultCentersService } from './result-centers.service';
+import { LifecycleController } from './structure-lifecycle.mixin';
+import { StructureLifecycleService } from './structure-lifecycle.service';
 import {
   CreateResultCenterDto,
   UpdateResultCenterDto,
@@ -29,8 +31,16 @@ import {
 @ApiTags('Centros de resultado')
 @ApiBearerAuth()
 @Controller('result-centers')
-export class ResultCentersController {
-  constructor(private readonly resultCenters: ResultCentersService) {}
+export class ResultCentersController extends LifecycleController(
+  'resultCenter',
+  'result_center',
+) {
+  constructor(
+    private readonly resultCenters: ResultCentersService,
+    lifecycle: StructureLifecycleService,
+  ) {
+    super(lifecycle);
+  }
 
   @Get()
   @ApiOperation({ summary: 'Lista os centros de resultado de uma empresa.' })

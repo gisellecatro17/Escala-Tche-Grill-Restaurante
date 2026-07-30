@@ -18,6 +18,8 @@ import {
   assertOrganizationPermission,
 } from '../../common/utils/access-control.util';
 import { AccountPlansService } from './account-plans.service';
+import { LifecycleController } from './structure-lifecycle.mixin';
+import { StructureLifecycleService } from './structure-lifecycle.service';
 import {
   CreateAccountPlanDto,
   UpdateAccountPlanDto,
@@ -35,8 +37,16 @@ import {
 @ApiTags('Plano de contas')
 @ApiBearerAuth()
 @Controller('financial-account-plans')
-export class AccountPlansController {
-  constructor(private readonly accountPlans: AccountPlansService) {}
+export class AccountPlansController extends LifecycleController(
+  'financialAccountPlan',
+  'account_plan',
+) {
+  constructor(
+    private readonly accountPlans: AccountPlansService,
+    lifecycle: StructureLifecycleService,
+  ) {
+    super(lifecycle);
+  }
 
   @Get()
   @ApiOperation({ summary: 'Lista as contas do plano de contas.' })

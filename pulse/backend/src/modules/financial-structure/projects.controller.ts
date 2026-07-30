@@ -9,14 +9,18 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ProjectStatus } from '@prisma/client';
 
 import { ApiMessage } from '../../common/decorators/api-message.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { RequestUser } from '../../common/types/authenticated-request';
 import { assertCompanyPermission } from '../../common/utils/access-control.util';
 import { ProjectsService } from './projects.service';
+import { LifecycleController } from './structure-lifecycle.mixin';
+import { StructureLifecycleService } from './structure-lifecycle.service';
 import { CreateProjectDto, UpdateProjectDto } from './dto/project.dto';
 import { DuplicateNodeDto, StructureQueryDto } from './dto/common.dto';
+import { DeactivateStructureDto } from './dto/lifecycle.dto';
 
 /**
  * Projetos — dimensão adicional de análise. O valor realizado e a margem só serão
@@ -25,8 +29,16 @@ import { DuplicateNodeDto, StructureQueryDto } from './dto/common.dto';
 @ApiTags('Projetos')
 @ApiBearerAuth()
 @Controller('projects')
-export class ProjectsController {
-  constructor(private readonly projects: ProjectsService) {}
+export class ProjectsController extends LifecycleController(
+  'project',
+  'project',
+) {
+  constructor(
+    private readonly projects: ProjectsService,
+    lifecycle: StructureLifecycleService,
+  ) {
+    super(lifecycle);
+  }
 
   @Get()
   @ApiOperation({ summary: 'Lista os projetos de uma empresa, com paginação.' })
@@ -88,6 +100,95 @@ export class ProjectsController {
       assertCompanyPermission(actor, dto.targetCompanyId, 'project.manage');
     }
     return this.projects.duplicate(id, dto, actor);
+  }
+
+  @Post(':id/pause')
+  @ApiMessage('Projeto pausado com sucesso.')
+  @ApiOperation({
+    summary: 'Pausa um projeto em andamento, preservando o histórico.',
+  })
+  pause(
+    @Param('id') id: string,
+    @Body() dto: DeactivateStructureDto,
+    @CurrentUser() actor: RequestUser,
+  ) {
+    return this.transition(
+      id,
+      ProjectStatus.PAUSED,
+      'project.pause',
+      dto,
+      actor,
+    );
+  }
+
+  @Post(':id/resume')
+  @ApiMessage('Projeto retomado com sucesso.')
+  @ApiOperation({ summary: 'Retoma um projeto pausado ou atrasado.' })
+  resume(
+    @Param('id') id: string,
+    @Body() dto: DeactivateStructureDto,
+    @CurrentUser() actor: RequestUser,
+  ) {
+    return this.transition(
+      id,
+      ProjectStatus.IN_PROGRESS,
+      'project.pause',
+      dto,
+      actor,
+    );
+  }
+
+  @Post(':id/complete')
+  @ApiMessage('Projeto concluído com sucesso.')
+  @ApiOperation({
+    summary:
+      'Conclui o projeto, gravando a data real de término sem apagar a data prevista.',
+  })
+  complete(
+    @Param('id') id: string,
+    @Body() dto: DeactivateStructureDto,
+    @CurrentUser() actor: RequestUser,
+  ) {
+    return this.transition(
+      id,
+      ProjectStatus.COMPLETED,
+      'project.complete',
+      dto,
+      actor,
+    );
+  }
+
+  @Post(':id/cancel')
+  @ApiMessage('Projeto cancelado com sucesso.')
+  @ApiOperation({
+    summary:
+      'Cancela o projeto. Nada é excluído: os vínculos e o histórico permanecem.',
+  })
+  cancel(
+    @Param('id') id: string,
+    @Body() dto: DeactivateStructureDto,
+    @CurrentUser() actor: RequestUser,
+  ) {
+    return this.transition(
+      id,
+      ProjectStatus.CANCELLED,
+      'project.cancel',
+      dto,
+      actor,
+    );
+  }
+
+  /** Valida a permissão contra a empresa do projeto antes de mudar o status. */
+  private async transition(
+    id: string,
+    next: ProjectStatus,
+    permission: string,
+    dto: DeactivateStructureDto,
+    actor: RequestUser,
+  ) {
+    const project = await this.projects.findOne(id);
+    assertCompanyPermission(actor, project.companyId, permission);
+    return this.projects.changeStatus(id, next, actor, dto.reason);
   }
 
   @Delete(':id')
