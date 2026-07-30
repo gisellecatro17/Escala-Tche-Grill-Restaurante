@@ -784,35 +784,251 @@ const PERMISSIONS: PermissionSeed[] = [
     description: 'Consultar auditoria da estrutura financeira',
   },
 
+  // Cadastros — Tesouraria
   {
-    slug: 'bank-accounts.view',
+    slug: 'treasury.view',
     module: 'cadastros',
-    description: 'Visualizar contas bancárias',
+    description: 'Visualizar a tesouraria',
   },
   {
-    slug: 'bank-accounts.manage',
+    slug: 'treasury.manage',
     module: 'cadastros',
-    description: 'Incluir/editar contas bancárias',
+    description: 'Gerenciar a tesouraria',
   },
   {
-    slug: 'payment-methods.view',
+    slug: 'treasury.view_dashboard',
+    module: 'cadastros',
+    description: 'Visualizar a visão geral da tesouraria',
+  },
+  {
+    slug: 'treasury.manage_settings',
+    module: 'cadastros',
+    description: 'Configurar os parâmetros de tesouraria',
+  },
+  {
+    slug: 'treasury.view_sensitive_data',
+    module: 'cadastros',
+    description: 'Visualizar dados sensíveis sem mascaramento',
+  },
+  {
+    slug: 'treasury.allow_third_party_account',
+    module: 'cadastros',
+    description: 'Cadastrar contas de terceiro',
+  },
+  {
+    slug: 'treasury.approve_bank_data_change',
+    module: 'cadastros',
+    description: 'Aprovar alterações de dados bancários',
+  },
+  {
+    slug: 'treasury.export',
+    module: 'cadastros',
+    description: 'Exportar dados da tesouraria',
+  },
+  {
+    slug: 'treasury.view_audit',
+    module: 'cadastros',
+    description: 'Consultar a auditoria da tesouraria',
+  },
+  {
+    slug: 'financial_account.view',
+    module: 'cadastros',
+    description: 'Visualizar contas financeiras',
+  },
+  {
+    slug: 'financial_account.create',
+    module: 'cadastros',
+    description: 'Incluir contas financeiras',
+  },
+  {
+    slug: 'financial_account.update',
+    module: 'cadastros',
+    description: 'Editar contas financeiras',
+  },
+  {
+    slug: 'financial_account.activate',
+    module: 'cadastros',
+    description: 'Ativar contas financeiras',
+  },
+  {
+    slug: 'financial_account.block',
+    module: 'cadastros',
+    description: 'Bloquear contas financeiras',
+  },
+  {
+    slug: 'financial_account.unblock',
+    module: 'cadastros',
+    description: 'Desbloquear contas financeiras',
+  },
+  {
+    slug: 'financial_account.suspend',
+    module: 'cadastros',
+    description: 'Suspender contas financeiras',
+  },
+  {
+    slug: 'financial_account.deactivate',
+    module: 'cadastros',
+    description: 'Inativar contas financeiras',
+  },
+  {
+    slug: 'financial_account.close',
+    module: 'cadastros',
+    description: 'Encerrar contas financeiras',
+  },
+  {
+    slug: 'financial_account.delete',
+    module: 'cadastros',
+    description: 'Excluir contas financeiras em rascunho',
+  },
+  {
+    slug: 'financial_account.view_balance',
+    module: 'cadastros',
+    description: 'Visualizar saldos e limites da conta',
+  },
+  {
+    slug: 'financial_account.view_bank_data',
+    module: 'cadastros',
+    description: 'Visualizar dados bancários completos',
+  },
+  {
+    slug: 'financial_account.manage_initial_balance',
+    module: 'cadastros',
+    description: 'Registrar e alterar o saldo inicial',
+  },
+  {
+    slug: 'financial_account.manage_limits',
+    module: 'cadastros',
+    description: 'Gerenciar limites bancários',
+  },
+  {
+    slug: 'financial_account.manage_users',
+    module: 'cadastros',
+    description: 'Gerenciar usuários e alçadas da conta',
+  },
+  {
+    slug: 'financial_account.manage_integration',
+    module: 'cadastros',
+    description: 'Configurar integrações bancárias',
+  },
+  {
+    slug: 'financial_account.manage_pix',
+    module: 'cadastros',
+    description: 'Gerenciar chaves PIX da empresa',
+  },
+  {
+    slug: 'financial_account.view_audit',
+    module: 'cadastros',
+    description: 'Consultar a auditoria da conta',
+  },
+  {
+    slug: 'card.view',
+    module: 'cadastros',
+    description: 'Visualizar cartões corporativos',
+  },
+  {
+    slug: 'card.create',
+    module: 'cadastros',
+    description: 'Incluir cartões corporativos',
+  },
+  {
+    slug: 'card.update',
+    module: 'cadastros',
+    description: 'Editar cartões corporativos',
+  },
+  {
+    slug: 'card.block',
+    module: 'cadastros',
+    description: 'Bloquear cartões',
+  },
+  {
+    slug: 'card.unblock',
+    module: 'cadastros',
+    description: 'Desbloquear cartões',
+  },
+  {
+    slug: 'card.deactivate',
+    module: 'cadastros',
+    description: 'Inativar cartões',
+  },
+  {
+    slug: 'card.delete',
+    module: 'cadastros',
+    description: 'Excluir cartões em rascunho',
+  },
+  {
+    slug: 'card.manage_limits',
+    module: 'cadastros',
+    description: 'Gerenciar limites de cartões',
+  },
+  {
+    slug: 'card.manage_users',
+    module: 'cadastros',
+    description: 'Gerenciar portadores de cartões',
+  },
+  {
+    slug: 'card.view_sensitive_data',
+    module: 'cadastros',
+    description: 'Visualizar dados sensíveis dos cartões',
+  },
+  {
+    slug: 'payment_method.view',
     module: 'cadastros',
     description: 'Visualizar formas de pagamento',
   },
   {
-    slug: 'payment-methods.manage',
+    slug: 'payment_method.create',
     module: 'cadastros',
-    description: 'Incluir/editar formas de pagamento',
+    description: 'Incluir formas de pagamento',
   },
   {
-    slug: 'acquirers.view',
+    slug: 'payment_method.update',
     module: 'cadastros',
-    description: 'Visualizar cartões e adquirentes',
+    description: 'Editar formas de pagamento',
   },
   {
-    slug: 'acquirers.manage',
+    slug: 'payment_method.activate',
     module: 'cadastros',
-    description: 'Incluir/editar cartões e adquirentes',
+    description: 'Ativar formas de pagamento',
+  },
+  {
+    slug: 'payment_method.deactivate',
+    module: 'cadastros',
+    description: 'Inativar formas de pagamento',
+  },
+  {
+    slug: 'payment_method.delete',
+    module: 'cadastros',
+    description: 'Excluir formas de pagamento',
+  },
+  {
+    slug: 'receipt_method.view',
+    module: 'cadastros',
+    description: 'Visualizar formas de recebimento',
+  },
+  {
+    slug: 'receipt_method.create',
+    module: 'cadastros',
+    description: 'Incluir formas de recebimento',
+  },
+  {
+    slug: 'receipt_method.update',
+    module: 'cadastros',
+    description: 'Editar formas de recebimento',
+  },
+  {
+    slug: 'receipt_method.activate',
+    module: 'cadastros',
+    description: 'Ativar formas de recebimento',
+  },
+  {
+    slug: 'receipt_method.deactivate',
+    module: 'cadastros',
+    description: 'Inativar formas de recebimento',
+  },
+  {
+    slug: 'receipt_method.delete',
+    module: 'cadastros',
+    description: 'Excluir formas de recebimento',
   },
 
   // Financeiro
@@ -1096,8 +1312,13 @@ const ROLES: {
       'classification_rule.view',
       'classification_rule.test',
       'financial_structure.export',
-      'bank-accounts.view',
-      'payment-methods.view',
+      'treasury.view',
+      'treasury.view_dashboard',
+      'financial_account.view',
+      'financial_account.view_balance',
+      'card.view',
+      'payment_method.view',
+      'receipt_method.view',
       'financial.view',
       'financial.documents',
       'financial.process',
@@ -1661,6 +1882,7 @@ async function main() {
   });
 
   await seedDemoStructure(organization.id, company.id);
+  await seedDemoTreasury(organization.id, company.id);
 
   console.log('Seed concluído com sucesso.');
   console.log(
@@ -1931,6 +2153,242 @@ async function seedDemoStructure(organizationId: string, companyId: string) {
 
   console.log(
     'Estrutura de demonstração criada: versão do plano, subárvore de despesas, centros de custo, categorias, rateio de energia e regra de classificação.',
+  );
+}
+
+
+/**
+ * Tesouraria de demonstração do restaurante (seção 78). Dados fictícios: os números de
+ * agência, conta e cartão não correspondem a nenhuma conta real. Idempotente.
+ */
+async function seedDemoTreasury(organizationId: string, companyId: string) {
+  // Reaproveita o catálogo de instituições financeiras já existente.
+  const bancoDoBrasil = await prisma.financialInstitution.findFirst({
+    where: { compeCode: '001' },
+    select: { id: true },
+  });
+
+  const CONTA_BB = '00000000-0000-0000-0000-000000000901';
+  const CAIXA = '00000000-0000-0000-0000-000000000902';
+  const CARTEIRA_PIX = '00000000-0000-0000-0000-000000000903';
+
+  await prisma.financialAccount.upsert({
+    where: { id: CONTA_BB },
+    update: {},
+    create: {
+      id: CONTA_BB,
+      organizationId,
+      companyId,
+      financialInstitutionId: bancoDoBrasil?.id,
+      internalCode: 'CC-BB-001',
+      name: 'Conta Operacional',
+      displayName: 'Banco do Brasil — Conta Operacional',
+      accountType: 'CHECKING_ACCOUNT',
+      purpose: 'MULTIPLE',
+      branchNumber: '1234',
+      branchDigit: '5',
+      accountNumber: '12345',
+      accountDigit: '6',
+      normalizedAccountIdentifier: `${bancoDoBrasil?.id ?? 'sem-instituicao'}:12345:123456`,
+      holderName: 'Tchê Grill Restaurante Ltda.',
+      holderDocument: '11.222.333/0001-81',
+      normalizedHolderDocument: '11222333000181',
+      isPrimary: true,
+      isDefaultForPayments: true,
+      isDefaultForReceipts: true,
+      reconciliationMode: 'SEMI_AUTOMATIC',
+      status: 'ACTIVE',
+      accountPlanId: '00000000-0000-0000-0000-000000000411',
+    },
+  });
+
+  await prisma.financialAccount.upsert({
+    where: { id: CAIXA },
+    update: {},
+    create: {
+      id: CAIXA,
+      organizationId,
+      companyId,
+      internalCode: 'CX-001',
+      name: 'Caixa do Restaurante',
+      displayName: 'Caixa do Restaurante',
+      accountType: 'CASH',
+      purpose: 'OPERATING_CASH',
+      physicalLocation: 'Frente de caixa do salão',
+      requiresDailyClosing: true,
+      checkFrequencyDays: 1,
+      reconciliationMode: 'MANUAL',
+      status: 'ACTIVE',
+      accountPlanId: '00000000-0000-0000-0000-000000000411',
+    },
+  });
+
+  await prisma.financialAccount.upsert({
+    where: { id: CARTEIRA_PIX },
+    update: {},
+    create: {
+      id: CARTEIRA_PIX,
+      organizationId,
+      companyId,
+      internalCode: 'PIX-001',
+      name: 'Carteira PIX',
+      displayName: 'Carteira PIX',
+      accountType: 'DIGITAL_WALLET',
+      purpose: 'RECEIPTS',
+      reconciliationMode: 'MANUAL',
+      status: 'ACTIVE',
+      accountPlanId: '00000000-0000-0000-0000-000000000411',
+    },
+  });
+
+  // Saldos de implantação.
+  for (const [id, accountId, amount] of [
+    ['00000000-0000-0000-0000-000000000911', CONTA_BB, 25000],
+    ['00000000-0000-0000-0000-000000000912', CAIXA, 1500],
+  ] as const) {
+    await prisma.financialAccountOpeningBalance.upsert({
+      where: { id },
+      update: {},
+      create: {
+        id,
+        financialAccountId: accountId,
+        balanceDate: new Date('2026-01-01'),
+        balanceAmount: amount,
+        balanceType: 'CREDIT',
+        source: 'Extrato de implantação',
+        status: 'APPROVED',
+        approvedAt: new Date('2026-01-01'),
+      },
+    });
+  }
+
+  await prisma.companyPixKey.upsert({
+    where: { id: '00000000-0000-0000-0000-000000000921' },
+    update: {},
+    create: {
+      id: '00000000-0000-0000-0000-000000000921',
+      organizationId,
+      companyId,
+      financialAccountId: CONTA_BB,
+      financialInstitutionId: bancoDoBrasil?.id,
+      pixType: 'CNPJ',
+      pixKey: '11.222.333/0001-81',
+      normalizedKey: '11222333000181',
+      holderName: 'Tchê Grill Restaurante Ltda.',
+      holderDocument: '11.222.333/0001-81',
+      normalizedHolderDocument: '11222333000181',
+      purpose: 'GENERAL',
+      isPrimary: true,
+      isForBilling: true,
+      isForCustomers: true,
+    },
+  });
+
+  await prisma.corporateCard.upsert({
+    where: { id: '00000000-0000-0000-0000-000000000931' },
+    update: {},
+    create: {
+      id: '00000000-0000-0000-0000-000000000931',
+      organizationId,
+      companyId,
+      financialAccountId: CONTA_BB,
+      financialInstitutionId: bancoDoBrasil?.id,
+      name: 'Cartão Corporativo',
+      displayName: 'Cartão Corporativo — final 4587',
+      cardType: 'CREDIT',
+      brand: 'Visa',
+      // Apenas os quatro últimos dígitos: é tudo o que o sistema guarda.
+      lastFourDigits: '4587',
+      holderName: 'Tchê Grill Restaurante Ltda.',
+      isPhysical: true,
+      totalLimit: 20000,
+      transactionLimit: 5000,
+      closingDay: 25,
+      dueDay: 5,
+      allowsInstallments: true,
+      maximumInstallments: 12,
+      expirationDate: new Date('2029-12-31'),
+      status: 'ACTIVE',
+    },
+  });
+
+  // Formas de pagamento e recebimento padrão, compartilhadas pela organização.
+  const PAYMENT_METHODS = [
+    { id: '00000000-0000-0000-0000-000000000941', code: 'PIX', name: 'PIX', type: 'PIX', beneficiary: true },
+    { id: '00000000-0000-0000-0000-000000000942', code: 'BOLETO', name: 'Boleto', type: 'BOLETO', digitable: true },
+    { id: '00000000-0000-0000-0000-000000000943', code: 'TRANSFERENCIA', name: 'Transferência bancária', type: 'BANK_TRANSFER', bankData: true, beneficiary: true },
+    { id: '00000000-0000-0000-0000-000000000944', code: 'CARTAO-CORP', name: 'Cartão corporativo', type: 'CREDIT_CARD', installments: true },
+    { id: '00000000-0000-0000-0000-000000000945', code: 'DINHEIRO', name: 'Dinheiro', type: 'CASH' },
+  ] as const;
+
+  for (const [index, method] of PAYMENT_METHODS.entries()) {
+    await prisma.paymentMethodCatalog.upsert({
+      where: { id: method.id },
+      update: {},
+      create: {
+        id: method.id,
+        organizationId,
+        code: method.code,
+        name: method.name,
+        methodType: method.type,
+        requiresBeneficiary: 'beneficiary' in method ? method.beneficiary : false,
+        requiresBankData: 'bankData' in method ? method.bankData : false,
+        requiresDigitableLine: 'digitable' in method ? method.digitable : false,
+        allowsInstallments: 'installments' in method ? method.installments : false,
+        sortOrder: index,
+        isSystem: true,
+      },
+    });
+  }
+
+  const RECEIPT_METHODS = [
+    { id: '00000000-0000-0000-0000-000000000951', code: 'PIX', name: 'PIX', type: 'PIX', days: 0, fee: null },
+    { id: '00000000-0000-0000-0000-000000000952', code: 'CARTAO-CREDITO', name: 'Cartão de crédito', type: 'CREDIT_CARD', days: 30, fee: 3.49 },
+    { id: '00000000-0000-0000-0000-000000000953', code: 'CARTAO-DEBITO', name: 'Cartão de débito', type: 'DEBIT_CARD', days: 1, fee: 1.99 },
+    { id: '00000000-0000-0000-0000-000000000954', code: 'DINHEIRO', name: 'Dinheiro', type: 'CASH', days: 0, fee: null },
+    { id: '00000000-0000-0000-0000-000000000955', code: 'TRANSFERENCIA', name: 'Transferência', type: 'BANK_TRANSFER', days: 0, fee: null },
+  ] as const;
+
+  for (const [index, method] of RECEIPT_METHODS.entries()) {
+    await prisma.receiptMethod.upsert({
+      where: { id: method.id },
+      update: {},
+      create: {
+        id: method.id,
+        organizationId,
+        code: method.code,
+        name: method.name,
+        methodType: method.type,
+        defaultFinancialAccountId: method.type === 'CASH' ? CAIXA : CONTA_BB,
+        settlementDays: method.days,
+        percentageFee: method.fee,
+        allowsInstallments: method.type === 'CREDIT_CARD',
+        maximumInstallments: method.type === 'CREDIT_CARD' ? 12 : null,
+        sortOrder: index,
+        isSystem: true,
+      },
+    });
+  }
+
+  await prisma.treasurySettings.upsert({
+    where: { companyId },
+    update: {},
+    create: {
+      organizationId,
+      companyId,
+      primaryFinancialAccountId: CONTA_BB,
+      defaultPaymentAccountId: CONTA_BB,
+      defaultReceiptAccountId: CONTA_BB,
+      defaultCashAccountId: CAIXA,
+      minimumSafetyBalance: 5000,
+      requireDualApproval: true,
+      dualApprovalAmount: 10000,
+      cardExpirationAlertDays: 60,
+    },
+  });
+
+  console.log(
+    'Tesouraria de demonstração criada: 3 contas, saldos iniciais, chave PIX, cartão corporativo, 5 formas de pagamento, 5 de recebimento e parâmetros.',
   );
 }
 

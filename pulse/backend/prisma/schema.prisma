@@ -901,6 +901,12 @@ model Organization {
   accountPlanVersions FinancialAccountPlanVersion[]
   hierarchyHistory    FinancialHierarchyHistory[]
   structureImports    FinancialStructureImport[]
+  financialAccounts   FinancialAccount[]
+  companyPixKeys      CompanyPixKey[]
+  corporateCards      CorporateCard[]
+  paymentMethods      PaymentMethodCatalog[]
+  receiptMethods      ReceiptMethod[]
+  treasurySettings    TreasurySettings[]
 
   @@map("organizations")
 }
@@ -1020,6 +1026,12 @@ model Company {
   accountPlanVersions FinancialAccountPlanVersion[]
   hierarchyHistory    FinancialHierarchyHistory[]
   structureImports    FinancialStructureImport[]
+  financialAccounts   FinancialAccount[]
+  companyPixKeys      CompanyPixKey[]
+  corporateCards      CorporateCard[]
+  paymentMethods      PaymentMethodCatalog[]
+  receiptMethods      ReceiptMethod[]
+  treasurySettings    TreasurySettings?
 
   @@unique([organizationId, internalCode])
   @@index([organizationId])
@@ -1162,6 +1174,8 @@ model User {
   organizationMemberships UserOrganizationRole[]
   companyMemberships      UserCompanyRole[]
   auditLogs               AuditLog[]
+  financialAccountLinks   FinancialAccountUser[]
+  corporateCardLinks      CorporateCardUser[]
 
   @@map("users")
 }
@@ -1181,6 +1195,7 @@ model Role {
   permissions             RolePermission[]
   organizationMemberships UserOrganizationRole[]
   companyMemberships      UserCompanyRole[]
+  financialAccountUsers   FinancialAccountUser[]
 
   @@map("roles")
 }
@@ -1416,6 +1431,10 @@ model FinancialCategory {
   tagLinks                 FinancialTagLink[]         @relation("CategoryTagLinks")
   ruleActionsAsCategory    ClassificationRuleAction[] @relation("RuleActionCategory")
   ruleActionsAsSubcategory ClassificationRuleAction[] @relation("RuleActionSubcategory")
+  cardsAsDefault           CorporateCard[]            @relation("CardDefaultCategory")
+  paymentMethodFees        PaymentMethodCatalog[]     @relation("PaymentMethodFeeCategory")
+  receiptMethodFees        ReceiptMethod[]            @relation("ReceiptMethodFeeCategory")
+  receiptMethodInterests   ReceiptMethod[]            @relation("ReceiptMethodInterestCategory")
 
   @@unique([companyId, code])
   @@index([companyId])
@@ -1480,6 +1499,9 @@ model CostCenter {
   allocationLines      AllocationRuleItem[]       @relation("AllocationLineCostCenter")
   tagLinks             FinancialTagLink[]         @relation("CostCenterTagLinks")
   ruleActions          ClassificationRuleAction[] @relation("RuleActionCostCenter")
+  financialAccounts    FinancialAccount[]
+  corporateCards       CorporateCard[]
+  cardUsers            CorporateCardUser[]        @relation("CardUserCostCenter")
 
   @@unique([companyId, code])
   @@index([companyId])
@@ -1499,7 +1521,10 @@ model FinancialInstitution {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  bankAccounts SupplierBankAccount[]
+  bankAccounts      SupplierBankAccount[]
+  financialAccounts FinancialAccount[]
+  companyPixKeys    CompanyPixKey[]
+  corporateCards    CorporateCard[]
 
   @@unique([compeCode])
   @@index([ispb])
@@ -1558,17 +1583,18 @@ model Supplier {
 
   organization Organization @relation(fields: [organizationId], references: [id])
 
-  addresses          SupplierAddress[]
-  contacts           SupplierContact[]
-  cnaes              SupplierCnae[]
-  alternativeNames   SupplierAlternativeName[]
-  bankAccounts       SupplierBankAccount[]
-  pixKeys            SupplierPixKey[]
-  bankIdentifiers    SupplierBankIdentifier[]
-  companyLinks       SupplierCompanyLink[]
-  registryQueries    SupplierRegistryQuery[]
-  statusHistory      SupplierStatusHistory[]
-  primaryForProjects Project[]                 @relation("ProjectPrimarySupplier")
+  addresses                SupplierAddress[]
+  contacts                 SupplierContact[]
+  cnaes                    SupplierCnae[]
+  alternativeNames         SupplierAlternativeName[]
+  bankAccounts             SupplierBankAccount[]
+  pixKeys                  SupplierPixKey[]
+  bankIdentifiers          SupplierBankIdentifier[]
+  companyLinks             SupplierCompanyLink[]
+  registryQueries          SupplierRegistryQuery[]
+  statusHistory            SupplierStatusHistory[]
+  primaryForProjects       Project[]                 @relation("ProjectPrimarySupplier")
+  receiptMethodsAsAcquirer ReceiptMethod[]           @relation("ReceiptMethodAcquirer")
 
   @@index([organizationId])
   @@index([systemStatus])
@@ -2690,6 +2716,8 @@ model FinancialAccountPlan {
   allocationLines     AllocationRuleItem[]       @relation("AllocationLineAccountPlan")
   tagLinks            FinancialTagLink[]         @relation("AccountPlanTagLinks")
   ruleActions         ClassificationRuleAction[] @relation("RuleActionAccountPlan")
+  financialAccounts   FinancialAccount[]         @relation("FinancialAccountPlanLink")
+  corporateCards      CorporateCard[]            @relation("CardAccountPlan")
 
   @@unique([organizationId, companyId, code])
   @@index([organizationId])
@@ -2840,6 +2868,8 @@ model Project {
   classificationRules  ClassificationRule[]
   allocationLines      AllocationRuleItem[]       @relation("AllocationLineProject")
   tagLinks             FinancialTagLink[]         @relation("ProjectTagLinks")
+  cardsAsDefault       CorporateCard[]            @relation("CardDefaultProject")
+  cardUsers            CorporateCardUser[]        @relation("CardUserProject")
 
   @@unique([companyId, code])
   @@index([companyId])
@@ -2902,6 +2932,9 @@ model BusinessUnit {
   classificationRules  ClassificationRule[]
   allocationLines      AllocationRuleItem[]       @relation("AllocationLineBusinessUnit")
   tagLinks             FinancialTagLink[]         @relation("BusinessUnitTagLinks")
+  financialAccounts    FinancialAccount[]
+  corporateCards       CorporateCard[]
+  cardUsers            CorporateCardUser[]        @relation("CardUserBusinessUnit")
 
   @@unique([organizationId, companyId, code])
   @@index([organizationId])
@@ -2961,6 +2994,7 @@ model FinancialNatureCatalog {
   categories          FinancialCategory[]        @relation("CategoryFinancialNature")
   accountPlans        FinancialAccountPlan[]     @relation("AccountPlanFinancialNature")
   classificationRules ClassificationRule[]
+  financialAccounts   FinancialAccount[]         @relation("FinancialAccountNature")
 
   @@unique([organizationId, companyId, code])
   @@index([organizationId])
@@ -3469,4 +3503,839 @@ model FinancialHierarchyHistory {
   @@index([organizationId])
   @@index([entityType, entityId])
   @@map("financial_hierarchy_history")
+}
+
+// ─── Tesouraria: contas financeiras, cartões e meios de pagamento ─────────────
+
+/// Tipos de conta financeira (seção 7). A estrutura é extensível de propósito:
+/// caixas e carteiras convivem com contas bancárias sob o mesmo cadastro.
+enum FinancialAccountType {
+  CHECKING_ACCOUNT
+  SAVINGS_ACCOUNT
+  PAYMENT_ACCOUNT
+  DIGITAL_ACCOUNT
+  INVESTMENT_ACCOUNT
+  GUARANTEED_ACCOUNT
+  CASH
+  PETTY_CASH
+  DIGITAL_WALLET
+  RECEIVING_ACCOUNT
+  TRANSIT_ACCOUNT
+  COMPENSATION_ACCOUNT
+  OTHER
+
+  @@map("financial_account_type")
+}
+
+/// Finalidade principal da conta (seção 11).
+enum FinancialAccountPurpose {
+  PAYMENTS
+  RECEIPTS
+  PAYROLL
+  TAXES
+  INVESTMENTS
+  OPERATING_CASH
+  CORPORATE_EXPENSES
+  TRANSFERS
+  GUARANTEES
+  INTERNAL_MOVEMENTS
+  MULTIPLE
+
+  @@map("financial_account_purpose")
+}
+
+/// Ciclo de vida da conta financeira (seção 30). Encerrada é terminal: não volta a
+/// ativa por reativação simples.
+enum FinancialAccountStatus {
+  DRAFT
+  PENDING_VALIDATION
+  ACTIVE
+  BLOCKED
+  SUSPENDED
+  INACTIVE
+  CLOSED
+
+  @@map("financial_account_status")
+}
+
+/// Regime de conciliação da conta (seção 16).
+enum ReconciliationMode {
+  MANUAL
+  SEMI_AUTOMATIC
+  AUTOMATIC_WITH_CONFIRMATION
+  AUTOMATIC_BY_RULE
+  NOT_RECONCILABLE
+
+  @@map("reconciliation_mode")
+}
+
+/// Natureza do saldo informado na implantação (seção 18).
+enum BalanceType {
+  CREDIT
+  DEBIT
+  ZERO
+
+  @@map("balance_type")
+}
+
+/// Situação do saldo inicial: aprovado é o que vale para os relatórios.
+enum OpeningBalanceStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SUPERSEDED
+
+  @@map("opening_balance_status")
+}
+
+/// Modalidades de limite bancário (seção 21).
+enum BankLimitType {
+  OVERDRAFT
+  GUARANTEED_ACCOUNT
+  WORKING_CAPITAL
+  RECEIVABLES_ANTICIPATION
+  REVOLVING
+  OTHER
+
+  @@map("bank_limit_type")
+}
+
+/// Finalidade da chave PIX da empresa (seção 22).
+enum PixKeyPurpose {
+  GENERAL
+  BILLING
+  SUPPLIERS
+  CUSTOMERS
+  PAYROLL
+  REFUNDS
+
+  @@map("pix_key_purpose")
+}
+
+/// Meios de integração bancária previstos (seção 26). Nenhum é executado nesta etapa.
+enum BankIntegrationType {
+  OFX_MANUAL
+  CNAB
+  OPEN_FINANCE
+  BANK_API
+  SFTP
+  WEBHOOK
+  ERP
+  CSV_FILE
+  XLSX_FILE
+  MANUAL
+
+  @@map("bank_integration_type")
+}
+
+enum BankIntegrationStatus {
+  NOT_CONFIGURED
+  PENDING
+  ACTIVE
+  ERROR
+  SUSPENDED
+  DISCONNECTED
+
+  @@map("bank_integration_status")
+}
+
+/// Ambiente da integração: homologação e produção nunca compartilham credencial.
+enum IntegrationEnvironment {
+  SANDBOX
+  PRODUCTION
+
+  @@map("integration_environment")
+}
+
+enum CorporateCardType {
+  CREDIT
+  DEBIT
+  PREPAID
+  MULTIPLE
+  VIRTUAL
+  OTHER
+
+  @@map("corporate_card_type")
+}
+
+enum CorporateCardStatus {
+  DRAFT
+  ACTIVE
+  BLOCKED
+  EXPIRED
+  CANCELLED
+  INACTIVE
+
+  @@map("corporate_card_status")
+}
+
+/// Meios de pagamento (seção 41).
+enum PaymentMethodType {
+  PIX
+  BOLETO
+  BANK_TRANSFER
+  TED
+  DOC
+  DIRECT_DEBIT
+  CREDIT_CARD
+  DEBIT_CARD
+  CASH
+  CHECK
+  UTILITY_BILL
+  COMPENSATION
+  ACCOUNT_CREDIT
+  BATCH_PAYMENT
+  OTHER
+
+  @@map("payment_method_type")
+}
+
+/// Meios de recebimento (seção 43).
+enum ReceiptMethodType {
+  PIX
+  BOLETO
+  BANK_TRANSFER
+  CREDIT_CARD
+  DEBIT_CARD
+  CASH
+  CHECK
+  PAYMENT_LINK
+  DIRECT_DEBIT
+  ACCOUNT_CREDIT
+  DEPOSIT
+  GATEWAY
+  MARKETPLACE
+  OTHER
+
+  @@map("receipt_method_type")
+}
+
+/// Entidades que podem figurar como favorecido em um pagamento (seção 45).
+enum BeneficiaryEntityType {
+  SUPPLIER
+  EMPLOYEE
+  PARTNER
+  CUSTOMER
+  GOVERNMENT
+  FINANCIAL_INSTITUTION
+  OTHER
+
+  @@map("beneficiary_entity_type")
+}
+
+/// Conta financeira: conta bancária, caixa, fundo fixo ou carteira digital.
+/// Toda movimentação financeira futura apontará para uma conta deste cadastro.
+model FinancialAccount {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  companyId      String @map("company_id") @db.Uuid
+
+  financialInstitutionId String? @map("financial_institution_id") @db.Uuid
+  businessUnitId         String? @map("business_unit_id") @db.Uuid
+  costCenterId           String? @map("cost_center_id") @db.Uuid
+  accountPlanId          String? @map("account_plan_id") @db.Uuid
+  financialNatureId      String? @map("financial_nature_id") @db.Uuid
+
+  internalCode String? @map("internal_code") @db.VarChar(50)
+  name         String
+  /// Nome usado em seletores, relatórios e telas — ex.: "Banco do Brasil — Conta Operacional".
+  displayName  String? @map("display_name")
+
+  accountType FinancialAccountType    @map("account_type")
+  purpose     FinancialAccountPurpose @default(MULTIPLE)
+
+  branchNumber                String? @map("branch_number") @db.VarChar(20)
+  branchDigit                 String? @map("branch_digit") @db.VarChar(5)
+  accountNumber               String? @map("account_number") @db.VarChar(30)
+  accountDigit                String? @map("account_digit") @db.VarChar(5)
+  /// Agência+conta sem máscara — detecta duplicidade real entre formatos diferentes.
+  normalizedAccountIdentifier String? @map("normalized_account_identifier")
+
+  holderName               String?   @map("holder_name")
+  holderDocument           String?   @map("holder_document")
+  normalizedHolderDocument String?   @map("normalized_holder_document")
+  /// Conta cujo titular não é a empresa: exige justificativa, permissão e auditoria.
+  isThirdParty             Boolean   @default(false) @map("is_third_party")
+  thirdPartyReason         String?   @map("third_party_reason")
+  thirdPartyApprovedBy     String?   @map("third_party_approved_by") @db.Uuid
+  thirdPartyApprovedAt     DateTime? @map("third_party_approved_at")
+
+  /// Dados de conta internacional e convênios de cobrança (seção 13).
+  country         String? @db.VarChar(2)
+  swiftCode       String? @map("swift_code") @db.VarChar(20)
+  iban            String? @db.VarChar(40)
+  agreementNumber String? @map("agreement_number") @db.VarChar(30)
+  bankClientCode  String? @map("bank_client_code") @db.VarChar(30)
+  walletNumber    String? @map("wallet_number") @db.VarChar(20)
+  walletVariation String? @map("wallet_variation") @db.VarChar(20)
+  assignorCode    String? @map("assignor_code") @db.VarChar(30)
+  bankNotes       String? @map("bank_notes")
+
+  /// Campos exclusivos de caixa, fundo fixo e carteira (seção 15).
+  physicalLocation     String? @map("physical_location")
+  responsibleUserId    String? @map("responsible_user_id") @db.Uuid
+  requiresDailyClosing Boolean @default(false) @map("requires_daily_closing")
+  checkFrequencyDays   Int?    @map("check_frequency_days")
+
+  currencyCode String @default("BRL") @map("currency_code") @db.VarChar(3)
+
+  isPrimary             Boolean @default(false) @map("is_primary")
+  isDefaultForPayments  Boolean @default(false) @map("is_default_for_payments")
+  isDefaultForReceipts  Boolean @default(false) @map("is_default_for_receipts")
+  isDefaultForTaxes     Boolean @default(false) @map("is_default_for_taxes")
+  isDefaultForPayroll   Boolean @default(false) @map("is_default_for_payroll")
+  isDefaultForTransfers Boolean @default(false) @map("is_default_for_transfers")
+
+  allowsNegativeBalance    Boolean @default(false) @map("allows_negative_balance")
+  allowsManualEntries      Boolean @default(true) @map("allows_manual_entries")
+  allowsImports            Boolean @default(true) @map("allows_imports")
+  allowsIntegrations       Boolean @default(false) @map("allows_integrations")
+  allowsRetroactiveEntries Boolean @default(false) @map("allows_retroactive_entries")
+  requiresAttachment       Boolean @default(false) @map("requires_attachment")
+  requiresHistory          Boolean @default(false) @map("requires_history")
+  requiresCategory         Boolean @default(true) @map("requires_category")
+
+  reconciliationMode ReconciliationMode @default(MANUAL) @map("reconciliation_mode")
+
+  /// Categorias sugeridas para os lançamentos automáticos da conta (seção 17).
+  feeCategoryId            String? @map("fee_category_id") @db.Uuid
+  interestPaidCategoryId   String? @map("interest_paid_category_id") @db.Uuid
+  interestEarnedCategoryId String? @map("interest_earned_category_id") @db.Uuid
+  iofCategoryId            String? @map("iof_category_id") @db.Uuid
+  yieldCategoryId          String? @map("yield_category_id") @db.Uuid
+  transferCategoryId       String? @map("transfer_category_id") @db.Uuid
+  investmentCategoryId     String? @map("investment_category_id") @db.Uuid
+  redemptionCategoryId     String? @map("redemption_category_id") @db.Uuid
+  reversalCategoryId       String? @map("reversal_category_id") @db.Uuid
+
+  /// Saldos mínimos/máximos recomendados — referência de gestão, não trava operacional.
+  minimumRecommendedBalance Decimal? @map("minimum_recommended_balance") @db.Decimal(18, 2)
+  maximumRecommendedBalance Decimal? @map("maximum_recommended_balance") @db.Decimal(18, 2)
+  blockedBalance            Decimal? @map("blocked_balance") @db.Decimal(18, 2)
+
+  startDate         DateTime? @map("start_date") @db.Date
+  closingDate       DateTime? @map("closing_date") @db.Date
+  /// Saldo declarado no encerramento, exigido pela seção 34.
+  closingBalance    Decimal?  @map("closing_balance") @db.Decimal(18, 2)
+  closingReason     String?   @map("closing_reason")
+  closingDocumentId String?   @map("closing_document_id") @db.Uuid
+
+  status FinancialAccountStatus @default(DRAFT)
+  notes  String?
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+
+  organization         Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company              Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  financialInstitution FinancialInstitution?   @relation(fields: [financialInstitutionId], references: [id])
+  businessUnit         BusinessUnit?           @relation(fields: [businessUnitId], references: [id])
+  costCenter           CostCenter?             @relation(fields: [costCenterId], references: [id])
+  accountPlan          FinancialAccountPlan?   @relation("FinancialAccountPlanLink", fields: [accountPlanId], references: [id])
+  financialNature      FinancialNatureCatalog? @relation("FinancialAccountNature", fields: [financialNatureId], references: [id])
+
+  openingBalances FinancialAccountOpeningBalance[]
+  limits          FinancialAccountLimit[]
+  pixKeys         CompanyPixKey[]
+  users           FinancialAccountUser[]
+  integrations    FinancialAccountIntegration[]
+  cards           CorporateCard[]
+  statusHistory   FinancialAccountStatusHistory[]
+  receiptMethods  ReceiptMethod[]                  @relation("ReceiptMethodDefaultAccount")
+
+  treasuryPrimaryFor TreasurySettings[] @relation("TreasuryPrimaryAccount")
+  treasuryPaymentFor TreasurySettings[] @relation("TreasuryPaymentAccount")
+  treasuryReceiptFor TreasurySettings[] @relation("TreasuryReceiptAccount")
+  treasuryTaxFor     TreasurySettings[] @relation("TreasuryTaxAccount")
+  treasuryPayrollFor TreasurySettings[] @relation("TreasuryPayrollAccount")
+  treasuryCashFor    TreasurySettings[] @relation("TreasuryCashAccount")
+
+  @@unique([companyId, internalCode])
+  @@index([organizationId])
+  @@index([companyId, status])
+  @@index([normalizedAccountIdentifier])
+  @@map("financial_accounts")
+}
+
+/// Saldo de implantação. Alterações depois de existir movimentação exigem justificativa e
+/// preservam o registro anterior como `SUPERSEDED` — o histórico nunca é sobrescrito.
+model FinancialAccountOpeningBalance {
+  id                 String @id @default(uuid()) @db.Uuid
+  financialAccountId String @map("financial_account_id") @db.Uuid
+
+  balanceDate          DateTime    @map("balance_date") @db.Date
+  balanceAmount        Decimal     @map("balance_amount") @db.Decimal(18, 2)
+  balanceType          BalanceType @default(CREDIT) @map("balance_type")
+  source               String?
+  documentAttachmentId String?     @map("document_attachment_id") @db.Uuid
+  reason               String?
+
+  status OpeningBalanceStatus @default(APPROVED)
+
+  createdBy  String?   @map("created_by") @db.Uuid
+  approvedBy String?   @map("approved_by") @db.Uuid
+  approvedAt DateTime? @map("approved_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  financialAccount FinancialAccount @relation(fields: [financialAccountId], references: [id], onDelete: Cascade)
+
+  @@index([financialAccountId, status])
+  @@map("financial_account_opening_balances")
+}
+
+/// Limite contratado com o banco (cheque especial, conta garantida, capital de giro).
+model FinancialAccountLimit {
+  id                 String @id @default(uuid()) @db.Uuid
+  financialAccountId String @map("financial_account_id") @db.Uuid
+
+  limitType            BankLimitType @map("limit_type")
+  contractedAmount     Decimal       @map("contracted_amount") @db.Decimal(18, 2)
+  interestRate         Decimal?      @map("interest_rate") @db.Decimal(9, 6)
+  startDate            DateTime?     @map("start_date") @db.Date
+  endDate              DateTime?     @map("end_date") @db.Date
+  documentAttachmentId String?       @map("document_attachment_id") @db.Uuid
+  responsibleUserId    String?       @map("responsible_user_id") @db.Uuid
+  notes                String?
+
+  status RecordStatus @default(ACTIVE)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+
+  financialAccount FinancialAccount @relation(fields: [financialAccountId], references: [id], onDelete: Cascade)
+
+  @@index([financialAccountId])
+  @@map("financial_account_limits")
+}
+
+/// Chave PIX da própria empresa, distinta das chaves de fornecedor (`supplier_pix_keys`).
+model CompanyPixKey {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  companyId      String @map("company_id") @db.Uuid
+
+  financialAccountId     String? @map("financial_account_id") @db.Uuid
+  financialInstitutionId String? @map("financial_institution_id") @db.Uuid
+
+  pixType       PixKeyType @map("pix_type")
+  pixKey        String     @map("pix_key")
+  /// Chave sem máscara. A unicidade é por empresa: duas empresas podem ter chaves
+  /// distintas, mas a mesma chave não se repete dentro da mesma empresa.
+  normalizedKey String     @map("normalized_key")
+
+  holderName               String? @map("holder_name")
+  holderDocument           String? @map("holder_document")
+  normalizedHolderDocument String? @map("normalized_holder_document")
+
+  purpose        PixKeyPurpose @default(GENERAL)
+  isPrimary      Boolean       @default(false) @map("is_primary")
+  isForBilling   Boolean       @default(false) @map("is_for_billing")
+  isForSuppliers Boolean       @default(false) @map("is_for_suppliers")
+  isForCustomers Boolean       @default(false) @map("is_for_customers")
+
+  validationStatus BankDataVerificationStatus @default(UNVERIFIED) @map("validation_status")
+  validatedAt      DateTime?                  @map("validated_at")
+  status           RecordStatus               @default(ACTIVE)
+  proofDocumentId  String?                    @map("proof_document_id") @db.Uuid
+  notes            String?
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+
+  organization         Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company              Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  financialAccount     FinancialAccount?     @relation(fields: [financialAccountId], references: [id])
+  financialInstitution FinancialInstitution? @relation(fields: [financialInstitutionId], references: [id])
+
+  @@unique([companyId, normalizedKey])
+  @@index([organizationId])
+  @@index([financialAccountId])
+  @@map("company_pix_keys")
+}
+
+/// Permissões de um usuário **naquela conta**. O mesmo usuário pode ter alçadas
+/// diferentes em contas diferentes, por isso o vínculo é por conta e não por perfil.
+model FinancialAccountUser {
+  id                 String  @id @default(uuid()) @db.Uuid
+  financialAccountId String  @map("financial_account_id") @db.Uuid
+  userId             String  @map("user_id") @db.Uuid
+  roleId             String? @map("role_id") @db.Uuid
+
+  startDate DateTime? @map("start_date") @db.Date
+  endDate   DateTime? @map("end_date") @db.Date
+
+  viewLimit        Decimal? @map("view_limit") @db.Decimal(18, 2)
+  transactionLimit Decimal? @map("transaction_limit") @db.Decimal(18, 2)
+  approvalLimit    Decimal? @map("approval_limit") @db.Decimal(18, 2)
+
+  canViewBalance          Boolean @default(true) @map("can_view_balance")
+  canViewBankData         Boolean @default(false) @map("can_view_bank_data")
+  canCreateEntry          Boolean @default(false) @map("can_create_entry")
+  canImportStatement      Boolean @default(false) @map("can_import_statement")
+  canReconcile            Boolean @default(false) @map("can_reconcile")
+  canSchedulePayment      Boolean @default(false) @map("can_schedule_payment")
+  canAuthorizePayment     Boolean @default(false) @map("can_authorize_payment")
+  canUpdateOpeningBalance Boolean @default(false) @map("can_update_opening_balance")
+  canUpdateLimits         Boolean @default(false) @map("can_update_limits")
+  canManageIntegration    Boolean @default(false) @map("can_manage_integration")
+  canExport               Boolean @default(false) @map("can_export")
+
+  status RecordStatus @default(ACTIVE)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+
+  financialAccount FinancialAccount @relation(fields: [financialAccountId], references: [id], onDelete: Cascade)
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role             Role?            @relation(fields: [roleId], references: [id])
+
+  @@unique([financialAccountId, userId])
+  @@index([userId])
+  @@map("financial_account_users")
+}
+
+/// Configuração de integração bancária. Preparada, não executada nesta etapa.
+model FinancialAccountIntegration {
+  id                 String @id @default(uuid()) @db.Uuid
+  financialAccountId String @map("financial_account_id") @db.Uuid
+
+  integrationType   BankIntegrationType    @map("integration_type")
+  provider          String?
+  externalAccountId String?                @map("external_account_id")
+  environment       IntegrationEnvironment @default(SANDBOX)
+  status            BankIntegrationStatus  @default(NOT_CONFIGURED)
+
+  supportsBalance        Boolean @default(false) @map("supports_balance")
+  supportsStatements     Boolean @default(false) @map("supports_statements")
+  supportsPayments       Boolean @default(false) @map("supports_payments")
+  supportsBilling        Boolean @default(false) @map("supports_billing")
+  supportsReconciliation Boolean @default(false) @map("supports_reconciliation")
+
+  /// Ponteiro para o segredo no cofre (ex.: "vault://pulse/company/<id>/bb").
+  /// NUNCA a credencial em si — o back-end resolve o ponteiro no momento do uso.
+  credentialsReference String?   @map("credentials_reference")
+  credentialsUpdatedAt DateTime? @map("credentials_updated_at")
+
+  lastSyncAt       DateTime? @map("last_sync_at")
+  nextSyncAt       DateTime? @map("next_sync_at")
+  lastErrorCode    String?   @map("last_error_code")
+  lastErrorMessage String?   @map("last_error_message")
+  notes            String?
+
+  configuredBy String?   @map("configured_by") @db.Uuid
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  deletedAt    DateTime? @map("deleted_at")
+
+  financialAccount FinancialAccount @relation(fields: [financialAccountId], references: [id], onDelete: Cascade)
+
+  @@index([financialAccountId])
+  @@map("financial_account_integrations")
+}
+
+/// Cartão corporativo. Guarda apenas os quatro últimos dígitos — nunca o número
+/// completo, o CVV ou a senha.
+model CorporateCard {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  companyId      String @map("company_id") @db.Uuid
+
+  financialAccountId     String? @map("financial_account_id") @db.Uuid
+  financialInstitutionId String? @map("financial_institution_id") @db.Uuid
+  businessUnitId         String? @map("business_unit_id") @db.Uuid
+  costCenterId           String? @map("cost_center_id") @db.Uuid
+  defaultCategoryId      String? @map("default_category_id") @db.Uuid
+  defaultProjectId       String? @map("default_project_id") @db.Uuid
+  accountPlanId          String? @map("account_plan_id") @db.Uuid
+
+  name        String
+  displayName String? @map("display_name")
+
+  cardType       CorporateCardType @map("card_type")
+  brand          String?           @db.VarChar(40)
+  /// Somente os quatro últimos dígitos, validados como exatamente 4 numerais.
+  lastFourDigits String            @map("last_four_digits") @db.VarChar(4)
+
+  holderName        String? @map("holder_name")
+  responsibleUserId String? @map("responsible_user_id") @db.Uuid
+
+  isPhysical Boolean @default(true) @map("is_physical")
+  isVirtual  Boolean @default(false) @map("is_virtual")
+
+  totalLimit       Decimal? @map("total_limit") @db.Decimal(18, 2)
+  transactionLimit Decimal? @map("transaction_limit") @db.Decimal(18, 2)
+
+  closingDay Int? @map("closing_day")
+  dueDay     Int? @map("due_day")
+
+  allowsInstallments  Boolean @default(true) @map("allows_installments")
+  maximumInstallments Int?    @map("maximum_installments")
+
+  issueDate      DateTime? @map("issue_date") @db.Date
+  expirationDate DateTime? @map("expiration_date") @db.Date
+
+  status CorporateCardStatus @default(DRAFT)
+  notes  String?
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+
+  organization         Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company              Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  financialAccount     FinancialAccount?     @relation(fields: [financialAccountId], references: [id])
+  financialInstitution FinancialInstitution? @relation(fields: [financialInstitutionId], references: [id])
+  businessUnit         BusinessUnit?         @relation(fields: [businessUnitId], references: [id])
+  costCenter           CostCenter?           @relation(fields: [costCenterId], references: [id])
+  defaultCategory      FinancialCategory?    @relation("CardDefaultCategory", fields: [defaultCategoryId], references: [id])
+  defaultProject       Project?              @relation("CardDefaultProject", fields: [defaultProjectId], references: [id])
+  accountPlan          FinancialAccountPlan? @relation("CardAccountPlan", fields: [accountPlanId], references: [id])
+
+  users CorporateCardUser[]
+
+  @@unique([companyId, financialInstitutionId, lastFourDigits, expirationDate])
+  @@index([organizationId])
+  @@index([companyId, status])
+  @@map("corporate_cards")
+}
+
+/// Portadores do cartão, cada um com sua alçada.
+model CorporateCardUser {
+  id              String @id @default(uuid()) @db.Uuid
+  corporateCardId String @map("corporate_card_id") @db.Uuid
+  userId          String @map("user_id") @db.Uuid
+
+  isPrimary        Boolean  @default(false) @map("is_primary")
+  individualLimit  Decimal? @map("individual_limit") @db.Decimal(18, 2)
+  transactionLimit Decimal? @map("transaction_limit") @db.Decimal(18, 2)
+
+  costCenterId   String? @map("cost_center_id") @db.Uuid
+  businessUnitId String? @map("business_unit_id") @db.Uuid
+  projectId      String? @map("project_id") @db.Uuid
+
+  startDate DateTime? @map("start_date") @db.Date
+  endDate   DateTime? @map("end_date") @db.Date
+
+  status RecordStatus @default(ACTIVE)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+
+  corporateCard CorporateCard @relation(fields: [corporateCardId], references: [id], onDelete: Cascade)
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  costCenter    CostCenter?   @relation("CardUserCostCenter", fields: [costCenterId], references: [id])
+  businessUnit  BusinessUnit? @relation("CardUserBusinessUnit", fields: [businessUnitId], references: [id])
+  project       Project?      @relation("CardUserProject", fields: [projectId], references: [id])
+
+  @@unique([corporateCardId, userId])
+  @@index([userId])
+  @@map("corporate_card_users")
+}
+
+/// Forma de pagamento configurável, com as exigências de cada meio (seções 41 e 42).
+///
+/// O nome carrega o sufixo `Catalog` porque `enum PaymentMethod` já existe e é usado
+/// por fornecedores e clientes — mesmo motivo de `FinancialNatureCatalog`. A tabela
+/// continua sendo `payment_methods`.
+model PaymentMethodCatalog {
+  id             String  @id @default(uuid()) @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  /// Nulo = forma compartilhada por toda a organização.
+  companyId      String? @map("company_id") @db.Uuid
+
+  code        String            @db.VarChar(30)
+  name        String
+  description String?
+  methodType  PaymentMethodType @map("method_type")
+
+  requiresFinancialAccount Boolean @default(true) @map("requires_financial_account")
+  requiresBeneficiary      Boolean @default(false) @map("requires_beneficiary")
+  requiresBankData         Boolean @default(false) @map("requires_bank_data")
+  requiresPixKey           Boolean @default(false) @map("requires_pix_key")
+  requiresBarcode          Boolean @default(false) @map("requires_barcode")
+  requiresDigitableLine    Boolean @default(false) @map("requires_digitable_line")
+  requiresAttachment       Boolean @default(false) @map("requires_attachment")
+  requiresApproval         Boolean @default(false) @map("requires_approval")
+
+  allowsScheduling   Boolean @default(true) @map("allows_scheduling")
+  allowsInstallments Boolean @default(false) @map("allows_installments")
+  allowsRecurrence   Boolean @default(false) @map("allows_recurrence")
+  allowsIntegration  Boolean @default(false) @map("allows_integration")
+  allowsBatchPayment Boolean @default(false) @map("allows_batch_payment")
+
+  /// Valor a partir do qual a forma exige confirmação adicional (seção 42).
+  confirmationThreshold Decimal? @map("confirmation_threshold") @db.Decimal(18, 2)
+  settlementDays        Int      @default(0) @map("settlement_days")
+
+  defaultFeeCategoryId String? @map("default_fee_category_id") @db.Uuid
+
+  sortOrder Int          @default(0) @map("sort_order")
+  status    RecordStatus @default(ACTIVE)
+  isSystem  Boolean      @default(false) @map("is_system")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+
+  organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company            Company?           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  defaultFeeCategory FinancialCategory? @relation("PaymentMethodFeeCategory", fields: [defaultFeeCategoryId], references: [id])
+
+  @@unique([organizationId, companyId, code])
+  @@index([organizationId])
+  @@map("payment_methods")
+}
+
+/// Forma de recebimento, com taxas e prazos de compensação (seções 43 e 44).
+/// As taxas são apenas cadastradas: o cálculo virá com o Contas a Receber.
+model ReceiptMethod {
+  id             String  @id @default(uuid()) @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  companyId      String? @map("company_id") @db.Uuid
+
+  code        String            @db.VarChar(30)
+  name        String
+  description String?
+  methodType  ReceiptMethodType @map("method_type")
+
+  defaultFinancialAccountId String? @map("default_financial_account_id") @db.Uuid
+
+  requiresCustomer   Boolean @default(false) @map("requires_customer")
+  requiresDocument   Boolean @default(false) @map("requires_document")
+  requiresIdentifier Boolean @default(false) @map("requires_identifier")
+
+  allowsRecurrence    Boolean @default(false) @map("allows_recurrence")
+  allowsInstallments  Boolean @default(false) @map("allows_installments")
+  maximumInstallments Int?    @map("maximum_installments")
+
+  settlementDays Int @default(0) @map("settlement_days")
+
+  fixedFee                  Decimal? @map("fixed_fee") @db.Decimal(18, 2)
+  percentageFee             Decimal? @map("percentage_fee") @db.Decimal(9, 4)
+  anticipationAllowed       Boolean  @default(false) @map("anticipation_allowed")
+  anticipationFeePercentage Decimal? @map("anticipation_fee_percentage") @db.Decimal(9, 4)
+
+  defaultFeeCategoryId      String? @map("default_fee_category_id") @db.Uuid
+  defaultInterestCategoryId String? @map("default_interest_category_id") @db.Uuid
+  /// Adquirente/gateway como fornecedor, para a futura conciliação de taxas.
+  acquirerSupplierId        String? @map("acquirer_supplier_id") @db.Uuid
+  integrationProvider       String? @map("integration_provider")
+
+  sortOrder Int          @default(0) @map("sort_order")
+  status    RecordStatus @default(ACTIVE)
+  isSystem  Boolean      @default(false) @map("is_system")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+
+  organization            Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company                 Company?           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  defaultFinancialAccount FinancialAccount?  @relation("ReceiptMethodDefaultAccount", fields: [defaultFinancialAccountId], references: [id])
+  defaultFeeCategory      FinancialCategory? @relation("ReceiptMethodFeeCategory", fields: [defaultFeeCategoryId], references: [id])
+  defaultInterestCategory FinancialCategory? @relation("ReceiptMethodInterestCategory", fields: [defaultInterestCategoryId], references: [id])
+  acquirerSupplier        Supplier?          @relation("ReceiptMethodAcquirer", fields: [acquirerSupplierId], references: [id])
+
+  @@unique([organizationId, companyId, code])
+  @@index([organizationId])
+  @@map("receipt_methods")
+}
+
+/// Parâmetros de tesouraria por empresa (seção 47).
+model TreasurySettings {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  companyId      String @unique @map("company_id") @db.Uuid
+
+  primaryFinancialAccountId String? @map("primary_financial_account_id") @db.Uuid
+  defaultPaymentAccountId   String? @map("default_payment_account_id") @db.Uuid
+  defaultReceiptAccountId   String? @map("default_receipt_account_id") @db.Uuid
+  defaultTaxAccountId       String? @map("default_tax_account_id") @db.Uuid
+  defaultPayrollAccountId   String? @map("default_payroll_account_id") @db.Uuid
+  defaultCashAccountId      String? @map("default_cash_account_id") @db.Uuid
+
+  currencyCode         String   @default("BRL") @map("currency_code") @db.VarChar(3)
+  minimumSafetyBalance Decimal? @map("minimum_safety_balance") @db.Decimal(18, 2)
+
+  allowNegativeBalance           Boolean  @default(false) @map("allow_negative_balance")
+  allowInactiveAccountOperations Boolean  @default(false) @map("allow_inactive_account_operations")
+  requireAvailableBalance        Boolean  @default(true) @map("require_available_balance")
+  requireAttachment              Boolean  @default(false) @map("require_attachment")
+  requireRegisteredBeneficiary   Boolean  @default(true) @map("require_registered_beneficiary")
+  requireHolderValidation        Boolean  @default(true) @map("require_holder_validation")
+  requireDualApproval            Boolean  @default(false) @map("require_dual_approval")
+  dualApprovalAmount             Decimal? @map("dual_approval_amount") @db.Decimal(18, 2)
+  allowThirdPartyAccounts        Boolean  @default(false) @map("allow_third_party_accounts")
+  allowOpeningBalanceChange      Boolean  @default(true) @map("allow_opening_balance_change")
+  allowManualEntries             Boolean  @default(true) @map("allow_manual_entries")
+
+  /// Segregação de funções (seção 25). Configurada aqui; o fluxo que a aplica vem
+  /// com o módulo financeiro.
+  requireSegregationOfDuties          Boolean @default(false) @map("require_segregation_of_duties")
+  segregateEntryFromApproval          Boolean @default(false) @map("segregate_entry_from_approval")
+  segregateApprovalFromReconciliation Boolean @default(false) @map("segregate_approval_from_reconciliation")
+  allowSelfApproval                   Boolean @default(true) @map("allow_self_approval")
+
+  cardExpirationAlertDays Int @default(30) @map("card_expiration_alert_days")
+  accountClosingAlertDays Int @default(30) @map("account_closing_alert_days")
+
+  defaultReconciliationMode ReconciliationMode @default(MANUAL) @map("default_reconciliation_mode")
+  amountTolerance           Decimal            @default(0) @map("amount_tolerance") @db.Decimal(18, 2)
+  dateToleranceDays         Int                @default(0) @map("date_tolerance_days")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdBy String?  @map("created_by") @db.Uuid
+  updatedBy String?  @map("updated_by") @db.Uuid
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company      Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  primaryFinancialAccount FinancialAccount? @relation("TreasuryPrimaryAccount", fields: [primaryFinancialAccountId], references: [id])
+  defaultPaymentAccount   FinancialAccount? @relation("TreasuryPaymentAccount", fields: [defaultPaymentAccountId], references: [id])
+  defaultReceiptAccount   FinancialAccount? @relation("TreasuryReceiptAccount", fields: [defaultReceiptAccountId], references: [id])
+  defaultTaxAccount       FinancialAccount? @relation("TreasuryTaxAccount", fields: [defaultTaxAccountId], references: [id])
+  defaultPayrollAccount   FinancialAccount? @relation("TreasuryPayrollAccount", fields: [defaultPayrollAccountId], references: [id])
+  defaultCashAccount      FinancialAccount? @relation("TreasuryCashAccount", fields: [defaultCashAccountId], references: [id])
+
+  @@index([organizationId])
+  @@map("treasury_settings")
+}
+
+/// Histórico de mudanças de status da conta, com motivo e responsável.
+model FinancialAccountStatusHistory {
+  id                 String @id @default(uuid()) @db.Uuid
+  financialAccountId String @map("financial_account_id") @db.Uuid
+
+  previousStatus FinancialAccountStatus? @map("previous_status")
+  newStatus      FinancialAccountStatus  @map("new_status")
+  reason         String?
+
+  changedBy String?  @map("changed_by") @db.Uuid
+  changedAt DateTime @default(now()) @map("changed_at")
+
+  financialAccount FinancialAccount @relation(fields: [financialAccountId], references: [id], onDelete: Cascade)
+
+  @@index([financialAccountId])
+  @@map("financial_account_status_history")
 }

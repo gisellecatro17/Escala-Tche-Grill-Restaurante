@@ -14,6 +14,7 @@ import { CompaniesModule } from './modules/companies/companies.module';
 import { CustomersModule } from './modules/customers/customers.module';
 import { FinancialInstitutionsModule } from './modules/financial-institutions/financial-institutions.module';
 import { FinancialStructureModule } from './modules/financial-structure/financial-structure.module';
+import { TreasuryModule } from './modules/treasury/treasury.module';
 import { OrganizationsModule } from './modules/organizations/organizations.module';
 import { RolesModule } from './modules/roles/roles.module';
 import { SuppliersModule } from './modules/suppliers/suppliers.module';
@@ -37,6 +38,7 @@ import { SupabaseModule } from './supabase/supabase.module';
     OrganizationsModule,
     CompaniesModule,
     FinancialStructureModule,
+    TreasuryModule,
     TaxonomyModule,
     FinancialInstitutionsModule,
     SuppliersModule,
