@@ -53,8 +53,8 @@ export default function ProjectsPage() {
   const updateProject = useUpdateProject();
   const deleteProject = useDeleteProject();
 
-  const canManage = hasPermission("projects.manage");
-  const canDelete = hasPermission("projects.delete");
+  const canManage = hasPermission("project.manage");
+  const canDelete = hasPermission("project.delete");
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6">

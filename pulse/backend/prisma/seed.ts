@@ -1,10 +1,13 @@
+import { PrismaPg } from '@prisma/adapter-pg';
 import {
   PrismaClient,
   type AccountPlanType,
   type FinancialNatureKind,
 } from '@prisma/client';
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({
+  adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
+});
 
 interface PermissionSeed {
   slug: string;
@@ -83,48 +86,111 @@ const PERMISSIONS: PermissionSeed[] = [
   { slug: 'customer.update_credit_limit', module: 'cadastros', description: 'Alterar limite de crédito' },
   { slug: 'customer.authorize_over_credit_limit', module: 'cadastros', description: 'Autorizar lançamentos acima do limite de crédito' },
   { slug: 'customer.view_sensitive_contacts', module: 'cadastros', description: 'Visualizar dados completos de contatos do cliente' },
-  { slug: 'categories.view', module: 'cadastros', description: 'Visualizar categorias financeiras' },
-  { slug: 'categories.manage', module: 'cadastros', description: 'Incluir/editar categorias financeiras' },
-  { slug: 'cost-centers.view', module: 'cadastros', description: 'Visualizar centros de custo' },
-  { slug: 'cost-centers.manage', module: 'cadastros', description: 'Incluir/editar centros de custo' },
+  // Estrutura financeira — guarda-chuva do módulo
+  { slug: 'financial_structure.view', module: 'cadastros', description: 'Visualizar a estrutura financeira' },
+  { slug: 'financial_structure.manage', module: 'cadastros', description: 'Gerenciar a estrutura financeira' },
 
-  // Estrutura financeira
-  { slug: 'account-plan.view', module: 'cadastros', description: 'Visualizar o plano de contas' },
-  { slug: 'account-plan.manage', module: 'cadastros', description: 'Incluir/editar contas do plano de contas' },
-  { slug: 'account-plan.manage_tree', module: 'cadastros', description: 'Mover/reorganizar a árvore do plano de contas' },
-  { slug: 'account-plan.delete', module: 'cadastros', description: 'Excluir contas do plano de contas' },
-  { slug: 'categories.manage_tree', module: 'cadastros', description: 'Mover/reorganizar a árvore de categorias' },
-  { slug: 'categories.delete', module: 'cadastros', description: 'Excluir categorias financeiras' },
-  { slug: 'categories.manage_rules', module: 'cadastros', description: 'Gerenciar regras automáticas das categorias' },
-  { slug: 'cost-centers.manage_tree', module: 'cadastros', description: 'Mover/reorganizar a árvore de centros de custo' },
-  { slug: 'cost-centers.delete', module: 'cadastros', description: 'Excluir centros de custo' },
-  { slug: 'result-centers.view', module: 'cadastros', description: 'Visualizar centros de resultado' },
-  { slug: 'result-centers.manage', module: 'cadastros', description: 'Incluir/editar centros de resultado' },
-  { slug: 'result-centers.manage_tree', module: 'cadastros', description: 'Mover/reorganizar a árvore de centros de resultado' },
-  { slug: 'result-centers.delete', module: 'cadastros', description: 'Excluir centros de resultado' },
-  { slug: 'projects.view', module: 'cadastros', description: 'Visualizar projetos' },
-  { slug: 'projects.manage', module: 'cadastros', description: 'Incluir/editar projetos' },
-  { slug: 'projects.delete', module: 'cadastros', description: 'Excluir projetos' },
-  { slug: 'business-units.view', module: 'cadastros', description: 'Visualizar unidades de negócio' },
-  { slug: 'business-units.manage', module: 'cadastros', description: 'Incluir/editar unidades de negócio' },
-  { slug: 'business-units.delete', module: 'cadastros', description: 'Excluir unidades de negócio' },
-  { slug: 'financial-natures.view', module: 'cadastros', description: 'Visualizar naturezas financeiras' },
-  { slug: 'financial-natures.manage', module: 'cadastros', description: 'Incluir/editar naturezas financeiras' },
-  { slug: 'financial-natures.delete', module: 'cadastros', description: 'Excluir naturezas financeiras' },
-  { slug: 'financial-tags.view', module: 'cadastros', description: 'Visualizar tags financeiras' },
-  { slug: 'financial-tags.manage', module: 'cadastros', description: 'Incluir/editar e vincular tags financeiras' },
-  { slug: 'financial-tags.delete', module: 'cadastros', description: 'Excluir tags financeiras' },
-  { slug: 'allocation-rules.view', module: 'cadastros', description: 'Visualizar rateios padrão' },
-  { slug: 'allocation-rules.manage', module: 'cadastros', description: 'Incluir/editar rateios padrão' },
-  { slug: 'allocation-rules.delete', module: 'cadastros', description: 'Excluir rateios padrão' },
-  { slug: 'classification-rules.view', module: 'cadastros', description: 'Visualizar regras de classificação automática' },
-  { slug: 'classification-rules.manage', module: 'cadastros', description: 'Incluir/editar regras de classificação automática' },
-  { slug: 'classification-rules.delete', module: 'cadastros', description: 'Excluir regras de classificação automática' },
-  { slug: 'financial-structure.import', module: 'cadastros', description: 'Importar estrutura financeira (Excel/CSV/ERPs)' },
-  { slug: 'financial-structure.export', module: 'cadastros', description: 'Exportar estrutura financeira' },
-  { slug: 'financial-structure.duplicate', module: 'cadastros', description: 'Duplicar cadastros da estrutura financeira' },
-  { slug: 'financial-structure.manage_versions', module: 'cadastros', description: 'Versionar e restaurar estruturas financeiras' },
-  { slug: 'financial-structure.view_audit', module: 'cadastros', description: 'Consultar auditoria da estrutura financeira' },
+  // Estrutura financeira — plano de contas
+  { slug: 'account_plan.view', module: 'cadastros', description: 'Visualizar o plano de contas' },
+  { slug: 'account_plan.create', module: 'cadastros', description: 'Incluir contas no plano de contas' },
+  { slug: 'account_plan.update', module: 'cadastros', description: 'Editar contas do plano de contas' },
+  { slug: 'account_plan.move', module: 'cadastros', description: 'Mover/reorganizar a árvore do plano de contas' },
+  { slug: 'account_plan.activate', module: 'cadastros', description: 'Ativar contas do plano de contas' },
+  { slug: 'account_plan.deactivate', module: 'cadastros', description: 'Inativar contas do plano de contas' },
+  { slug: 'account_plan.delete', module: 'cadastros', description: 'Excluir contas do plano de contas' },
+  { slug: 'account_plan.import', module: 'cadastros', description: 'Importar plano de contas' },
+  { slug: 'account_plan.export', module: 'cadastros', description: 'Exportar plano de contas' },
+  { slug: 'account_plan.version', module: 'cadastros', description: 'Gerenciar versões do plano de contas' },
+
+  // Estrutura financeira — categorias
+  { slug: 'financial_category.view', module: 'cadastros', description: 'Visualizar categorias financeiras' },
+  { slug: 'financial_category.create', module: 'cadastros', description: 'Incluir categorias financeiras' },
+  { slug: 'financial_category.update', module: 'cadastros', description: 'Editar categorias financeiras' },
+  { slug: 'financial_category.move', module: 'cadastros', description: 'Mover/reorganizar a árvore de categorias' },
+  { slug: 'financial_category.activate', module: 'cadastros', description: 'Ativar categorias financeiras' },
+  { slug: 'financial_category.deactivate', module: 'cadastros', description: 'Inativar categorias financeiras' },
+  { slug: 'financial_category.delete', module: 'cadastros', description: 'Excluir categorias financeiras' },
+  { slug: 'financial_category.import', module: 'cadastros', description: 'Importar categorias financeiras' },
+  { slug: 'financial_category.export', module: 'cadastros', description: 'Exportar categorias financeiras' },
+  { slug: 'financial_category.manage_rules', module: 'cadastros', description: 'Gerenciar regras automáticas das categorias' },
+
+  // Estrutura financeira — centros de custo
+  { slug: 'cost_center.view', module: 'cadastros', description: 'Visualizar centros de custo' },
+  { slug: 'cost_center.create', module: 'cadastros', description: 'Incluir centros de custo' },
+  { slug: 'cost_center.update', module: 'cadastros', description: 'Editar centros de custo' },
+  { slug: 'cost_center.move', module: 'cadastros', description: 'Mover/reorganizar a árvore de centros de custo' },
+  { slug: 'cost_center.activate', module: 'cadastros', description: 'Ativar centros de custo' },
+  { slug: 'cost_center.deactivate', module: 'cadastros', description: 'Inativar centros de custo' },
+  { slug: 'cost_center.delete', module: 'cadastros', description: 'Excluir centros de custo' },
+
+  // Estrutura financeira — centros de resultado
+  { slug: 'result_center.view', module: 'cadastros', description: 'Visualizar centros de resultado' },
+  { slug: 'result_center.create', module: 'cadastros', description: 'Incluir centros de resultado' },
+  { slug: 'result_center.update', module: 'cadastros', description: 'Editar centros de resultado' },
+  { slug: 'result_center.move', module: 'cadastros', description: 'Mover/reorganizar a árvore de centros de resultado' },
+  { slug: 'result_center.activate', module: 'cadastros', description: 'Ativar centros de resultado' },
+  { slug: 'result_center.deactivate', module: 'cadastros', description: 'Inativar centros de resultado' },
+  { slug: 'result_center.delete', module: 'cadastros', description: 'Excluir centros de resultado' },
+
+  // Estrutura financeira — projetos
+  { slug: 'project.view', module: 'cadastros', description: 'Visualizar projetos' },
+  { slug: 'project.create', module: 'cadastros', description: 'Incluir projetos' },
+  { slug: 'project.update', module: 'cadastros', description: 'Editar projetos' },
+  { slug: 'project.activate', module: 'cadastros', description: 'Ativar projetos' },
+  { slug: 'project.pause', module: 'cadastros', description: 'Pausar projetos' },
+  { slug: 'project.complete', module: 'cadastros', description: 'Concluir projetos' },
+  { slug: 'project.cancel', module: 'cadastros', description: 'Cancelar projetos' },
+  { slug: 'project.archive', module: 'cadastros', description: 'Arquivar projetos' },
+  { slug: 'project.delete', module: 'cadastros', description: 'Excluir projetos' },
+
+  // Estrutura financeira — unidades de negócio
+  { slug: 'business_unit.view', module: 'cadastros', description: 'Visualizar unidades de negócio' },
+  { slug: 'business_unit.create', module: 'cadastros', description: 'Incluir unidades de negócio' },
+  { slug: 'business_unit.update', module: 'cadastros', description: 'Editar unidades de negócio' },
+  { slug: 'business_unit.move', module: 'cadastros', description: 'Mover/reorganizar unidades de negócio' },
+  { slug: 'business_unit.activate', module: 'cadastros', description: 'Ativar unidades de negócio' },
+  { slug: 'business_unit.deactivate', module: 'cadastros', description: 'Inativar unidades de negócio' },
+  { slug: 'business_unit.delete', module: 'cadastros', description: 'Excluir unidades de negócio' },
+
+  // Estrutura financeira — naturezas
+  { slug: 'financial_nature.view', module: 'cadastros', description: 'Visualizar naturezas financeiras' },
+  { slug: 'financial_nature.create', module: 'cadastros', description: 'Incluir naturezas financeiras' },
+  { slug: 'financial_nature.update', module: 'cadastros', description: 'Editar naturezas financeiras' },
+  { slug: 'financial_nature.activate', module: 'cadastros', description: 'Ativar naturezas financeiras' },
+  { slug: 'financial_nature.deactivate', module: 'cadastros', description: 'Inativar naturezas financeiras' },
+  { slug: 'financial_nature.delete', module: 'cadastros', description: 'Excluir naturezas financeiras' },
+
+  // Estrutura financeira — tags
+  { slug: 'financial_tag.view', module: 'cadastros', description: 'Visualizar tags financeiras' },
+  { slug: 'financial_tag.create', module: 'cadastros', description: 'Incluir tags financeiras' },
+  { slug: 'financial_tag.update', module: 'cadastros', description: 'Editar tags financeiras' },
+  { slug: 'financial_tag.manage', module: 'cadastros', description: 'Vincular/desvincular tags financeiras' },
+  { slug: 'financial_tag.delete', module: 'cadastros', description: 'Excluir tags financeiras' },
+
+  // Estrutura financeira — rateios
+  { slug: 'allocation_rule.view', module: 'cadastros', description: 'Visualizar modelos de rateio' },
+  { slug: 'allocation_rule.create', module: 'cadastros', description: 'Incluir modelos de rateio' },
+  { slug: 'allocation_rule.update', module: 'cadastros', description: 'Editar modelos de rateio' },
+  { slug: 'allocation_rule.activate', module: 'cadastros', description: 'Ativar modelos de rateio' },
+  { slug: 'allocation_rule.deactivate', module: 'cadastros', description: 'Inativar modelos de rateio' },
+  { slug: 'allocation_rule.delete', module: 'cadastros', description: 'Excluir modelos de rateio' },
+
+  // Estrutura financeira — regras de classificação
+  { slug: 'classification_rule.view', module: 'cadastros', description: 'Visualizar regras de classificação' },
+  { slug: 'classification_rule.create', module: 'cadastros', description: 'Incluir regras de classificação' },
+  { slug: 'classification_rule.update', module: 'cadastros', description: 'Editar regras de classificação' },
+  { slug: 'classification_rule.test', module: 'cadastros', description: 'Testar/simular regras de classificação' },
+  { slug: 'classification_rule.activate', module: 'cadastros', description: 'Ativar regras de classificação' },
+  { slug: 'classification_rule.deactivate', module: 'cadastros', description: 'Inativar regras de classificação' },
+  { slug: 'classification_rule.delete', module: 'cadastros', description: 'Excluir regras de classificação' },
+
+  // Estrutura financeira — operações transversais
+  { slug: 'financial_structure.import', module: 'cadastros', description: 'Importar estrutura financeira (XLSX/CSV/JSON)' },
+  { slug: 'financial_structure.export', module: 'cadastros', description: 'Exportar estrutura financeira' },
+  { slug: 'financial_structure.duplicate', module: 'cadastros', description: 'Duplicar estrutura entre empresas' },
+  { slug: 'financial_structure.manage_versions', module: 'cadastros', description: 'Versionar e restaurar estruturas financeiras' },
+  { slug: 'financial_structure.view_audit', module: 'cadastros', description: 'Consultar auditoria da estrutura financeira' },
+
   { slug: 'bank-accounts.view', module: 'cadastros', description: 'Visualizar contas bancárias' },
   { slug: 'bank-accounts.manage', module: 'cadastros', description: 'Incluir/editar contas bancárias' },
   { slug: 'payment-methods.view', module: 'cadastros', description: 'Visualizar formas de pagamento' },
@@ -270,20 +336,25 @@ const ROLES: {
       'customer.manage_billing_rules',
       'customer.manage_payment_promises',
       'customer.convert_prospect',
-      'categories.view',
-      'categories.manage',
-      'cost-centers.view',
-      'cost-centers.manage',
-      'account-plan.view',
-      'result-centers.view',
-      'projects.view',
-      'business-units.view',
-      'financial-natures.view',
-      'financial-tags.view',
-      'financial-tags.manage',
-      'allocation-rules.view',
-      'classification-rules.view',
-      'financial-structure.export',
+      'financial_structure.view',
+      'financial_category.view',
+      'financial_category.create',
+      'financial_category.update',
+      'cost_center.view',
+      'cost_center.create',
+      'cost_center.update',
+      'account_plan.view',
+      'result_center.view',
+      'project.view',
+      'business_unit.view',
+      'financial_nature.view',
+      'financial_tag.view',
+      'financial_tag.create',
+      'financial_tag.manage',
+      'allocation_rule.view',
+      'classification_rule.view',
+      'classification_rule.test',
+      'financial_structure.export',
       'bank-accounts.view',
       'payment-methods.view',
       'financial.view',
@@ -460,7 +531,7 @@ async function main() {
     },
   });
 
-  const carnesCategory = await prisma.category.upsert({
+  const carnesCategory = await prisma.financialCategory.upsert({
     where: { id: '00000000-0000-0000-0000-000000000101' },
     update: {},
     create: { id: '00000000-0000-0000-0000-000000000101', companyId: company.id, name: 'Carnes e proteínas' },
@@ -627,7 +698,7 @@ async function main() {
   }
 
   // Vincula a categoria de demonstração ao plano de contas/natureza correspondentes.
-  await prisma.category.update({
+  await prisma.financialCategory.update({
     where: { id: carnesCategory.id },
     data: {
       code: 'CAT-CARNES',

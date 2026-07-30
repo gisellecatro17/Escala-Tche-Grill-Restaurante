@@ -38,7 +38,7 @@ export class AllocationRulesController {
     @Query('companyId') companyId: string,
     @CurrentUser() actor: RequestUser,
   ) {
-    assertCompanyPermission(actor, companyId, 'allocation-rules.view');
+    assertCompanyPermission(actor, companyId, 'allocation_rule.view');
     return this.allocationRules.findAll(companyId, query);
   }
 
@@ -46,7 +46,7 @@ export class AllocationRulesController {
   @ApiOperation({ summary: 'Detalha um rateio e suas linhas.' })
   async findOne(@Param('id') id: string, @CurrentUser() actor: RequestUser) {
     const rule = await this.allocationRules.findOne(id);
-    assertCompanyPermission(actor, rule.companyId, 'allocation-rules.view');
+    assertCompanyPermission(actor, rule.companyId, 'allocation_rule.view');
     return rule;
   }
 
@@ -57,7 +57,7 @@ export class AllocationRulesController {
     @Body() dto: CreateAllocationRuleDto,
     @CurrentUser() actor: RequestUser,
   ) {
-    assertCompanyPermission(actor, dto.companyId, 'allocation-rules.manage');
+    assertCompanyPermission(actor, dto.companyId, 'allocation_rule.manage');
     return this.allocationRules.create(dto, actor);
   }
 
@@ -73,7 +73,7 @@ export class AllocationRulesController {
     @CurrentUser() actor: RequestUser,
   ) {
     const rule = await this.allocationRules.findOne(id);
-    assertCompanyPermission(actor, rule.companyId, 'allocation-rules.manage');
+    assertCompanyPermission(actor, rule.companyId, 'allocation_rule.manage');
     return this.allocationRules.update(id, dto, actor);
   }
 
@@ -82,7 +82,7 @@ export class AllocationRulesController {
   @ApiOperation({ summary: 'Exclui (logicamente) um rateio sem uso.' })
   async remove(@Param('id') id: string, @CurrentUser() actor: RequestUser) {
     const rule = await this.allocationRules.findOne(id);
-    assertCompanyPermission(actor, rule.companyId, 'allocation-rules.delete');
+    assertCompanyPermission(actor, rule.companyId, 'allocation_rule.delete');
     return this.allocationRules.remove(id, actor);
   }
 }

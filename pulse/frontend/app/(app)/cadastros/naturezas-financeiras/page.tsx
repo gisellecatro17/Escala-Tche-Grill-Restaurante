@@ -49,8 +49,8 @@ export default function FinancialNaturesPage() {
   const updateNature = useUpdateFinancialNature();
   const deleteNature = useDeleteFinancialNature();
 
-  const canManage = hasPermission("financial-natures.manage");
-  const canDelete = hasPermission("financial-natures.delete");
+  const canManage = hasPermission("financial_nature.manage");
+  const canDelete = hasPermission("financial_nature.delete");
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6">

@@ -35,7 +35,7 @@ export class ProjectsController {
     @Query('companyId') companyId: string,
     @CurrentUser() actor: RequestUser,
   ) {
-    assertCompanyPermission(actor, companyId, 'projects.view');
+    assertCompanyPermission(actor, companyId, 'project.view');
     return this.projects.findAll(companyId, query);
   }
 
@@ -43,7 +43,7 @@ export class ProjectsController {
   @ApiOperation({ summary: 'Detalha um projeto.' })
   async findOne(@Param('id') id: string, @CurrentUser() actor: RequestUser) {
     const project = await this.projects.findOne(id);
-    assertCompanyPermission(actor, project.companyId, 'projects.view');
+    assertCompanyPermission(actor, project.companyId, 'project.view');
     return project;
   }
 
@@ -51,7 +51,7 @@ export class ProjectsController {
   @ApiMessage('Projeto incluído com sucesso.')
   @ApiOperation({ summary: 'Inclui um projeto.' })
   create(@Body() dto: CreateProjectDto, @CurrentUser() actor: RequestUser) {
-    assertCompanyPermission(actor, dto.companyId, 'projects.manage');
+    assertCompanyPermission(actor, dto.companyId, 'project.manage');
     return this.projects.create(dto, actor);
   }
 
@@ -64,7 +64,7 @@ export class ProjectsController {
     @CurrentUser() actor: RequestUser,
   ) {
     const project = await this.projects.findOne(id);
-    assertCompanyPermission(actor, project.companyId, 'projects.manage');
+    assertCompanyPermission(actor, project.companyId, 'project.manage');
     return this.projects.update(id, dto, actor);
   }
 
@@ -82,10 +82,10 @@ export class ProjectsController {
     assertCompanyPermission(
       actor,
       project.companyId,
-      'financial-structure.duplicate',
+      'financial_structure.duplicate',
     );
     if (dto.targetCompanyId) {
-      assertCompanyPermission(actor, dto.targetCompanyId, 'projects.manage');
+      assertCompanyPermission(actor, dto.targetCompanyId, 'project.manage');
     }
     return this.projects.duplicate(id, dto, actor);
   }
@@ -95,7 +95,7 @@ export class ProjectsController {
   @ApiOperation({ summary: 'Exclui (logicamente) um projeto sem uso.' })
   async remove(@Param('id') id: string, @CurrentUser() actor: RequestUser) {
     const project = await this.projects.findOne(id);
-    assertCompanyPermission(actor, project.companyId, 'projects.delete');
+    assertCompanyPermission(actor, project.companyId, 'project.delete');
     return this.projects.remove(id, actor);
   }
 }

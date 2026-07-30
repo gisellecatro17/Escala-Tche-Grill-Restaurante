@@ -47,7 +47,7 @@ function buildService(prismaOverrides: Record<string, unknown> = {}) {
         ...data,
       })),
     },
-    category: { count: jest.fn().mockResolvedValue(0) },
+    financialCategory: { count: jest.fn().mockResolvedValue(0) },
     classificationRule: { count: jest.fn().mockResolvedValue(0) },
     $transaction: jest.fn(async (ops: any) =>
       Array.isArray(ops) ? Promise.all(ops) : ops(prismaMock),
@@ -219,7 +219,7 @@ describe('AccountPlansService', () => {
 
   it('bloqueia a exclusão de uma conta usada por categorias', async () => {
     const { service } = buildService({
-      category: { count: jest.fn().mockResolvedValue(2) },
+      financialCategory: { count: jest.fn().mockResolvedValue(2) },
     });
 
     await expect(service.remove('acc-1', actor)).rejects.toThrow(

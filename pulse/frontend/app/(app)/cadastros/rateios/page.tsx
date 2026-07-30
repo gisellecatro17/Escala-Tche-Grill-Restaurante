@@ -51,8 +51,8 @@ export default function AllocationRulesPage() {
   const createRule = useCreateAllocationRule();
   const deleteRule = useDeleteAllocationRule();
 
-  const canManage = hasPermission("allocation-rules.manage");
-  const canDelete = hasPermission("allocation-rules.delete");
+  const canManage = hasPermission("allocation_rule.manage");
+  const canDelete = hasPermission("allocation_rule.delete");
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6">

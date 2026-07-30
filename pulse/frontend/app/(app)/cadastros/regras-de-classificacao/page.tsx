@@ -48,8 +48,8 @@ export default function ClassificationRulesPage() {
   const createRule = useCreateClassificationRule();
   const deleteRule = useDeleteClassificationRule();
 
-  const canManage = hasPermission("classification-rules.manage");
-  const canDelete = hasPermission("classification-rules.delete");
+  const canManage = hasPermission("classification_rule.manage");
+  const canDelete = hasPermission("classification_rule.delete");
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6">

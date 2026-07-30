@@ -40,9 +40,9 @@ export default function ResultCentersPage() {
       includeInactive={includeInactive}
       onIncludeInactiveChange={setIncludeInactive}
       permissions={{
-        manage: "result-centers.manage",
-        manageTree: "result-centers.manage_tree",
-        delete: "result-centers.delete",
+        manage: "result_center.manage",
+        manageTree: "result_center.move",
+        delete: "result_center.delete",
       }}
       isSubmitting={createResultCenter.isPending || updateResultCenter.isPending}
       isMoving={moveResultCenter.isPending}

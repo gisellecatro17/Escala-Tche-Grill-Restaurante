@@ -308,7 +308,7 @@ export class CostCentersService {
         this.prisma.customerCompanyLink.count({
           where: { defaultResultCenterId: id },
         }),
-        this.prisma.category.count({
+        this.prisma.financialCategory.count({
           where: { defaultCostCenterId: id, deletedAt: null },
         }),
         this.prisma.project.count({
@@ -317,7 +317,7 @@ export class CostCentersService {
         this.prisma.classificationRule.count({
           where: { costCenterId: id, deletedAt: null },
         }),
-        this.prisma.allocationRuleLine.count({ where: { costCenterId: id } }),
+        this.prisma.allocationRuleItem.count({ where: { costCenterId: id } }),
       ]);
 
     if (

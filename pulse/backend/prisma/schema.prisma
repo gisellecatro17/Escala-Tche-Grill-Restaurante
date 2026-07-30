@@ -780,7 +780,7 @@ model Company {
   auditLogs       AuditLog[]
   supplierLinks   SupplierCompanyLink[]
   customerLinks   CustomerCompanyLink[]
-  categories      Category[]
+  categories      FinancialCategory[]
   costCenters     CostCenter[]
 
   accountPlans        FinancialAccountPlan[]
@@ -1083,7 +1083,7 @@ model AuditLog {
 /// já apontam `defaultSubcategoryId` para `categories.id`, de modo que uma tabela
 /// `financial_subcategories` paralela duplicaria o conceito e órfãos essas FKs.
 /// Profundidade ilimitada (categoria → subcategoria → sub-subcategoria → ...).
-model Category {
+model FinancialCategory {
   id               String       @id @default(uuid()) @db.Uuid
   companyId        String       @map("company_id") @db.Uuid
   parentCategoryId String?      @map("parent_category_id") @db.Uuid
@@ -1136,9 +1136,9 @@ model Category {
   createdBy String?   @map("created_by") @db.Uuid
   updatedBy String?   @map("updated_by") @db.Uuid
 
-  company        Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  parentCategory Category?  @relation("CategoryHierarchy", fields: [parentCategoryId], references: [id])
-  subcategories  Category[] @relation("CategoryHierarchy")
+  company        Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  parentCategory FinancialCategory?  @relation("CategoryHierarchy", fields: [parentCategoryId], references: [id])
+  subcategories  FinancialCategory[] @relation("CategoryHierarchy")
 
   accountPlan           FinancialAccountPlan?   @relation("CategoryAccountPlan", fields: [accountPlanId], references: [id])
   financialNature       FinancialNatureCatalog? @relation("CategoryFinancialNature", fields: [financialNatureId], references: [id])
@@ -1157,14 +1157,14 @@ model Category {
 
   classificationRules ClassificationRule[]
   allocationRules     AllocationRule[]     @relation("AllocationRuleCategory")
-  allocationLines     AllocationRuleLine[] @relation("AllocationLineCategory")
+  allocationLines     AllocationRuleItem[] @relation("AllocationLineCategory")
   tagLinks            FinancialTagLink[]   @relation("CategoryTagLinks")
 
   @@unique([companyId, code])
   @@index([companyId])
   @@index([companyId, parentCategoryId])
   @@index([accountPlanId])
-  @@map("categories")
+  @@map("financial_categories")
 }
 
 /// Centro de custo, com árvore de profundidade ilimitada. O Cadastro de Clientes ainda
@@ -1205,10 +1205,10 @@ model CostCenter {
   customerLinks CustomerCompanyLink[]
   contracts     CustomerContract[]
 
-  defaultForCategories Category[]           @relation("CategoryDefaultCostCenter")
+  defaultForCategories FinancialCategory[]  @relation("CategoryDefaultCostCenter")
   projects             Project[]            @relation("ProjectCostCenter")
   classificationRules  ClassificationRule[]
-  allocationLines      AllocationRuleLine[] @relation("AllocationLineCostCenter")
+  allocationLines      AllocationRuleItem[] @relation("AllocationLineCostCenter")
   tagLinks             FinancialTagLink[]   @relation("CostCenterTagLinks")
 
   @@unique([companyId, code])
@@ -1562,11 +1562,11 @@ model SupplierCompanyLink {
   createdBy String?   @map("created_by") @db.Uuid
   updatedBy String?   @map("updated_by") @db.Uuid
 
-  supplier           Supplier    @relation(fields: [supplierId], references: [id], onDelete: Cascade)
-  company            Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  defaultCategory    Category?   @relation("LinkDefaultCategory", fields: [defaultCategoryId], references: [id])
-  defaultSubcategory Category?   @relation("LinkDefaultSubcategory", fields: [defaultSubcategoryId], references: [id])
-  defaultCostCenter  CostCenter? @relation(fields: [defaultCostCenterId], references: [id])
+  supplier           Supplier           @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  company            Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  defaultCategory    FinancialCategory? @relation("LinkDefaultCategory", fields: [defaultCategoryId], references: [id])
+  defaultSubcategory FinancialCategory? @relation("LinkDefaultSubcategory", fields: [defaultSubcategoryId], references: [id])
+  defaultCostCenter  CostCenter?        @relation(fields: [defaultCostCenterId], references: [id])
 
   classificationRules SupplierClassificationRule[]
   allocations         SupplierDefaultAllocation[]
@@ -2059,11 +2059,11 @@ model CustomerCompanyLink {
   createdBy String?   @map("created_by") @db.Uuid
   updatedBy String?   @map("updated_by") @db.Uuid
 
-  customer               Customer    @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  company                Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  defaultRevenueCategory Category?   @relation("CustomerLinkDefaultRevenueCategory", fields: [defaultRevenueCategoryId], references: [id])
-  defaultSubcategory     Category?   @relation("CustomerLinkDefaultSubcategory", fields: [defaultSubcategoryId], references: [id])
-  defaultResultCenter    CostCenter? @relation(fields: [defaultResultCenterId], references: [id])
+  customer               Customer           @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  company                Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  defaultRevenueCategory FinancialCategory? @relation("CustomerLinkDefaultRevenueCategory", fields: [defaultRevenueCategoryId], references: [id])
+  defaultSubcategory     FinancialCategory? @relation("CustomerLinkDefaultSubcategory", fields: [defaultSubcategoryId], references: [id])
+  defaultResultCenter    CostCenter?        @relation(fields: [defaultResultCenterId], references: [id])
 
   billingRules         CustomerBillingRule[]
   collectionHistory    CustomerCollectionHistory[]
@@ -2212,7 +2212,7 @@ model CustomerContract {
   updatedBy String?   @map("updated_by") @db.Uuid
 
   link                 CustomerCompanyLink           @relation(fields: [customerCompanyLinkId], references: [id], onDelete: Cascade)
-  revenueCategory      Category?                     @relation("ContractRevenueCategory", fields: [revenueCategoryId], references: [id])
+  revenueCategory      FinancialCategory?            @relation("ContractRevenueCategory", fields: [revenueCategoryId], references: [id])
   resultCenter         CostCenter?                   @relation(fields: [resultCenterId], references: [id])
   customerContact      CustomerContact?              @relation(fields: [customerContactId], references: [id])
   amendments           CustomerContractAmendment[]
@@ -2387,9 +2387,9 @@ model FinancialAccountPlan {
   children        FinancialAccountPlan[]  @relation("AccountPlanHierarchy")
   financialNature FinancialNatureCatalog? @relation("AccountPlanFinancialNature", fields: [financialNatureId], references: [id])
 
-  categories          Category[]           @relation("CategoryAccountPlan")
+  categories          FinancialCategory[]  @relation("CategoryAccountPlan")
   classificationRules ClassificationRule[]
-  allocationLines     AllocationRuleLine[] @relation("AllocationLineAccountPlan")
+  allocationLines     AllocationRuleItem[] @relation("AllocationLineAccountPlan")
   tagLinks            FinancialTagLink[]   @relation("AccountPlanTagLinks")
 
   @@unique([organizationId, companyId, code])
@@ -2432,10 +2432,10 @@ model ResultCenter {
   parentResultCenter ResultCenter?  @relation("ResultCenterHierarchy", fields: [parentResultCenterId], references: [id])
   children           ResultCenter[] @relation("ResultCenterHierarchy")
 
-  defaultForCategories Category[]           @relation("CategoryDefaultResultCenter")
+  defaultForCategories FinancialCategory[]  @relation("CategoryDefaultResultCenter")
   projects             Project[]            @relation("ProjectResultCenter")
   classificationRules  ClassificationRule[]
-  allocationLines      AllocationRuleLine[] @relation("AllocationLineResultCenter")
+  allocationLines      AllocationRuleItem[] @relation("AllocationLineResultCenter")
   tagLinks             FinancialTagLink[]   @relation("ResultCenterTagLinks")
 
   @@unique([companyId, code])
@@ -2490,9 +2490,9 @@ model Project {
   resultCenter ResultCenter? @relation("ProjectResultCenter", fields: [resultCenterId], references: [id])
   businessUnit BusinessUnit? @relation("ProjectBusinessUnit", fields: [businessUnitId], references: [id])
 
-  defaultForCategories Category[]           @relation("CategoryDefaultProject")
+  defaultForCategories FinancialCategory[]  @relation("CategoryDefaultProject")
   classificationRules  ClassificationRule[]
-  allocationLines      AllocationRuleLine[] @relation("AllocationLineProject")
+  allocationLines      AllocationRuleItem[] @relation("AllocationLineProject")
   tagLinks             FinancialTagLink[]   @relation("ProjectTagLinks")
 
   @@unique([companyId, code])
@@ -2536,10 +2536,10 @@ model BusinessUnit {
   parentBusinessUnit BusinessUnit?  @relation("BusinessUnitHierarchy", fields: [parentBusinessUnitId], references: [id])
   children           BusinessUnit[] @relation("BusinessUnitHierarchy")
 
-  defaultForCategories Category[]           @relation("CategoryDefaultBusinessUnit")
+  defaultForCategories FinancialCategory[]  @relation("CategoryDefaultBusinessUnit")
   projects             Project[]            @relation("ProjectBusinessUnit")
   classificationRules  ClassificationRule[]
-  allocationLines      AllocationRuleLine[] @relation("AllocationLineBusinessUnit")
+  allocationLines      AllocationRuleItem[] @relation("AllocationLineBusinessUnit")
   tagLinks             FinancialTagLink[]   @relation("BusinessUnitTagLinks")
 
   @@unique([organizationId, companyId, code])
@@ -2582,7 +2582,7 @@ model FinancialNatureCatalog {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   company      Company?     @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
-  categories          Category[]             @relation("CategoryFinancialNature")
+  categories          FinancialCategory[]    @relation("CategoryFinancialNature")
   accountPlans        FinancialAccountPlan[] @relation("AccountPlanFinancialNature")
   classificationRules ClassificationRule[]
 
@@ -2650,7 +2650,7 @@ model FinancialTagLink {
   createdBy String?  @map("created_by") @db.Uuid
 
   tag          FinancialTag          @relation(fields: [tagId], references: [id], onDelete: Cascade)
-  category     Category?             @relation("CategoryTagLinks", fields: [categoryId], references: [id], onDelete: Cascade)
+  category     FinancialCategory?    @relation("CategoryTagLinks", fields: [categoryId], references: [id], onDelete: Cascade)
   accountPlan  FinancialAccountPlan? @relation("AccountPlanTagLinks", fields: [accountPlanId], references: [id], onDelete: Cascade)
   costCenter   CostCenter?           @relation("CostCenterTagLinks", fields: [costCenterId], references: [id], onDelete: Cascade)
   resultCenter ResultCenter?         @relation("ResultCenterTagLinks", fields: [resultCenterId], references: [id], onDelete: Cascade)
@@ -2724,7 +2724,7 @@ model ClassificationRule {
   updatedBy String?   @map("updated_by") @db.Uuid
 
   company         Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  category        Category?               @relation(fields: [categoryId], references: [id])
+  category        FinancialCategory?      @relation(fields: [categoryId], references: [id])
   accountPlan     FinancialAccountPlan?   @relation(fields: [accountPlanId], references: [id])
   costCenter      CostCenter?             @relation(fields: [costCenterId], references: [id])
   resultCenter    ResultCenter?           @relation(fields: [resultCenterId], references: [id])
@@ -2763,11 +2763,11 @@ model AllocationRule {
   createdBy String?   @map("created_by") @db.Uuid
   updatedBy String?   @map("updated_by") @db.Uuid
 
-  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  category Category? @relation("AllocationRuleCategory", fields: [categoryId], references: [id])
+  company  Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  category FinancialCategory? @relation("AllocationRuleCategory", fields: [categoryId], references: [id])
 
-  lines                AllocationRuleLine[]
-  defaultForCategories Category[]           @relation("CategoryDefaultAllocationRule")
+  items                AllocationRuleItem[]
+  defaultForCategories FinancialCategory[]  @relation("CategoryDefaultAllocationRule")
   classificationRules  ClassificationRule[] @relation("ClassificationRuleAllocation")
 
   @@index([companyId])
@@ -2777,7 +2777,7 @@ model AllocationRule {
 
 /// Linha de rateio. Para `PERCENTAGE`, a soma das linhas da regra deve fechar 100%
 /// (validado em `AllocationRulesService`).
-model AllocationRuleLine {
+model AllocationRuleItem {
   id               String @id @default(uuid()) @db.Uuid
   allocationRuleId String @map("allocation_rule_id") @db.Uuid
 
@@ -2808,11 +2808,11 @@ model AllocationRuleLine {
   resultCenter   ResultCenter?         @relation("AllocationLineResultCenter", fields: [resultCenterId], references: [id])
   project        Project?              @relation("AllocationLineProject", fields: [projectId], references: [id])
   businessUnit   BusinessUnit?         @relation("AllocationLineBusinessUnit", fields: [businessUnitId], references: [id])
-  category       Category?             @relation("AllocationLineCategory", fields: [categoryId], references: [id])
+  category       FinancialCategory?    @relation("AllocationLineCategory", fields: [categoryId], references: [id])
   accountPlan    FinancialAccountPlan? @relation("AllocationLineAccountPlan", fields: [accountPlanId], references: [id])
 
   @@index([allocationRuleId])
-  @@map("allocation_rule_lines")
+  @@map("allocation_rule_items")
 }
 
 /// Snapshot versionado de uma árvore/estrutura, gravado antes de alterações estruturais

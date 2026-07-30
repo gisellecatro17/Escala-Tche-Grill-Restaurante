@@ -42,7 +42,7 @@ export class ClassificationRulesController {
     @Query('companyId') companyId: string,
     @CurrentUser() actor: RequestUser,
   ) {
-    assertCompanyPermission(actor, companyId, 'classification-rules.view');
+    assertCompanyPermission(actor, companyId, 'classification_rule.view');
     return this.rules.findAll(companyId, query);
   }
 
@@ -50,7 +50,7 @@ export class ClassificationRulesController {
   @ApiOperation({ summary: 'Detalha uma regra de classificação.' })
   async findOne(@Param('id') id: string, @CurrentUser() actor: RequestUser) {
     const rule = await this.rules.findOne(id);
-    assertCompanyPermission(actor, rule.companyId, 'classification-rules.view');
+    assertCompanyPermission(actor, rule.companyId, 'classification_rule.view');
     return rule;
   }
 
@@ -61,11 +61,7 @@ export class ClassificationRulesController {
     @Body() dto: CreateClassificationRuleDto,
     @CurrentUser() actor: RequestUser,
   ) {
-    assertCompanyPermission(
-      actor,
-      dto.companyId,
-      'classification-rules.manage',
-    );
+    assertCompanyPermission(actor, dto.companyId, 'classification_rule.manage');
     return this.rules.create(dto, actor);
   }
 
@@ -79,7 +75,7 @@ export class ClassificationRulesController {
     @Body() dto: SimulateClassificationDto,
     @CurrentUser() actor: RequestUser,
   ) {
-    assertCompanyPermission(actor, dto.companyId, 'classification-rules.view');
+    assertCompanyPermission(actor, dto.companyId, 'classification_rule.view');
     return this.rules.simulate(dto);
   }
 
@@ -95,7 +91,7 @@ export class ClassificationRulesController {
     assertCompanyPermission(
       actor,
       rule.companyId,
-      'classification-rules.manage',
+      'classification_rule.manage',
     );
     return this.rules.update(id, dto, actor);
   }
@@ -108,7 +104,7 @@ export class ClassificationRulesController {
     assertCompanyPermission(
       actor,
       rule.companyId,
-      'classification-rules.delete',
+      'classification_rule.delete',
     );
     return this.rules.remove(id, actor);
   }

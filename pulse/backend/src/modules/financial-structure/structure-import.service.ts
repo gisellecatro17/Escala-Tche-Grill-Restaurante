@@ -439,18 +439,18 @@ export class StructureImportService {
             'Selecione a empresa para importar categorias.',
           );
         }
-        const existing = await this.prisma.category.findFirst({
+        const existing = await this.prisma.financialCategory.findFirst({
           where: { companyId, code: row.code, deletedAt: null },
         });
         if (existing) {
           if (!updateExisting) return { id: existing.id, created: false };
-          const up = await this.prisma.category.update({
+          const up = await this.prisma.financialCategory.update({
             where: { id: existing.id },
             data: { name: row.name, notes: row.notes, updatedBy: actor.id },
           });
           return { id: up.id, created: false };
         }
-        const category = await this.prisma.category.create({
+        const category = await this.prisma.financialCategory.create({
           data: {
             ...base,
             companyId,
@@ -585,7 +585,7 @@ export class StructureImportService {
         );
       }
       case HierarchyEntity.CATEGORY: {
-        const rows = await this.prisma.category.findMany({
+        const rows = await this.prisma.financialCategory.findMany({
           where: { companyId: query.companyId, deletedAt: null },
           include: { parentCategory: { select: { code: true } } },
           orderBy: { name: 'asc' },

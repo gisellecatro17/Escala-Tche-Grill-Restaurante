@@ -91,7 +91,7 @@ export function TreePage<T extends TreeItem>({
   const canManage = hasPermission(permissions.manage);
   const canManageTree = hasPermission(permissions.manageTree);
   const canDelete = hasPermission(permissions.delete);
-  const canExport = hasPermission("financial-structure.export");
+  const canExport = hasPermission("financial_structure.export");
 
   const flatOptions = React.useMemo(() => flattenTree(tree ?? []), [tree]);
 

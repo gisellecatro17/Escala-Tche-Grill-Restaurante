@@ -42,7 +42,7 @@ export function useAccountPlanTree(
     queryKey: ["account-plans", "tree", organizationId, companyId, includeInactive],
     queryFn: () =>
       api.get<TreeNode<AccountPlan>[]>(
-        `/account-plans/tree${buildQueryString({ organizationId, companyId, includeInactive })}`,
+        `/financial-account-plans/tree${buildQueryString({ organizationId, companyId, includeInactive })}`,
       ),
     enabled: Boolean(organizationId),
   });
@@ -53,7 +53,7 @@ export function useAccountPlans(organizationId: string | undefined, companyId?: 
     queryKey: ["account-plans", "list", organizationId, companyId],
     queryFn: () =>
       api.get<AccountPlan[]>(
-        `/account-plans${buildQueryString({ organizationId, companyId, perPage: 100 })}`,
+        `/financial-account-plans${buildQueryString({ organizationId, companyId, perPage: 100 })}`,
       ),
     enabled: Boolean(organizationId),
   });
@@ -62,7 +62,7 @@ export function useAccountPlans(organizationId: string | undefined, companyId?: 
 export function useCreateAccountPlan() {
   const invalidate = useInvalidate(["account-plans"]);
   return useMutation({
-    mutationFn: (payload: Payload) => api.post<AccountPlan>("/account-plans", payload),
+    mutationFn: (payload: Payload) => api.post<AccountPlan>("/financial-account-plans", payload),
     onSuccess: invalidate,
   });
 }
@@ -71,7 +71,7 @@ export function useUpdateAccountPlan() {
   const invalidate = useInvalidate(["account-plans"]);
   return useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: Payload }) =>
-      api.patch<AccountPlan>(`/account-plans/${id}`, payload),
+      api.patch<AccountPlan>(`/financial-account-plans/${id}`, payload),
     onSuccess: invalidate,
   });
 }
@@ -80,7 +80,7 @@ export function useMoveAccountPlan() {
   const invalidate = useInvalidate(["account-plans"]);
   return useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: Payload }) =>
-      api.post<AccountPlan>(`/account-plans/${id}/move`, payload),
+      api.post<AccountPlan>(`/financial-account-plans/${id}/move`, payload),
     onSuccess: invalidate,
   });
 }
@@ -89,7 +89,7 @@ export function useDuplicateAccountPlan() {
   const invalidate = useInvalidate(["account-plans"]);
   return useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: Payload }) =>
-      api.post<AccountPlan>(`/account-plans/${id}/duplicate`, payload),
+      api.post<AccountPlan>(`/financial-account-plans/${id}/duplicate`, payload),
     onSuccess: invalidate,
   });
 }
@@ -97,7 +97,7 @@ export function useDuplicateAccountPlan() {
 export function useDeleteAccountPlan() {
   const invalidate = useInvalidate(["account-plans"]);
   return useMutation({
-    mutationFn: (id: string) => api.delete<{ id: string }>(`/account-plans/${id}`),
+    mutationFn: (id: string) => api.delete<{ id: string }>(`/financial-account-plans/${id}`),
     onSuccess: invalidate,
   });
 }

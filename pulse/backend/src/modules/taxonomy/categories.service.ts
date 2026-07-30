@@ -33,7 +33,7 @@ const CATEGORY_INCLUDE = {
   defaultBusinessUnit: { select: { id: true, name: true } },
   defaultAllocationRule: { select: { id: true, name: true } },
   tagLinks: { include: { tag: true } },
-} satisfies Prisma.CategoryInclude;
+} satisfies Prisma.FinancialCategoryInclude;
 
 @Injectable()
 export class CategoriesService {
@@ -48,7 +48,7 @@ export class CategoriesService {
    * A assinatura original (`companyId`, `search`) é preservada.
    */
   findAll(companyId: string, search?: string, includeInactive = false) {
-    return this.prisma.category.findMany({
+    return this.prisma.financialCategory.findMany({
       where: {
         companyId,
         deletedAt: null,
@@ -60,7 +60,7 @@ export class CategoriesService {
   }
 
   async findTree(companyId: string, includeInactive = false) {
-    const categories = await this.prisma.category.findMany({
+    const categories = await this.prisma.financialCategory.findMany({
       where: {
         companyId,
         deletedAt: null,
@@ -77,7 +77,7 @@ export class CategoriesService {
   }
 
   async findOne(id: string) {
-    const category = await this.prisma.category.findFirst({
+    const category = await this.prisma.financialCategory.findFirst({
       where: { id, deletedAt: null },
       include: {
         ...CATEGORY_INCLUDE,
@@ -96,7 +96,7 @@ export class CategoriesService {
 
   async create(dto: CreateCategoryDto, actor?: RequestUser) {
     if (dto.parentCategoryId) {
-      const parent = await this.prisma.category.findFirst({
+      const parent = await this.prisma.financialCategory.findFirst({
         where: {
           id: dto.parentCategoryId,
           companyId: dto.companyId,
@@ -115,7 +115,7 @@ export class CategoriesService {
     );
 
     try {
-      const category = await this.prisma.category.create({
+      const category = await this.prisma.financialCategory.create({
         data: {
           companyId: dto.companyId,
           parentCategoryId: dto.parentCategoryId,
@@ -168,7 +168,7 @@ export class CategoriesService {
     const current = await this.findOne(id);
 
     try {
-      const category = await this.prisma.category.update({
+      const category = await this.prisma.financialCategory.update({
         where: { id },
         data: {
           name: dto.name?.trim(),
@@ -223,7 +223,7 @@ export class CategoriesService {
     const current = await this.findOne(id);
     const newParentId = dto.parentId ?? null;
 
-    const all = await this.prisma.category.findMany({
+    const all = await this.prisma.financialCategory.findMany({
       where: { companyId: current.companyId, deletedAt: null },
       select: { id: true, parentCategoryId: true },
     });
@@ -250,7 +250,7 @@ export class CategoriesService {
       });
     }
 
-    const updated = await this.prisma.category.update({
+    const updated = await this.prisma.financialCategory.update({
       where: { id },
       data: {
         parentCategoryId: newParentId,
@@ -281,7 +281,7 @@ export class CategoriesService {
     const targetCompanyId = dto.targetCompanyId ?? source.companyId;
     const sameCompany = targetCompanyId === source.companyId;
 
-    const created = await this.prisma.category.create({
+    const created = await this.prisma.financialCategory.create({
       data: {
         companyId: targetCompanyId,
         // Fora da empresa de origem a árvore e as dimensões são outras.
@@ -391,7 +391,7 @@ export class CategoriesService {
       );
     }
 
-    await this.prisma.category.update({
+    await this.prisma.financialCategory.update({
       where: { id },
       data: {
         deletedAt: new Date(),
@@ -419,7 +419,7 @@ export class CategoriesService {
     companyId: string,
     name: string,
   ) {
-    const all = await this.prisma.category.findMany({
+    const all = await this.prisma.financialCategory.findMany({
       where: { companyId, deletedAt: null },
       select: { id: true, name: true, parentCategoryId: true },
     });
@@ -434,7 +434,7 @@ export class CategoriesService {
   }
 
   private async recalculateSubtree(rootId: string, companyId: string) {
-    const all = await this.prisma.category.findMany({
+    const all = await this.prisma.financialCategory.findMany({
       where: { companyId, deletedAt: null },
       select: { id: true, name: true, parentCategoryId: true },
     });
@@ -460,7 +460,7 @@ export class CategoriesService {
           nodesById,
           node?.name ?? '',
         );
-        return this.prisma.category.update({
+        return this.prisma.financialCategory.update({
           where: { id: categoryId },
           data: { level, path },
         });
@@ -474,13 +474,13 @@ export class CategoriesService {
     targetCompanyId: string,
     actor: RequestUser,
   ) {
-    const children = await this.prisma.category.findMany({
+    const children = await this.prisma.financialCategory.findMany({
       where: { parentCategoryId: sourceParentId, deletedAt: null },
       orderBy: { name: 'asc' },
     });
 
     for (const child of children) {
-      const created = await this.prisma.category.create({
+      const created = await this.prisma.financialCategory.create({
         data: {
           companyId: targetCompanyId,
           parentCategoryId: targetParentId,

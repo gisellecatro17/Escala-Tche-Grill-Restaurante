@@ -40,9 +40,9 @@ export default function CostCentersPage() {
       includeInactive={includeInactive}
       onIncludeInactiveChange={setIncludeInactive}
       permissions={{
-        manage: "cost-centers.manage",
-        manageTree: "cost-centers.manage_tree",
-        delete: "cost-centers.delete",
+        manage: "cost_center.manage",
+        manageTree: "cost_center.move",
+        delete: "cost_center.delete",
       }}
       isSubmitting={createCostCenter.isPending || updateCostCenter.isPending}
       isMoving={moveCostCenter.isPending}

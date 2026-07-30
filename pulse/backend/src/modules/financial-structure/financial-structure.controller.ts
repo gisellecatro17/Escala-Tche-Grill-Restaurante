@@ -63,7 +63,7 @@ export class FinancialStructureController {
     assertOrganizationPermission(
       actor,
       dto.organizationId,
-      'financial-structure.import',
+      'financial_structure.import',
     );
     return this.imports.validate(dto, file?.buffer.toString('utf-8'), actor);
   }
@@ -92,7 +92,7 @@ export class FinancialStructureController {
     assertOrganizationPermission(
       actor,
       organizationId,
-      'financial-structure.import',
+      'financial_structure.import',
     );
     return this.imports.findBatches(organizationId, entity);
   }
@@ -110,7 +110,7 @@ export class FinancialStructureController {
     assertOrganizationPermission(
       actor,
       query.organizationId,
-      'financial-structure.export',
+      'financial_structure.export',
     );
     return this.imports.export(query, actor);
   }
@@ -129,7 +129,7 @@ export class FinancialStructureController {
     assertOrganizationPermission(
       actor,
       organizationId,
-      'financial-structure.manage_versions',
+      'financial_structure.manage_versions',
     );
     return this.versions.findAll(organizationId, entity, companyId, query);
   }
@@ -146,7 +146,7 @@ export class FinancialStructureController {
     assertOrganizationPermission(
       actor,
       version.organizationId,
-      'financial-structure.manage_versions',
+      'financial_structure.manage_versions',
     );
     return version;
   }
@@ -161,7 +161,7 @@ export class FinancialStructureController {
     assertOrganizationPermission(
       actor,
       dto.organizationId,
-      'financial-structure.manage_versions',
+      'financial_structure.manage_versions',
     );
     return this.versions.snapshot({
       organizationId: dto.organizationId,
@@ -188,7 +188,7 @@ export class FinancialStructureController {
     assertOrganizationPermission(
       actor,
       version.organizationId,
-      'financial-structure.manage_versions',
+      'financial_structure.manage_versions',
     );
     return this.versions.restore(id, dto.reason, actor);
   }

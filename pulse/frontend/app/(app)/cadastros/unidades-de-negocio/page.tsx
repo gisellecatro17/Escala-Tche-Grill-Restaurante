@@ -43,9 +43,9 @@ export default function BusinessUnitsPage() {
       includeInactive={includeInactive}
       onIncludeInactiveChange={setIncludeInactive}
       permissions={{
-        manage: "business-units.manage",
-        manageTree: "business-units.manage",
-        delete: "business-units.delete",
+        manage: "business_unit.manage",
+        manageTree: "business_unit.manage",
+        delete: "business_unit.delete",
       }}
       isSubmitting={createBusinessUnit.isPending || updateBusinessUnit.isPending}
       isMoving={moveBusinessUnit.isPending}

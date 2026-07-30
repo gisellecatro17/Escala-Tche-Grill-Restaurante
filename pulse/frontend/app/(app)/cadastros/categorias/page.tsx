@@ -40,9 +40,9 @@ export default function CategoriesPage() {
       includeInactive={includeInactive}
       onIncludeInactiveChange={setIncludeInactive}
       permissions={{
-        manage: "categories.manage",
-        manageTree: "categories.manage_tree",
-        delete: "categories.delete",
+        manage: "financial_category.manage",
+        manageTree: "financial_category.move",
+        delete: "financial_category.delete",
       }}
       isSubmitting={createCategory.isPending || updateCategory.isPending}
       isMoving={moveCategory.isPending}

@@ -23,7 +23,7 @@ const EXISTING_CATEGORY = {
 
 function buildService(prismaOverrides: Record<string, unknown> = {}) {
   const prisma = {
-    category: {
+    financialCategory: {
       findFirst: jest.fn().mockResolvedValue(EXISTING_CATEGORY),
       findMany: jest.fn().mockResolvedValue([]),
       create: jest
@@ -60,7 +60,7 @@ function buildService(prismaOverrides: Record<string, unknown> = {}) {
 describe('CategoriesService', () => {
   it('mantém o cadastro rápido funcionando sem informar um ator', async () => {
     const { service, prisma } = buildService({
-      category: {
+      financialCategory: {
         findFirst: jest.fn().mockResolvedValue(null),
         findMany: jest.fn().mockResolvedValue([]),
         create: jest
@@ -74,12 +74,12 @@ describe('CategoriesService', () => {
     await expect(
       service.create({ companyId: 'company-1', name: 'Telefone' } as any),
     ).resolves.toMatchObject({ name: 'Telefone' });
-    expect(prisma.category.create).toHaveBeenCalled();
+    expect(prisma.financialCategory.create).toHaveBeenCalled();
   });
 
   it('recusa uma categoria pai inexistente', async () => {
     const { service } = buildService({
-      category: {
+      financialCategory: {
         findFirst: jest.fn().mockResolvedValue(null),
         findMany: jest.fn().mockResolvedValue([]),
         create: jest.fn(),
@@ -99,7 +99,7 @@ describe('CategoriesService', () => {
 
   it('traduz código duplicado em mensagem de conflito', async () => {
     const { service } = buildService({
-      category: {
+      financialCategory: {
         findFirst: jest.fn().mockResolvedValue(null),
         findMany: jest.fn().mockResolvedValue([]),
         create: jest.fn().mockRejectedValue(
@@ -125,7 +125,7 @@ describe('CategoriesService', () => {
 
   it('impede mover uma categoria para dentro de uma subcategoria', async () => {
     const { service } = buildService({
-      category: {
+      financialCategory: {
         findFirst: jest.fn().mockResolvedValue(EXISTING_CATEGORY),
         findMany: jest.fn().mockResolvedValue([
           { id: 'cat-1', parentCategoryId: null },
@@ -154,7 +154,7 @@ describe('CategoriesService', () => {
 
   it('bloqueia a exclusão de uma categoria com subcategorias', async () => {
     const { service } = buildService({
-      category: {
+      financialCategory: {
         findFirst: jest.fn().mockResolvedValue({
           ...EXISTING_CATEGORY,
           subcategories: [{ id: 'cat-2' }],
@@ -197,7 +197,7 @@ describe('CategoriesService', () => {
     await expect(service.remove('cat-1', actor)).resolves.toEqual({
       id: 'cat-1',
     });
-    expect(prisma.category.update).toHaveBeenCalledWith(
+    expect(prisma.financialCategory.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ status: 'INACTIVE' }),
       }),

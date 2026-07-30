@@ -31,7 +31,7 @@ import {
  */
 @ApiTags('Categorias financeiras')
 @ApiBearerAuth()
-@Controller('categories')
+@Controller('financial-categories')
 export class CategoriesController {
   constructor(private readonly categoriesService: CategoriesService) {}
 
@@ -43,7 +43,7 @@ export class CategoriesController {
     @Query('includeInactive') includeInactive: string | undefined,
     @CurrentUser() actor: RequestUser,
   ) {
-    assertCompanyPermission(actor, companyId, 'categories.view');
+    assertCompanyPermission(actor, companyId, 'financial_category.view');
     return this.categoriesService.findAll(
       companyId,
       search,
@@ -60,7 +60,7 @@ export class CategoriesController {
     @Query('includeInactive') includeInactive: string | undefined,
     @CurrentUser() actor: RequestUser,
   ) {
-    assertCompanyPermission(actor, companyId, 'categories.view');
+    assertCompanyPermission(actor, companyId, 'financial_category.view');
     return this.categoriesService.findTree(
       companyId,
       includeInactive === 'true',
@@ -73,7 +73,11 @@ export class CategoriesController {
   })
   async findOne(@Param('id') id: string, @CurrentUser() actor: RequestUser) {
     const category = await this.categoriesService.findOne(id);
-    assertCompanyPermission(actor, category.companyId, 'categories.view');
+    assertCompanyPermission(
+      actor,
+      category.companyId,
+      'financial_category.view',
+    );
     return category;
   }
 
@@ -83,7 +87,7 @@ export class CategoriesController {
     summary: 'Inclui uma categoria (ou subcategoria) financeira.',
   })
   create(@Body() dto: CreateCategoryDto, @CurrentUser() actor: RequestUser) {
-    assertCompanyPermission(actor, dto.companyId, 'categories.manage');
+    assertCompanyPermission(actor, dto.companyId, 'financial_category.manage');
     return this.categoriesService.create(dto, actor);
   }
 
@@ -96,7 +100,11 @@ export class CategoriesController {
     @CurrentUser() actor: RequestUser,
   ) {
     const category = await this.categoriesService.findOne(id);
-    assertCompanyPermission(actor, category.companyId, 'categories.manage');
+    assertCompanyPermission(
+      actor,
+      category.companyId,
+      'financial_category.manage',
+    );
     return this.categoriesService.update(id, dto, actor);
   }
 
@@ -115,7 +123,7 @@ export class CategoriesController {
     assertCompanyPermission(
       actor,
       category.companyId,
-      'categories.manage_tree',
+      'financial_category.move',
     );
     return this.categoriesService.move(id, dto, actor);
   }
@@ -134,10 +142,14 @@ export class CategoriesController {
     assertCompanyPermission(
       actor,
       category.companyId,
-      'financial-structure.duplicate',
+      'financial_structure.duplicate',
     );
     if (dto.targetCompanyId) {
-      assertCompanyPermission(actor, dto.targetCompanyId, 'categories.manage');
+      assertCompanyPermission(
+        actor,
+        dto.targetCompanyId,
+        'financial_category.manage',
+      );
     }
     return this.categoriesService.duplicate(id, dto, actor);
   }
@@ -149,7 +161,11 @@ export class CategoriesController {
   })
   async remove(@Param('id') id: string, @CurrentUser() actor: RequestUser) {
     const category = await this.categoriesService.findOne(id);
-    assertCompanyPermission(actor, category.companyId, 'categories.delete');
+    assertCompanyPermission(
+      actor,
+      category.companyId,
+      'financial_category.delete',
+    );
     return this.categoriesService.remove(id, actor);
   }
 }

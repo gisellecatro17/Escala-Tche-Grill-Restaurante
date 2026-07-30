@@ -39,7 +39,7 @@ export class ResultCentersController {
     @Query('companyId') companyId: string,
     @CurrentUser() actor: RequestUser,
   ) {
-    assertCompanyPermission(actor, companyId, 'result-centers.view');
+    assertCompanyPermission(actor, companyId, 'result_center.view');
     return this.resultCenters.findAll(companyId, query);
   }
 
@@ -52,7 +52,7 @@ export class ResultCentersController {
     @Query('includeInactive') includeInactive: string | undefined,
     @CurrentUser() actor: RequestUser,
   ) {
-    assertCompanyPermission(actor, companyId, 'result-centers.view');
+    assertCompanyPermission(actor, companyId, 'result_center.view');
     return this.resultCenters.findTree(companyId, includeInactive === 'true');
   }
 
@@ -60,7 +60,7 @@ export class ResultCentersController {
   @ApiOperation({ summary: 'Detalha um centro de resultado.' })
   async findOne(@Param('id') id: string, @CurrentUser() actor: RequestUser) {
     const center = await this.resultCenters.findOne(id);
-    assertCompanyPermission(actor, center.companyId, 'result-centers.view');
+    assertCompanyPermission(actor, center.companyId, 'result_center.view');
     return center;
   }
 
@@ -71,7 +71,7 @@ export class ResultCentersController {
     @Body() dto: CreateResultCenterDto,
     @CurrentUser() actor: RequestUser,
   ) {
-    assertCompanyPermission(actor, dto.companyId, 'result-centers.manage');
+    assertCompanyPermission(actor, dto.companyId, 'result_center.manage');
     return this.resultCenters.create(dto, actor);
   }
 
@@ -84,7 +84,7 @@ export class ResultCentersController {
     @CurrentUser() actor: RequestUser,
   ) {
     const center = await this.resultCenters.findOne(id);
-    assertCompanyPermission(actor, center.companyId, 'result-centers.manage');
+    assertCompanyPermission(actor, center.companyId, 'result_center.manage');
     return this.resultCenters.update(id, dto, actor);
   }
 
@@ -97,11 +97,7 @@ export class ResultCentersController {
     @CurrentUser() actor: RequestUser,
   ) {
     const center = await this.resultCenters.findOne(id);
-    assertCompanyPermission(
-      actor,
-      center.companyId,
-      'result-centers.manage_tree',
-    );
+    assertCompanyPermission(actor, center.companyId, 'result_center.move');
     return this.resultCenters.move(id, dto, actor);
   }
 
@@ -117,13 +113,13 @@ export class ResultCentersController {
     assertCompanyPermission(
       actor,
       center.companyId,
-      'financial-structure.duplicate',
+      'financial_structure.duplicate',
     );
     if (dto.targetCompanyId) {
       assertCompanyPermission(
         actor,
         dto.targetCompanyId,
-        'result-centers.manage',
+        'result_center.manage',
       );
     }
     return this.resultCenters.duplicate(id, dto, actor);
@@ -136,7 +132,7 @@ export class ResultCentersController {
   })
   async remove(@Param('id') id: string, @CurrentUser() actor: RequestUser) {
     const center = await this.resultCenters.findOne(id);
-    assertCompanyPermission(actor, center.companyId, 'result-centers.delete');
+    assertCompanyPermission(actor, center.companyId, 'result_center.delete');
     return this.resultCenters.remove(id, actor);
   }
 }

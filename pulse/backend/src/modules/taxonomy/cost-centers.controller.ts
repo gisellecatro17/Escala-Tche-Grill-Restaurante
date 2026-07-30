@@ -39,7 +39,7 @@ export class CostCentersController {
     @Query('includeInactive') includeInactive: string | undefined,
     @CurrentUser() actor: RequestUser,
   ) {
-    assertCompanyPermission(actor, companyId, 'cost-centers.view');
+    assertCompanyPermission(actor, companyId, 'cost_center.view');
     return this.costCentersService.findAll(
       companyId,
       search,
@@ -54,7 +54,7 @@ export class CostCentersController {
     @Query('includeInactive') includeInactive: string | undefined,
     @CurrentUser() actor: RequestUser,
   ) {
-    assertCompanyPermission(actor, companyId, 'cost-centers.view');
+    assertCompanyPermission(actor, companyId, 'cost_center.view');
     return this.costCentersService.findTree(
       companyId,
       includeInactive === 'true',
@@ -65,7 +65,7 @@ export class CostCentersController {
   @ApiOperation({ summary: 'Detalha um centro de custo.' })
   async findOne(@Param('id') id: string, @CurrentUser() actor: RequestUser) {
     const costCenter = await this.costCentersService.findOne(id);
-    assertCompanyPermission(actor, costCenter.companyId, 'cost-centers.view');
+    assertCompanyPermission(actor, costCenter.companyId, 'cost_center.view');
     return costCenter;
   }
 
@@ -73,7 +73,7 @@ export class CostCentersController {
   @ApiMessage('Centro de custo incluído com sucesso.')
   @ApiOperation({ summary: 'Inclui um centro de custo.' })
   create(@Body() dto: CreateCostCenterDto, @CurrentUser() actor: RequestUser) {
-    assertCompanyPermission(actor, dto.companyId, 'cost-centers.manage');
+    assertCompanyPermission(actor, dto.companyId, 'cost_center.manage');
     return this.costCentersService.create(dto, actor);
   }
 
@@ -86,7 +86,7 @@ export class CostCentersController {
     @CurrentUser() actor: RequestUser,
   ) {
     const costCenter = await this.costCentersService.findOne(id);
-    assertCompanyPermission(actor, costCenter.companyId, 'cost-centers.manage');
+    assertCompanyPermission(actor, costCenter.companyId, 'cost_center.manage');
     return this.costCentersService.update(id, dto, actor);
   }
 
@@ -99,11 +99,7 @@ export class CostCentersController {
     @CurrentUser() actor: RequestUser,
   ) {
     const costCenter = await this.costCentersService.findOne(id);
-    assertCompanyPermission(
-      actor,
-      costCenter.companyId,
-      'cost-centers.manage_tree',
-    );
+    assertCompanyPermission(actor, costCenter.companyId, 'cost_center.move');
     return this.costCentersService.move(id, dto, actor);
   }
 
@@ -121,14 +117,10 @@ export class CostCentersController {
     assertCompanyPermission(
       actor,
       costCenter.companyId,
-      'financial-structure.duplicate',
+      'financial_structure.duplicate',
     );
     if (dto.targetCompanyId) {
-      assertCompanyPermission(
-        actor,
-        dto.targetCompanyId,
-        'cost-centers.manage',
-      );
+      assertCompanyPermission(actor, dto.targetCompanyId, 'cost_center.manage');
     }
     return this.costCentersService.duplicate(id, dto, actor);
   }
@@ -140,7 +132,7 @@ export class CostCentersController {
   })
   async remove(@Param('id') id: string, @CurrentUser() actor: RequestUser) {
     const costCenter = await this.costCentersService.findOne(id);
-    assertCompanyPermission(actor, costCenter.companyId, 'cost-centers.delete');
+    assertCompanyPermission(actor, costCenter.companyId, 'cost_center.delete');
     return this.costCentersService.remove(id, actor);
   }
 }

@@ -372,7 +372,7 @@ export class AccountPlansService {
     }
 
     const [categories, rules] = await Promise.all([
-      this.prisma.category.count({
+      this.prisma.financialCategory.count({
         where: { accountPlanId: id, deletedAt: null },
       }),
       this.prisma.classificationRule.count({

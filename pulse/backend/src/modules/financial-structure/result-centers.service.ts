@@ -298,7 +298,7 @@ export class ResultCentersService {
     }
 
     const [categories, projects, rules, allocationLines] = await Promise.all([
-      this.prisma.category.count({
+      this.prisma.financialCategory.count({
         where: { defaultResultCenterId: id, deletedAt: null },
       }),
       this.prisma.project.count({
@@ -307,7 +307,7 @@ export class ResultCentersService {
       this.prisma.classificationRule.count({
         where: { resultCenterId: id, deletedAt: null },
       }),
-      this.prisma.allocationRuleLine.count({ where: { resultCenterId: id } }),
+      this.prisma.allocationRuleItem.count({ where: { resultCenterId: id } }),
     ]);
 
     if (categories + projects + rules + allocationLines > 0) {

@@ -59,10 +59,10 @@ export default function AccountPlanPage() {
   const deleteAccount = useDeleteAccountPlan();
   const exportStructure = useExportStructure();
 
-  const canManage = hasPermission("account-plan.manage");
-  const canManageTree = hasPermission("account-plan.manage_tree");
-  const canDelete = hasPermission("account-plan.delete");
-  const canExport = hasPermission("financial-structure.export");
+  const canManage = hasPermission("account_plan.manage");
+  const canManageTree = hasPermission("account_plan.move");
+  const canDelete = hasPermission("account_plan.delete");
+  const canExport = hasPermission("financial_structure.export");
 
   const flatOptions = React.useMemo(() => flattenTree(tree ?? []), [tree]);
 
@@ -163,7 +163,7 @@ export default function AccountPlanPage() {
                     },
                   ]
                 : []),
-              ...(hasPermission("financial-structure.duplicate")
+              ...(hasPermission("financial_structure.duplicate")
                 ? [
                     {
                       label: "Duplicar",

@@ -172,7 +172,7 @@ export class HierarchyVersionsService {
         return rows.map((r) => ({ ...r, parentId: r.parentAccountId }));
       }
       case HierarchyEntity.CATEGORY: {
-        const rows = await this.prisma.category.findMany({
+        const rows = await this.prisma.financialCategory.findMany({
           where: { deletedAt: null, ...(companyId ? { companyId } : {}) },
           select: {
             id: true,
@@ -283,7 +283,7 @@ export class HierarchyVersionsService {
             });
             break;
           case HierarchyEntity.CATEGORY:
-            await this.prisma.category.update({
+            await this.prisma.financialCategory.update({
               where: { id: item.id },
               data: { ...data, parentCategoryId: item.parentId },
             });

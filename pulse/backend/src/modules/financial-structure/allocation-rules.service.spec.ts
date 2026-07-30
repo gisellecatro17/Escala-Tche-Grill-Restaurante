@@ -22,8 +22,8 @@ function buildService(prismaOverrides: Record<string, unknown> = {}) {
       })),
       update: jest.fn(),
     },
-    allocationRuleLine: { deleteMany: jest.fn(), createMany: jest.fn() },
-    category: { count: jest.fn().mockResolvedValue(0) },
+    allocationRuleItem: { deleteMany: jest.fn(), createMany: jest.fn() },
+    financialCategory: { count: jest.fn().mockResolvedValue(0) },
     classificationRule: { count: jest.fn().mockResolvedValue(0) },
     $transaction: jest.fn(async (cb: any) => cb(prismaMock)),
     ...prismaOverrides,
@@ -208,7 +208,7 @@ describe('AllocationRulesService', () => {
 
   it('bloqueia a exclusão de um rateio em uso por uma categoria', async () => {
     const { service } = buildService({
-      category: { count: jest.fn().mockResolvedValue(1) },
+      financialCategory: { count: jest.fn().mockResolvedValue(1) },
     });
 
     await expect(service.remove('rule-1', actor)).rejects.toThrow(

@@ -38,7 +38,7 @@ export class FinancialNaturesController {
     assertOrganizationPermission(
       actor,
       organizationId,
-      'financial-natures.view',
+      'financial_nature.view',
     );
     return this.natures.findAll(organizationId, query);
   }
@@ -50,7 +50,7 @@ export class FinancialNaturesController {
     assertOrganizationPermission(
       actor,
       nature.organizationId,
-      'financial-natures.view',
+      'financial_nature.view',
     );
     return nature;
   }
@@ -65,7 +65,7 @@ export class FinancialNaturesController {
     assertOrganizationPermission(
       actor,
       dto.organizationId,
-      'financial-natures.manage',
+      'financial_nature.manage',
     );
     return this.natures.create(dto, actor);
   }
@@ -82,7 +82,7 @@ export class FinancialNaturesController {
     assertOrganizationPermission(
       actor,
       nature.organizationId,
-      'financial-natures.manage',
+      'financial_nature.manage',
     );
     return this.natures.update(id, dto, actor);
   }
@@ -95,7 +95,7 @@ export class FinancialNaturesController {
     assertOrganizationPermission(
       actor,
       nature.organizationId,
-      'financial-natures.delete',
+      'financial_nature.delete',
     );
     return this.natures.remove(id, actor);
   }

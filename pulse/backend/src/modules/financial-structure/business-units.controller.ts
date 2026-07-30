@@ -35,7 +35,7 @@ export class BusinessUnitsController {
     @Query('organizationId') organizationId: string,
     @CurrentUser() actor: RequestUser,
   ) {
-    assertOrganizationPermission(actor, organizationId, 'business-units.view');
+    assertOrganizationPermission(actor, organizationId, 'business_unit.view');
     return this.businessUnits.findAll(organizationId, query);
   }
 
@@ -49,7 +49,7 @@ export class BusinessUnitsController {
     @Query('includeInactive') includeInactive: string | undefined,
     @CurrentUser() actor: RequestUser,
   ) {
-    assertOrganizationPermission(actor, organizationId, 'business-units.view');
+    assertOrganizationPermission(actor, organizationId, 'business_unit.view');
     return this.businessUnits.findTree(
       organizationId,
       companyId,
@@ -64,7 +64,7 @@ export class BusinessUnitsController {
     assertOrganizationPermission(
       actor,
       unit.organizationId,
-      'business-units.view',
+      'business_unit.view',
     );
     return unit;
   }
@@ -79,7 +79,7 @@ export class BusinessUnitsController {
     assertOrganizationPermission(
       actor,
       dto.organizationId,
-      'business-units.manage',
+      'business_unit.manage',
     );
     return this.businessUnits.create(dto, actor);
   }
@@ -96,7 +96,7 @@ export class BusinessUnitsController {
     assertOrganizationPermission(
       actor,
       unit.organizationId,
-      'business-units.manage',
+      'business_unit.manage',
     );
     return this.businessUnits.update(id, dto, actor);
   }
@@ -113,7 +113,7 @@ export class BusinessUnitsController {
     assertOrganizationPermission(
       actor,
       unit.organizationId,
-      'business-units.manage',
+      'business_unit.manage',
     );
     return this.businessUnits.move(id, dto, actor);
   }
@@ -128,7 +128,7 @@ export class BusinessUnitsController {
     assertOrganizationPermission(
       actor,
       unit.organizationId,
-      'business-units.delete',
+      'business_unit.delete',
     );
     return this.businessUnits.remove(id, actor);
   }

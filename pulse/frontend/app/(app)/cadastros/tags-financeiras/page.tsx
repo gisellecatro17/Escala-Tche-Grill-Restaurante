@@ -33,8 +33,8 @@ export default function FinancialTagsPage() {
   const createTag = useCreateFinancialTag();
   const deleteTag = useDeleteFinancialTag();
 
-  const canManage = hasPermission("financial-tags.manage");
-  const canDelete = hasPermission("financial-tags.delete");
+  const canManage = hasPermission("financial_tag.manage");
+  const canDelete = hasPermission("financial_tag.delete");
 
   const grouped = React.useMemo(() => {
     const map = new Map<string, typeof tags>();

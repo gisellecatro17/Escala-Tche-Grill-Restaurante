@@ -34,7 +34,7 @@ import {
  */
 @ApiTags('Plano de contas')
 @ApiBearerAuth()
-@Controller('account-plans')
+@Controller('financial-account-plans')
 export class AccountPlansController {
   constructor(private readonly accountPlans: AccountPlansService) {}
 
@@ -45,7 +45,7 @@ export class AccountPlansController {
     @Query('organizationId') organizationId: string,
     @CurrentUser() actor: RequestUser,
   ) {
-    assertOrganizationPermission(actor, organizationId, 'account-plan.view');
+    assertOrganizationPermission(actor, organizationId, 'account_plan.view');
     return this.accountPlans.findAll({ ...query, organizationId });
   }
 
@@ -57,7 +57,7 @@ export class AccountPlansController {
     @Query('includeInactive') includeInactive: string | undefined,
     @CurrentUser() actor: RequestUser,
   ) {
-    assertOrganizationPermission(actor, organizationId, 'account-plan.view');
+    assertOrganizationPermission(actor, organizationId, 'account_plan.view');
     return this.accountPlans.findTree(
       organizationId,
       companyId,
@@ -72,7 +72,7 @@ export class AccountPlansController {
     assertOrganizationPermission(
       actor,
       account.organizationId,
-      'account-plan.view',
+      'account_plan.view',
     );
     return account;
   }
@@ -84,7 +84,7 @@ export class AccountPlansController {
     assertOrganizationPermission(
       actor,
       dto.organizationId,
-      'account-plan.manage',
+      'account_plan.manage',
     );
     return this.accountPlans.create(dto, actor);
   }
@@ -101,7 +101,7 @@ export class AccountPlansController {
     assertOrganizationPermission(
       actor,
       account.organizationId,
-      'account-plan.manage',
+      'account_plan.manage',
     );
     return this.accountPlans.update(id, dto, actor);
   }
@@ -121,7 +121,7 @@ export class AccountPlansController {
     assertOrganizationPermission(
       actor,
       account.organizationId,
-      'account-plan.manage_tree',
+      'account_plan.move',
     );
     return this.accountPlans.move(id, dto, actor);
   }
@@ -140,13 +140,13 @@ export class AccountPlansController {
     assertOrganizationPermission(
       actor,
       account.organizationId,
-      'financial-structure.duplicate',
+      'financial_structure.duplicate',
     );
     if (dto.targetCompanyId) {
       assertCompanyPermission(
         actor,
         dto.targetCompanyId,
-        'account-plan.manage',
+        'account_plan.manage',
       );
     }
     return this.accountPlans.duplicate(id, dto, actor);
@@ -162,7 +162,7 @@ export class AccountPlansController {
     assertOrganizationPermission(
       actor,
       account.organizationId,
-      'account-plan.delete',
+      'account_plan.delete',
     );
     return this.accountPlans.remove(id, actor);
   }

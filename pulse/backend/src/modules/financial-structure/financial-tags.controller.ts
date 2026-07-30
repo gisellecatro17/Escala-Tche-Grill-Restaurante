@@ -36,7 +36,7 @@ export class FinancialTagsController {
     @Query('group') group: string | undefined,
     @CurrentUser() actor: RequestUser,
   ) {
-    assertOrganizationPermission(actor, organizationId, 'financial-tags.view');
+    assertOrganizationPermission(actor, organizationId, 'financial_tag.view');
     return this.tags.findAll(organizationId, { ...query, group });
   }
 
@@ -47,7 +47,7 @@ export class FinancialTagsController {
     assertOrganizationPermission(
       actor,
       tag.organizationId,
-      'financial-tags.view',
+      'financial_tag.view',
     );
     return tag;
   }
@@ -66,7 +66,7 @@ export class FinancialTagsController {
     assertOrganizationPermission(
       actor,
       tag.organizationId,
-      'financial-tags.view',
+      'financial_tag.view',
     );
     return this.tags.findLinkedEntities(id, entityType);
   }
@@ -81,7 +81,7 @@ export class FinancialTagsController {
     assertOrganizationPermission(
       actor,
       dto.organizationId,
-      'financial-tags.manage',
+      'financial_tag.manage',
     );
     return this.tags.create(dto, actor);
   }
@@ -98,7 +98,7 @@ export class FinancialTagsController {
     assertOrganizationPermission(
       actor,
       tag.organizationId,
-      'financial-tags.manage',
+      'financial_tag.manage',
     );
     return this.tags.update(id, dto, actor);
   }
@@ -113,7 +113,7 @@ export class FinancialTagsController {
     assertOrganizationPermission(
       actor,
       tag.organizationId,
-      'financial-tags.manage',
+      'financial_tag.manage',
     );
     return this.tags.link(dto, actor);
   }
@@ -126,7 +126,7 @@ export class FinancialTagsController {
     assertOrganizationPermission(
       actor,
       tag.organizationId,
-      'financial-tags.manage',
+      'financial_tag.manage',
     );
     return this.tags.unlink(dto, actor);
   }
@@ -139,7 +139,7 @@ export class FinancialTagsController {
     assertOrganizationPermission(
       actor,
       tag.organizationId,
-      'financial-tags.delete',
+      'financial_tag.delete',
     );
     return this.tags.remove(id, actor);
   }

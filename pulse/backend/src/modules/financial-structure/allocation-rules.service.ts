@@ -45,7 +45,7 @@ const TARGET_LABEL: Record<AllocationTargetType, string> = {
 const PERCENTAGE_TOLERANCE = 0.01;
 
 const RULE_INCLUDE = {
-  lines: {
+  items: {
     orderBy: { sortOrder: 'asc' },
     include: {
       costCenter: { select: { id: true, name: true } },
@@ -105,7 +105,7 @@ export class AllocationRulesService {
         isDefault: dto.isDefault ?? false,
         status: dto.status,
         createdBy: actor.id,
-        lines: {
+        items: {
           create: dto.lines.map((line, index) => this.mapLine(line, index)),
         },
       },
@@ -135,10 +135,10 @@ export class AllocationRulesService {
     const rule = await this.prisma.$transaction(async (tx) => {
       if (dto.lines) {
         // Substituição integral: o rateio precisa fechar 100% como um todo.
-        await tx.allocationRuleLine.deleteMany({
+        await tx.allocationRuleItem.deleteMany({
           where: { allocationRuleId: id },
         });
-        await tx.allocationRuleLine.createMany({
+        await tx.allocationRuleItem.createMany({
           data: dto.lines.map((line, index) => ({
             allocationRuleId: id,
             ...this.mapLine(line, index),
@@ -168,8 +168,8 @@ export class AllocationRulesService {
       action: 'UPDATE',
       entity: 'AllocationRule',
       entityId: id,
-      oldValue: { name: current.name, lines: current.lines.length },
-      newValue: { name: rule.name, lines: rule.lines.length },
+      oldValue: { name: current.name, lines: current.items.length },
+      newValue: { name: rule.name, lines: rule.items.length },
     });
 
     return rule;
@@ -179,7 +179,7 @@ export class AllocationRulesService {
     const rule = await this.findOne(id);
 
     const [categories, classificationRules] = await Promise.all([
-      this.prisma.category.count({
+      this.prisma.financialCategory.count({
         where: { defaultAllocationRuleId: id, deletedAt: null },
       }),
       this.prisma.classificationRule.count({

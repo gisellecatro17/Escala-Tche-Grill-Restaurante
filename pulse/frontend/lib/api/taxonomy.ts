@@ -18,7 +18,7 @@ function useInvalidate(key: string) {
 export function useCategories(companyId: string | undefined, search?: string) {
   return useQuery({
     queryKey: ["categories", companyId, search],
-    queryFn: () => api.get<Category[]>(`/categories${buildQueryString({ companyId, search })}`),
+    queryFn: () => api.get<Category[]>(`/financial-categories${buildQueryString({ companyId, search })}`),
     enabled: Boolean(companyId),
   });
 }
@@ -28,7 +28,7 @@ export function useCategoryTree(companyId: string | undefined, includeInactive =
     queryKey: ["categories", "tree", companyId, includeInactive],
     queryFn: () =>
       api.get<TreeNode<CategoryNode>[]>(
-        `/categories/tree${buildQueryString({ companyId, includeInactive })}`,
+        `/financial-categories/tree${buildQueryString({ companyId, includeInactive })}`,
       ),
     enabled: Boolean(companyId),
   });
@@ -38,7 +38,7 @@ export function useCreateCategory() {
   const invalidate = useInvalidate("categories");
   return useMutation({
     mutationFn: (payload: Payload & { companyId: string; name: string }) =>
-      api.post<Category>("/categories", payload),
+      api.post<Category>("/financial-categories", payload),
     onSuccess: invalidate,
   });
 }
@@ -47,7 +47,7 @@ export function useUpdateCategory() {
   const invalidate = useInvalidate("categories");
   return useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: Payload }) =>
-      api.patch<Category>(`/categories/${id}`, payload),
+      api.patch<Category>(`/financial-categories/${id}`, payload),
     onSuccess: invalidate,
   });
 }
@@ -56,7 +56,7 @@ export function useMoveCategory() {
   const invalidate = useInvalidate("categories");
   return useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: Payload }) =>
-      api.post<Category>(`/categories/${id}/move`, payload),
+      api.post<Category>(`/financial-categories/${id}/move`, payload),
     onSuccess: invalidate,
   });
 }
@@ -65,7 +65,7 @@ export function useDuplicateCategory() {
   const invalidate = useInvalidate("categories");
   return useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: Payload }) =>
-      api.post<Category>(`/categories/${id}/duplicate`, payload),
+      api.post<Category>(`/financial-categories/${id}/duplicate`, payload),
     onSuccess: invalidate,
   });
 }
@@ -73,7 +73,7 @@ export function useDuplicateCategory() {
 export function useDeleteCategory() {
   const invalidate = useInvalidate("categories");
   return useMutation({
-    mutationFn: (id: string) => api.delete<{ id: string }>(`/categories/${id}`),
+    mutationFn: (id: string) => api.delete<{ id: string }>(`/financial-categories/${id}`),
     onSuccess: invalidate,
   });
 }
