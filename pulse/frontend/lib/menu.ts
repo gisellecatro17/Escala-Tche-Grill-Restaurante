@@ -44,6 +44,10 @@ import {
   Target,
   Wand2,
   Tag as TagIcon,
+  Inbox,
+  RefreshCw,
+  Copy,
+  PackageOpen,
 } from "lucide-react";
 
 export interface MenuItem {
@@ -109,7 +113,17 @@ export const MENU: MenuModule[] = [
     label: "Financeiro",
     items: [
       { label: "Visão financeira", href: "/financeiro", icon: Gauge, permission: "financial.view" },
-      { label: "Envio de documentos", href: "/financeiro/envio-de-documentos", icon: FileInput, permission: "financial.documents" },
+      { label: "Entrada de documentos", href: "/financeiro/entrada-documentos", icon: FileInput, permission: "document_intake.view", implemented: true },
+      { label: "Enviar documento", href: "/financeiro/entrada-documentos/enviar", icon: Upload, permission: "document_intake.upload", implemented: true },
+      { label: "Caixa de entrada", href: "/financeiro/entrada-documentos/caixa-de-entrada", icon: Inbox, permission: "document_intake.view", implemented: true },
+      { label: "Em processamento", href: "/financeiro/entrada-documentos/processamento", icon: RefreshCw, permission: "document_intake.view", implemented: true },
+      { label: "Pendências de entrada", href: "/financeiro/entrada-documentos/pendencias", icon: ListChecks, permission: "document_intake.view", implemented: true },
+      { label: "Erros de leitura", href: "/financeiro/entrada-documentos/erros", icon: AlertTriangle, permission: "document_intake.view", implemented: true },
+      { label: "Prontos para processar", href: "/financeiro/entrada-documentos/processados", icon: CheckCircle2, permission: "document_intake.view", implemented: true },
+      { label: "Duplicidades", href: "/financeiro/entrada-documentos/duplicidades", icon: Copy, permission: "document_intake.manage_duplicates", implemented: true },
+      { label: "Importações em lote", href: "/financeiro/entrada-documentos/importacoes", icon: PackageOpen, permission: "document_intake.batch_upload", implemented: true },
+      { label: "Histórico de entrada", href: "/financeiro/entrada-documentos/historico", icon: History, permission: "document_intake.view", implemented: true },
+      { label: "Parâmetros de entrada", href: "/financeiro/entrada-documentos/parametros", icon: SlidersHorizontal, permission: "document_intake.manage_settings", implemented: true },
       { label: "A processar", href: "/financeiro/a-processar", icon: FileClock, permission: "financial.process" },
       { label: "A autorizar", href: "/financeiro/a-autorizar", icon: ShieldCheck, permission: "financial.approve" },
       { label: "Contas a pagar", href: "/financeiro/contas-a-pagar", icon: ArrowUpCircle, permission: "payables.view" },
