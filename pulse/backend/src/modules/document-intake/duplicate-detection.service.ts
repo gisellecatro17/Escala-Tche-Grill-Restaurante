@@ -596,12 +596,15 @@ function sameDay(a: Date, b: Date): boolean {
   return a.toISOString().slice(0, 10) === b.toISOString().slice(0, 10);
 }
 
-function isoDate(value: Date | null): string | null {
+function isoDate(value: Date | null | undefined): string | null {
   return value ? value.toISOString().slice(0, 10) : null;
 }
 
-function decimalToString(value: Prisma.Decimal | null): string | null {
-  return value === null ? null : value.toFixed(2);
+/** Aceita `undefined` além de `null`: um campo ausente no objeto não é o mesmo que nulo. */
+function decimalToString(
+  value: Prisma.Decimal | null | undefined,
+): string | null {
+  return value === null || value === undefined ? null : value.toFixed(2);
 }
 
 /**
