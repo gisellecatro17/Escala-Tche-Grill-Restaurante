@@ -495,6 +495,7 @@ enum AccountPlanType {
   EXPENSE
   RESULT
   COMPENSATION
+  TRANSFER
   OTHER
 
   @@map("account_plan_type")
@@ -511,17 +512,31 @@ enum AccountKind {
 /// Tipo da natureza financeira do catálogo (`financial_natures`). Não confundir com o
 /// enum `FinancialNature`, que continua atendendo o vínculo de fornecedor já entregue.
 enum FinancialNatureKind {
+  OPERATING_REVENUE
+  NON_OPERATING_REVENUE
+  FINANCIAL_REVENUE
+  DIRECT_COST
+  INDIRECT_COST
+  OPERATING_EXPENSE
+  ADMINISTRATIVE_EXPENSE
+  COMMERCIAL_EXPENSE
+  FINANCIAL_EXPENSE
   REVENUE
   EXPENSE
   COST
   INVESTMENT
   TAX
   TRANSFER
+  ADVANCE
   REIMBURSEMENT
   LOAN
+  FINANCING
   FINANCIAL_APPLICATION
-  PARTNER_WITHDRAWAL
+  REDEMPTION
   CAPITAL_CONTRIBUTION
+  PROFIT_DISTRIBUTION
+  PARTNER_WITHDRAWAL
+  ADJUSTMENT
   OTHER
 
   @@map("financial_nature_kind")
@@ -529,9 +544,12 @@ enum FinancialNatureKind {
 
 /// Ciclo de vida de um projeto.
 enum ProjectStatus {
+  DRAFT
   PLANNING
+  IN_APPROVAL
   IN_PROGRESS
   PAUSED
+  DELAYED
   COMPLETED
   CANCELLED
   ARCHIVED
@@ -546,6 +564,8 @@ enum AllocationCriterion {
   QUANTITY
   HOURS
   WEIGHT
+  AREA
+  CONSUMPTION
   CUSTOM
 
   @@map("allocation_criterion")
@@ -599,6 +619,11 @@ enum TransactionOrigin {
   CARD
   CASH
   MANUAL
+  PDF_DOCUMENT
+  INVOICE
+  XML
+  SPREADSHEET
+  INTEGRATION
 
   @@map("transaction_origin")
 }
@@ -627,12 +652,16 @@ enum HierarchyEntity {
 
 /// Formato de origem aceito na importação da estrutura financeira.
 enum StructureImportFormat {
+  XLSX
   EXCEL
   CSV
+  JSON
   CONTA_AZUL
   OMIE
   SAP
   TOTVS
+  SANKHYA
+  BLING
   CUSTOM
 
   @@map("structure_import_format")
@@ -647,6 +676,200 @@ enum StructureImportStatus {
   FAILED
 
   @@map("structure_import_status")
+}
+
+/// Status padronizado dos cadastros da estrutura financeira (seção 49). Enum próprio para
+/// não alterar `RecordStatus`, que é compartilhado com empresas, fornecedores e clientes.
+enum StructureStatus {
+  DRAFT
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+
+  @@map("structure_status")
+}
+
+/// Finalidade do plano de contas (seção 10).
+enum AccountPlanKind {
+  MANAGEMENT
+  FINANCIAL
+  ACCOUNTING
+  HYBRID
+
+  @@map("account_plan_kind")
+}
+
+/// Ciclo de vida de uma versão do plano de contas (seção 14).
+enum AccountPlanVersionStatus {
+  DRAFT
+  IN_REVIEW
+  ACTIVE
+  SUPERSEDED
+  ARCHIVED
+
+  @@map("account_plan_version_status")
+}
+
+/// Tipo da categoria financeira (seção 15.2).
+enum FinancialCategoryType {
+  REVENUE
+  EXPENSE
+  COST
+  INVESTMENT
+  TRANSFER
+  NEUTRAL
+
+  @@map("financial_category_type")
+}
+
+/// Agrupamento da natureza financeira (seção 61).
+enum FinancialNatureGroup {
+  REVENUE
+  COST
+  EXPENSE
+  INVESTMENT
+  TAX
+  FINANCIAL
+  EQUITY
+  TRANSFER
+  ADJUSTMENT
+  OTHER
+
+  @@map("financial_nature_group")
+}
+
+/// Efeito de uma natureza sobre caixa, resultado ou patrimônio (seções 32-33).
+enum NatureEffect {
+  INCREASE
+  DECREASE
+  NONE
+
+  @@map("nature_effect")
+}
+
+/// Sentido do fluxo financeiro de uma natureza.
+enum FlowDirection {
+  INFLOW
+  OUTFLOW
+  BOTH
+  NONE
+
+  @@map("flow_direction")
+}
+
+/// Prioridade de um projeto (seção 27.2).
+enum ProjectPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+
+  @@map("project_priority")
+}
+
+/// Tipo de unidade de negócio (seção 31).
+enum BusinessUnitType {
+  OPERATIONAL_UNIT
+  MANAGEMENT_BRANCH
+  BUSINESS_LINE
+  DEPARTMENT
+  CHANNEL
+  PRODUCT
+  SERVICE
+  OTHER
+
+  @@map("business_unit_type")
+}
+
+/// Escopo de aplicação de uma tag financeira (seção 34).
+enum TagScope {
+  ORGANIZATION
+  COMPANY
+  SUPPLIER
+  CUSTOMER
+  ENTRY
+  CONTRACT
+  PROJECT
+  RECONCILIATION
+  DOCUMENT
+
+  @@map("tag_scope")
+}
+
+/// Campo do lançamento avaliado por uma condição de regra (seção 36).
+enum RuleConditionField {
+  DOCUMENT_NUMBER
+  CNPJ
+  CPF
+  SUPPLIER
+  CUSTOMER
+  KEYWORD
+  DESCRIPTION
+  BANK_HISTORY
+  PIX_KEY
+  BANK_ACCOUNT
+  BANK
+  TRANSACTION_TYPE
+  AMOUNT
+  DATE
+  WEEKDAY
+  DAY_OF_MONTH
+  COMPANY_BANK_ACCOUNT
+  CONTRACT
+  PROJECT
+  ORIGIN
+  PREVIOUS_CATEGORY
+  CONFIRMATION_COUNT
+
+  @@map("rule_condition_field")
+}
+
+/// Operador de comparação de uma condição de regra (seção 36).
+enum RuleConditionOperator {
+  EQUALS
+  NOT_EQUALS
+  CONTAINS
+  NOT_CONTAINS
+  STARTS_WITH
+  ENDS_WITH
+  REGEX
+  GREATER_THAN
+  LESS_THAN
+  BETWEEN
+  IN
+  NOT_IN
+  EXISTS
+  NOT_EXISTS
+
+  @@map("rule_condition_operator")
+}
+
+/// Modo de aplicação de uma importação (seção 44).
+enum StructureImportMode {
+  INSERT_ONLY
+  UPDATE_ONLY
+  INSERT_AND_UPDATE
+  SIMULATE
+
+  @@map("structure_import_mode")
+}
+
+/// Resultado da validação de uma linha importada (seção 43).
+enum ImportRowStatus {
+  VALID
+  WARNING
+  ERROR
+
+  @@map("import_row_status")
+}
+
+/// Severidade de uma inconsistência detectada pelo diagnóstico (seção 48).
+enum DiagnosticSeverity {
+  CRITICAL
+  WARNING
+  INFO
+
+  @@map("diagnostic_severity")
 }
 
 /// Cliente/grupo contratante da plataforma Pulse. Pode possuir várias empresas (CNPJs).
@@ -670,12 +893,14 @@ model Organization {
   customers               Customer[]
   customerRegistryQueries CustomerRegistryQuery[]
 
-  accountPlans      FinancialAccountPlan[]
-  financialNatures  FinancialNatureCatalog[]
-  businessUnits     BusinessUnit[]
-  financialTags     FinancialTag[]
-  hierarchyVersions FinancialHierarchyVersion[]
-  structureImports  FinancialStructureImport[]
+  accountPlans        FinancialAccountPlan[]
+  financialNatures    FinancialNatureCatalog[]
+  businessUnits       BusinessUnit[]
+  financialTags       FinancialTag[]
+  hierarchyVersions   FinancialHierarchyVersion[]
+  accountPlanVersions FinancialAccountPlanVersion[]
+  hierarchyHistory    FinancialHierarchyHistory[]
+  structureImports    FinancialStructureImport[]
 
   @@map("organizations")
 }
@@ -792,6 +1017,8 @@ model Company {
   classificationRules ClassificationRule[]
   allocationRules     AllocationRule[]
   hierarchyVersions   FinancialHierarchyVersion[]
+  accountPlanVersions FinancialAccountPlanVersion[]
+  hierarchyHistory    FinancialHierarchyHistory[]
   structureImports    FinancialStructureImport[]
 
   @@unique([organizationId, internalCode])
@@ -1091,12 +1318,40 @@ model FinancialCategory {
   status           RecordStatus @default(ACTIVE)
 
   // ── Identificação e apresentação ──
-  code        String? @db.VarChar(50)
-  description String?
-  color       String? @db.VarChar(20)
-  icon        String? @db.VarChar(50)
-  sortOrder   Int     @default(0) @map("sort_order")
-  notes       String?
+  code           String?               @db.VarChar(50)
+  description    String?
+  normalizedCode String?               @map("normalized_code") @db.VarChar(50)
+  shortName      String?               @map("short_name") @db.VarChar(60)
+  categoryType   FinancialCategoryType @default(EXPENSE) @map("category_type")
+
+  // ── Obrigatoriedades exigidas no lançamento (seção 17) ──
+  requiresSubcategory  Boolean @default(false) @map("requires_subcategory")
+  requiresCostCenter   Boolean @default(false) @map("requires_cost_center")
+  requiresResultCenter Boolean @default(false) @map("requires_result_center")
+  requiresProject      Boolean @default(false) @map("requires_project")
+  requiresBusinessUnit Boolean @default(false) @map("requires_business_unit")
+  requiresSupplier     Boolean @default(false) @map("requires_supplier")
+  requiresCustomer     Boolean @default(false) @map("requires_customer")
+  requiresDocument     Boolean @default(false) @map("requires_document")
+  requiresAttachment   Boolean @default(false) @map("requires_attachment")
+
+  allowsAllocation   Boolean @default(true) @map("allows_allocation")
+  requiresAllocation Boolean @default(false) @map("requires_allocation")
+  allowsBudget       Boolean @default(true) @map("allows_budget")
+
+  showInCashFlow        Boolean @default(true) @map("show_in_cash_flow")
+  showInIncomeStatement Boolean @default(true) @map("show_in_income_statement")
+  showInReports         Boolean @default(true) @map("show_in_reports")
+
+  /// Forma de recebimento padrão, distinta da forma de pagamento.
+  defaultReceiptMethod PaymentMethod? @map("default_receipt_method")
+
+  lastUsedAt      DateTime?       @map("last_used_at")
+  structureStatus StructureStatus @default(ACTIVE) @map("structure_status")
+  color           String?         @db.VarChar(20)
+  icon            String?         @db.VarChar(50)
+  sortOrder       Int             @default(0) @map("sort_order")
+  notes           String?
 
   /// Profundidade na árvore (0 = raiz). Mantida pelo serviço para acelerar consultas.
   level Int     @default(0)
@@ -1155,10 +1410,12 @@ model FinancialCategory {
   defaultRevenueSubForLinks CustomerCompanyLink[] @relation("CustomerLinkDefaultSubcategory")
   defaultForContracts       CustomerContract[]    @relation("ContractRevenueCategory")
 
-  classificationRules ClassificationRule[]
-  allocationRules     AllocationRule[]     @relation("AllocationRuleCategory")
-  allocationLines     AllocationRuleItem[] @relation("AllocationLineCategory")
-  tagLinks            FinancialTagLink[]   @relation("CategoryTagLinks")
+  classificationRules      ClassificationRule[]
+  allocationRules          AllocationRule[]           @relation("AllocationRuleCategory")
+  allocationLines          AllocationRuleItem[]       @relation("AllocationLineCategory")
+  tagLinks                 FinancialTagLink[]         @relation("CategoryTagLinks")
+  ruleActionsAsCategory    ClassificationRuleAction[] @relation("RuleActionCategory")
+  ruleActionsAsSubcategory ClassificationRuleAction[] @relation("RuleActionSubcategory")
 
   @@unique([companyId, code])
   @@index([companyId])
@@ -1187,9 +1444,20 @@ model CostCenter {
   path        String?
 
   /// Somente centros analíticos (folhas) aceitam lançamentos diretos.
-  acceptsEntries    Boolean @default(true) @map("accepts_entries")
-  isSystem          Boolean @default(false) @map("is_system")
-  responsibleUserId String? @map("responsible_user_id") @db.Uuid
+  acceptsEntries    Boolean   @default(true) @map("accepts_entries")
+  isSystem          Boolean   @default(false) @map("is_system")
+  responsibleUserId String?   @map("responsible_user_id") @db.Uuid
+  normalizedCode    String?   @map("normalized_code") @db.VarChar(50)
+  /// Organização dona do centro — redundante com a empresa, mas exigida pela seção 57.
+  organizationId    String?   @map("organization_id") @db.Uuid
+  businessUnitId    String?   @map("business_unit_id") @db.Uuid
+  managerUserId     String?   @map("manager_user_id") @db.Uuid
+  startDate         DateTime? @map("start_date") @db.Date
+  endDate           DateTime? @map("end_date") @db.Date
+  budgetAmount      Decimal?  @map("budget_amount") @db.Decimal(18, 2)
+
+  lastUsedAt      DateTime?       @map("last_used_at")
+  structureStatus StructureStatus @default(ACTIVE) @map("structure_status")
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
@@ -1197,19 +1465,21 @@ model CostCenter {
   createdBy String?   @map("created_by") @db.Uuid
   updatedBy String?   @map("updated_by") @db.Uuid
 
-  company          Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  parentCostCenter CostCenter?  @relation("CostCenterHierarchy", fields: [parentCostCenterId], references: [id])
-  children         CostCenter[] @relation("CostCenterHierarchy")
+  company          Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  parentCostCenter CostCenter?   @relation("CostCenterHierarchy", fields: [parentCostCenterId], references: [id])
+  businessUnit     BusinessUnit? @relation("CostCenterBusinessUnit", fields: [businessUnitId], references: [id])
+  children         CostCenter[]  @relation("CostCenterHierarchy")
 
   links         SupplierCompanyLink[]
   customerLinks CustomerCompanyLink[]
   contracts     CustomerContract[]
 
-  defaultForCategories FinancialCategory[]  @relation("CategoryDefaultCostCenter")
-  projects             Project[]            @relation("ProjectCostCenter")
+  defaultForCategories FinancialCategory[]        @relation("CategoryDefaultCostCenter")
+  projects             Project[]                  @relation("ProjectCostCenter")
   classificationRules  ClassificationRule[]
-  allocationLines      AllocationRuleItem[] @relation("AllocationLineCostCenter")
-  tagLinks             FinancialTagLink[]   @relation("CostCenterTagLinks")
+  allocationLines      AllocationRuleItem[]       @relation("AllocationLineCostCenter")
+  tagLinks             FinancialTagLink[]         @relation("CostCenterTagLinks")
+  ruleActions          ClassificationRuleAction[] @relation("RuleActionCostCenter")
 
   @@unique([companyId, code])
   @@index([companyId])
@@ -1288,16 +1558,17 @@ model Supplier {
 
   organization Organization @relation(fields: [organizationId], references: [id])
 
-  addresses        SupplierAddress[]
-  contacts         SupplierContact[]
-  cnaes            SupplierCnae[]
-  alternativeNames SupplierAlternativeName[]
-  bankAccounts     SupplierBankAccount[]
-  pixKeys          SupplierPixKey[]
-  bankIdentifiers  SupplierBankIdentifier[]
-  companyLinks     SupplierCompanyLink[]
-  registryQueries  SupplierRegistryQuery[]
-  statusHistory    SupplierStatusHistory[]
+  addresses          SupplierAddress[]
+  contacts           SupplierContact[]
+  cnaes              SupplierCnae[]
+  alternativeNames   SupplierAlternativeName[]
+  bankAccounts       SupplierBankAccount[]
+  pixKeys            SupplierPixKey[]
+  bankIdentifiers    SupplierBankIdentifier[]
+  companyLinks       SupplierCompanyLink[]
+  registryQueries    SupplierRegistryQuery[]
+  statusHistory      SupplierStatusHistory[]
+  primaryForProjects Project[]                 @relation("ProjectPrimarySupplier")
 
   @@index([organizationId])
   @@index([systemStatus])
@@ -1852,14 +2123,15 @@ model Customer {
 
   organization Organization @relation(fields: [organizationId], references: [id])
 
-  addresses       CustomerAddress[]
-  contacts        CustomerContact[]
-  cnaes           CustomerCnae[]
-  bankIdentifiers CustomerBankIdentifier[]
-  companyLinks    CustomerCompanyLink[]
-  registryQueries CustomerRegistryQuery[]
-  statusHistory   CustomerStatusHistory[]
-  projects        Project[]                @relation("ProjectCustomer")
+  addresses               CustomerAddress[]
+  contacts                CustomerContact[]
+  cnaes                   CustomerCnae[]
+  bankIdentifiers         CustomerBankIdentifier[]
+  companyLinks            CustomerCompanyLink[]
+  registryQueries         CustomerRegistryQuery[]
+  statusHistory           CustomerStatusHistory[]
+  projects                Project[]                @relation("ProjectCustomer")
+  primaryForResultCenters ResultCenter[]           @relation("ResultCenterPrimaryCustomer")
 
   @@index([organizationId])
   @@index([systemStatus])
@@ -2357,8 +2629,33 @@ model FinancialAccountPlan {
   name        String
   description String?
 
-  accountType AccountPlanType @default(EXPENSE) @map("account_type")
-  accountKind AccountKind     @default(ANALYTICAL) @map("account_kind")
+  accountType    AccountPlanType @default(EXPENSE) @map("account_type")
+  /// Código sem separadores/zeros à esquerda — garante unicidade real e busca estável.
+  normalizedCode String?         @map("normalized_code") @db.VarChar(50)
+  shortName      String?         @map("short_name") @db.VarChar(60)
+
+  /// Finalidade do plano: gerencial, financeiro, contábil ou híbrido (seção 10).
+  planType AccountPlanKind @default(MANAGEMENT) @map("plan_type")
+
+  /// Versão do plano à qual a conta pertence (seção 14).
+  versionId String? @map("version_id") @db.Uuid
+
+  /// Grupo livre de apresentação/agrupamento em relatórios.
+  accountGroup String? @map("account_group") @db.VarChar(80)
+
+  allowsAllocations Boolean @default(true) @map("allows_allocations")
+  allowsBudget      Boolean @default(true) @map("allows_budget")
+
+  showInCashFlow          Boolean @default(true) @map("show_in_cash_flow")
+  showInIncomeStatement   Boolean @default(true) @map("show_in_income_statement")
+  showInManagementBalance Boolean @default(false) @map("show_in_management_balance")
+  showInReports           Boolean @default(true) @map("show_in_reports")
+
+  /// Momento do último uso em lançamentos — alimentado pelo módulo financeiro futuro.
+  lastUsedAt DateTime? @map("last_used_at")
+
+  structureStatus StructureStatus @default(ACTIVE) @map("structure_status")
+  accountKind     AccountKind     @default(ANALYTICAL) @map("account_kind")
 
   financialNatureId String? @map("financial_nature_id") @db.Uuid
 
@@ -2381,16 +2678,18 @@ model FinancialAccountPlan {
   createdBy String?   @map("created_by") @db.Uuid
   updatedBy String?   @map("updated_by") @db.Uuid
 
-  organization    Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  company         Company?                @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  parentAccount   FinancialAccountPlan?   @relation("AccountPlanHierarchy", fields: [parentAccountId], references: [id])
-  children        FinancialAccountPlan[]  @relation("AccountPlanHierarchy")
-  financialNature FinancialNatureCatalog? @relation("AccountPlanFinancialNature", fields: [financialNatureId], references: [id])
+  organization    Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company         Company?                     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  parentAccount   FinancialAccountPlan?        @relation("AccountPlanHierarchy", fields: [parentAccountId], references: [id])
+  version         FinancialAccountPlanVersion? @relation(fields: [versionId], references: [id])
+  children        FinancialAccountPlan[]       @relation("AccountPlanHierarchy")
+  financialNature FinancialNatureCatalog?      @relation("AccountPlanFinancialNature", fields: [financialNatureId], references: [id])
 
-  categories          FinancialCategory[]  @relation("CategoryAccountPlan")
+  categories          FinancialCategory[]        @relation("CategoryAccountPlan")
   classificationRules ClassificationRule[]
-  allocationLines     AllocationRuleItem[] @relation("AllocationLineAccountPlan")
-  tagLinks            FinancialTagLink[]   @relation("AccountPlanTagLinks")
+  allocationLines     AllocationRuleItem[]       @relation("AllocationLineAccountPlan")
+  tagLinks            FinancialTagLink[]         @relation("AccountPlanTagLinks")
+  ruleActions         ClassificationRuleAction[] @relation("RuleActionAccountPlan")
 
   @@unique([organizationId, companyId, code])
   @@index([organizationId])
@@ -2420,6 +2719,21 @@ model ResultCenter {
   isSystem          Boolean @default(false) @map("is_system")
   responsibleUserId String? @map("responsible_user_id") @db.Uuid
 
+  normalizedCode         String?   @map("normalized_code") @db.VarChar(50)
+  organizationId         String?   @map("organization_id") @db.Uuid
+  businessUnitId         String?   @map("business_unit_id") @db.Uuid
+  primaryCustomerId      String?   @map("primary_customer_id") @db.Uuid
+  /// Produto/serviço principal em texto livre — não há catálogo de produtos nesta etapa.
+  primaryProductService  String?   @map("primary_product_service")
+  revenueTarget          Decimal?  @map("revenue_target") @db.Decimal(18, 2)
+  marginTargetPercentage Decimal?  @map("margin_target_percentage") @db.Decimal(7, 4)
+  budgetAmount           Decimal?  @map("budget_amount") @db.Decimal(18, 2)
+  startDate              DateTime? @map("start_date") @db.Date
+  endDate                DateTime? @map("end_date") @db.Date
+
+  lastUsedAt      DateTime?       @map("last_used_at")
+  structureStatus StructureStatus @default(ACTIVE) @map("structure_status")
+
   status RecordStatus @default(ACTIVE)
 
   createdAt DateTime  @default(now()) @map("created_at")
@@ -2430,13 +2744,16 @@ model ResultCenter {
 
   company            Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
   parentResultCenter ResultCenter?  @relation("ResultCenterHierarchy", fields: [parentResultCenterId], references: [id])
+  businessUnit       BusinessUnit?  @relation("ResultCenterBusinessUnit", fields: [businessUnitId], references: [id])
+  primaryCustomer    Customer?      @relation("ResultCenterPrimaryCustomer", fields: [primaryCustomerId], references: [id])
   children           ResultCenter[] @relation("ResultCenterHierarchy")
 
-  defaultForCategories FinancialCategory[]  @relation("CategoryDefaultResultCenter")
-  projects             Project[]            @relation("ProjectResultCenter")
+  defaultForCategories FinancialCategory[]        @relation("CategoryDefaultResultCenter")
+  projects             Project[]                  @relation("ProjectResultCenter")
   classificationRules  ClassificationRule[]
-  allocationLines      AllocationRuleItem[] @relation("AllocationLineResultCenter")
-  tagLinks             FinancialTagLink[]   @relation("ResultCenterTagLinks")
+  allocationLines      AllocationRuleItem[]       @relation("AllocationLineResultCenter")
+  tagLinks             FinancialTagLink[]         @relation("ResultCenterTagLinks")
+  ruleActions          ClassificationRuleAction[] @relation("RuleActionResultCenter")
 
   @@unique([companyId, code])
   @@index([companyId])
@@ -2465,7 +2782,31 @@ model Project {
   startDate DateTime? @map("start_date") @db.Date
   endDate   DateTime? @map("end_date") @db.Date
 
-  status ProjectStatus @default(PLANNING)
+  status   ProjectStatus   @default(PLANNING)
+  priority ProjectPriority @default(MEDIUM)
+
+  normalizedCode    String?   @map("normalized_code") @db.VarChar(50)
+  organizationId    String?   @map("organization_id") @db.Uuid
+  parentProjectId   String?   @map("parent_project_id") @db.Uuid
+  primarySupplierId String?   @map("primary_supplier_id") @db.Uuid
+  actualEndDate     DateTime? @map("actual_end_date") @db.Date
+
+  /// Orçamentos separados por espécie (seção 27.2).
+  revenueBudget Decimal? @map("revenue_budget") @db.Decimal(18, 2)
+  costBudget    Decimal? @map("cost_budget") @db.Decimal(18, 2)
+  expenseBudget Decimal? @map("expense_budget") @db.Decimal(18, 2)
+
+  plannedMarginPercentage Decimal? @map("planned_margin_percentage") @db.Decimal(7, 4)
+  /// Percentual de conclusão informado manualmente nesta etapa.
+  completionPercentage    Decimal? @map("completion_percentage") @db.Decimal(5, 2)
+
+  /// Preenchidos pelo módulo financeiro futuro — sempre nulos nesta etapa.
+  realizedRevenue Decimal? @map("realized_revenue") @db.Decimal(18, 2)
+  realizedCost    Decimal? @map("realized_cost") @db.Decimal(18, 2)
+  realizedExpense Decimal? @map("realized_expense") @db.Decimal(18, 2)
+
+  lastUsedAt      DateTime?       @map("last_used_at")
+  structureStatus StructureStatus @default(ACTIVE) @map("structure_status")
 
   budgetAmount     Decimal? @map("budget_amount") @db.Decimal(18, 2)
   /// Preenchido pelo módulo financeiro futuro — sempre nulo nesta etapa.
@@ -2484,16 +2825,20 @@ model Project {
   createdBy String?   @map("created_by") @db.Uuid
   updatedBy String?   @map("updated_by") @db.Uuid
 
-  company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  customer     Customer?     @relation("ProjectCustomer", fields: [customerId], references: [id])
-  costCenter   CostCenter?   @relation("ProjectCostCenter", fields: [costCenterId], references: [id])
-  resultCenter ResultCenter? @relation("ProjectResultCenter", fields: [resultCenterId], references: [id])
-  businessUnit BusinessUnit? @relation("ProjectBusinessUnit", fields: [businessUnitId], references: [id])
+  company         Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  parentProject   Project?      @relation("ProjectHierarchy", fields: [parentProjectId], references: [id])
+  childProjects   Project[]     @relation("ProjectHierarchy")
+  primarySupplier Supplier?     @relation("ProjectPrimarySupplier", fields: [primarySupplierId], references: [id])
+  customer        Customer?     @relation("ProjectCustomer", fields: [customerId], references: [id])
+  costCenter      CostCenter?   @relation("ProjectCostCenter", fields: [costCenterId], references: [id])
+  resultCenter    ResultCenter? @relation("ProjectResultCenter", fields: [resultCenterId], references: [id])
+  businessUnit    BusinessUnit? @relation("ProjectBusinessUnit", fields: [businessUnitId], references: [id])
 
-  defaultForCategories FinancialCategory[]  @relation("CategoryDefaultProject")
+  ruleActions          ClassificationRuleAction[] @relation("RuleActionProject")
+  defaultForCategories FinancialCategory[]        @relation("CategoryDefaultProject")
   classificationRules  ClassificationRule[]
-  allocationLines      AllocationRuleItem[] @relation("AllocationLineProject")
-  tagLinks             FinancialTagLink[]   @relation("ProjectTagLinks")
+  allocationLines      AllocationRuleItem[]       @relation("AllocationLineProject")
+  tagLinks             FinancialTagLink[]         @relation("ProjectTagLinks")
 
   @@unique([companyId, code])
   @@index([companyId])
@@ -2523,6 +2868,18 @@ model BusinessUnit {
   responsibleUserId String? @map("responsible_user_id") @db.Uuid
   isSystem          Boolean @default(false) @map("is_system")
 
+  normalizedCode String?          @map("normalized_code") @db.VarChar(50)
+  unitType       BusinessUnitType @default(OPERATIONAL_UNIT) @map("unit_type")
+  /// Endereço da unidade — referência lógica para `company_addresses`.
+  addressId      String?          @map("address_id") @db.Uuid
+  startDate      DateTime?        @map("start_date") @db.Date
+  endDate        DateTime?        @map("end_date") @db.Date
+  revenueTarget  Decimal?         @map("revenue_target") @db.Decimal(18, 2)
+  budgetAmount   Decimal?         @map("budget_amount") @db.Decimal(18, 2)
+
+  lastUsedAt      DateTime?       @map("last_used_at")
+  structureStatus StructureStatus @default(ACTIVE) @map("structure_status")
+
   status RecordStatus @default(ACTIVE)
 
   createdAt DateTime  @default(now()) @map("created_at")
@@ -2536,11 +2893,14 @@ model BusinessUnit {
   parentBusinessUnit BusinessUnit?  @relation("BusinessUnitHierarchy", fields: [parentBusinessUnitId], references: [id])
   children           BusinessUnit[] @relation("BusinessUnitHierarchy")
 
-  defaultForCategories FinancialCategory[]  @relation("CategoryDefaultBusinessUnit")
-  projects             Project[]            @relation("ProjectBusinessUnit")
+  costCenters          CostCenter[]               @relation("CostCenterBusinessUnit")
+  resultCenters        ResultCenter[]             @relation("ResultCenterBusinessUnit")
+  ruleActions          ClassificationRuleAction[] @relation("RuleActionBusinessUnit")
+  defaultForCategories FinancialCategory[]        @relation("CategoryDefaultBusinessUnit")
+  projects             Project[]                  @relation("ProjectBusinessUnit")
   classificationRules  ClassificationRule[]
-  allocationLines      AllocationRuleItem[] @relation("AllocationLineBusinessUnit")
-  tagLinks             FinancialTagLink[]   @relation("BusinessUnitTagLinks")
+  allocationLines      AllocationRuleItem[]       @relation("AllocationLineBusinessUnit")
+  tagLinks             FinancialTagLink[]         @relation("BusinessUnitTagLinks")
 
   @@unique([organizationId, companyId, code])
   @@index([organizationId])
@@ -2560,6 +2920,20 @@ model FinancialNatureCatalog {
   name        String
   description String?
   kind        FinancialNatureKind @default(EXPENSE)
+
+  natureGroup FinancialNatureGroup @default(OTHER) @map("nature_group")
+
+  /// Efeito detalhado sobre caixa, resultado e patrimônio (seções 32-33).
+  cashEffect    NatureEffect  @default(NONE) @map("cash_effect")
+  resultEffect  NatureEffect  @default(NONE) @map("result_effect")
+  equityEffect  NatureEffect  @default(NONE) @map("equity_effect")
+  flowDirection FlowDirection @default(NONE) @map("flow_direction")
+
+  showInDashboard       Boolean @default(true) @map("show_in_dashboard")
+  showInCashFlow        Boolean @default(true) @map("show_in_cash_flow")
+  showInIncomeStatement Boolean @default(true) @map("show_in_income_statement")
+
+  structureStatus StructureStatus @default(ACTIVE) @map("structure_status")
 
   /// Se o valor impacta o resultado (DRE) — transferências/aportes normalmente não impactam.
   affectsResult   Boolean @default(true) @map("affects_result")
@@ -2582,8 +2956,9 @@ model FinancialNatureCatalog {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   company      Company?     @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
-  categories          FinancialCategory[]    @relation("CategoryFinancialNature")
-  accountPlans        FinancialAccountPlan[] @relation("AccountPlanFinancialNature")
+  ruleActions         ClassificationRuleAction[] @relation("RuleActionNature")
+  categories          FinancialCategory[]        @relation("CategoryFinancialNature")
+  accountPlans        FinancialAccountPlan[]     @relation("AccountPlanFinancialNature")
   classificationRules ClassificationRule[]
 
   @@unique([organizationId, companyId, code])
@@ -2598,14 +2973,18 @@ model FinancialTag {
   organizationId String  @map("organization_id") @db.Uuid
   companyId      String? @map("company_id") @db.Uuid
 
-  name        String
+  name            String
   /// Nome normalizado (minúsculo, sem espaços duplicados) — garante unicidade real.
-  slug        String
-  description String?
-  color       String? @db.VarChar(20)
-  icon        String? @db.VarChar(50)
+  slug            String
+  /// Alias do slug com o nome exigido pela seção 62.
+  normalizedName  String?         @map("normalized_name")
+  scope           TagScope        @default(ORGANIZATION)
+  structureStatus StructureStatus @default(ACTIVE) @map("structure_status")
+  description     String?
+  color           String?         @db.VarChar(20)
+  icon            String?         @db.VarChar(50)
   /// Agrupador opcional das tags (ex.: "Contratos", "Prioridade").
-  group       String? @db.VarChar(80)
+  group           String?         @db.VarChar(80)
 
   /// Contador denormalizado de usos, mantido pelo serviço ao vincular/desvincular.
   usageCount Int @default(0) @map("usage_count")
@@ -2621,7 +3000,8 @@ model FinancialTag {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   company      Company?     @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
-  links FinancialTagLink[]
+  links       FinancialTagLink[]
+  ruleActions ClassificationRuleAction[] @relation("RuleActionTag")
 
   @@unique([organizationId, companyId, slug])
   @@index([organizationId])
@@ -2632,8 +3012,10 @@ model FinancialTag {
 /// Vínculo polimórfico entre uma tag e qualquer cadastro da estrutura financeira.
 /// Exatamente uma das colunas de destino deve estar preenchida (validado no serviço).
 model FinancialTagLink {
-  id    String @id @default(uuid()) @db.Uuid
-  tagId String @map("tag_id") @db.Uuid
+  id             String  @id @default(uuid()) @db.Uuid
+  tagId          String  @map("tag_id") @db.Uuid
+  organizationId String? @map("organization_id") @db.Uuid
+  companyId      String? @map("company_id") @db.Uuid
 
   /// Rótulo da entidade alvo, para consultas genéricas e para o futuro vínculo com lançamentos.
   entityType String @map("entity_type") @db.VarChar(50)
@@ -2723,15 +3105,24 @@ model ClassificationRule {
   createdBy String?   @map("created_by") @db.Uuid
   updatedBy String?   @map("updated_by") @db.Uuid
 
-  company         Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  category        FinancialCategory?      @relation(fields: [categoryId], references: [id])
-  accountPlan     FinancialAccountPlan?   @relation(fields: [accountPlanId], references: [id])
-  costCenter      CostCenter?             @relation(fields: [costCenterId], references: [id])
-  resultCenter    ResultCenter?           @relation(fields: [resultCenterId], references: [id])
-  project         Project?                @relation(fields: [projectId], references: [id])
-  businessUnit    BusinessUnit?           @relation(fields: [businessUnitId], references: [id])
-  financialNature FinancialNatureCatalog? @relation(fields: [financialNatureId], references: [id])
-  allocationRule  AllocationRule?         @relation("ClassificationRuleAllocation", fields: [allocationRuleId], references: [id])
+  company              Company                       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  category             FinancialCategory?            @relation(fields: [categoryId], references: [id])
+  accountPlan          FinancialAccountPlan?         @relation(fields: [accountPlanId], references: [id])
+  costCenter           CostCenter?                   @relation(fields: [costCenterId], references: [id])
+  resultCenter         ResultCenter?                 @relation(fields: [resultCenterId], references: [id])
+  project              Project?                      @relation(fields: [projectId], references: [id])
+  businessUnit         BusinessUnit?                 @relation(fields: [businessUnitId], references: [id])
+  financialNature      FinancialNatureCatalog?       @relation(fields: [financialNatureId], references: [id])
+  allocationRule       AllocationRule?               @relation("ClassificationRuleAllocation", fields: [allocationRuleId], references: [id])
+  conditions           ClassificationRuleCondition[]
+  actions              ClassificationRuleAction[]
+  sourceType           TransactionOrigin             @default(ANY) @map("source_type")
+  automatic            Boolean                       @default(false)
+  requiresConfirmation Boolean                       @default(true) @map("requires_confirmation")
+  startDate            DateTime?                     @map("start_date") @db.Date
+  endDate              DateTime?                     @map("end_date") @db.Date
+  usageCount           Int                           @default(0) @map("usage_count")
+  structureStatus      StructureStatus               @default(ACTIVE) @map("structure_status")
 
   @@index([companyId])
   @@index([companyId, priority])
@@ -2767,8 +3158,16 @@ model AllocationRule {
   category FinancialCategory? @relation("AllocationRuleCategory", fields: [categoryId], references: [id])
 
   items                AllocationRuleItem[]
-  defaultForCategories FinancialCategory[]  @relation("CategoryDefaultAllocationRule")
-  classificationRules  ClassificationRule[] @relation("ClassificationRuleAllocation")
+  defaultForCategories FinancialCategory[]        @relation("CategoryDefaultAllocationRule")
+  classificationRules  ClassificationRule[]       @relation("ClassificationRuleAllocation")
+  ruleActions          ClassificationRuleAction[] @relation("RuleActionAllocation")
+  allocationType       AllocationCriterion        @default(PERCENTAGE) @map("allocation_type")
+  defaultSupplierId    String?                    @map("default_supplier_id") @db.Uuid
+  defaultCustomerId    String?                    @map("default_customer_id") @db.Uuid
+  priority             Int                        @default(100)
+  startDate            DateTime?                  @map("start_date") @db.Date
+  endDate              DateTime?                  @map("end_date") @db.Date
+  structureStatus      StructureStatus            @default(ACTIVE) @map("structure_status")
 
   @@index([companyId])
   @@index([categoryId])
@@ -2810,6 +3209,7 @@ model AllocationRuleItem {
   businessUnit   BusinessUnit?         @relation("AllocationLineBusinessUnit", fields: [businessUnitId], references: [id])
   category       FinancialCategory?    @relation("AllocationLineCategory", fields: [categoryId], references: [id])
   accountPlan    FinancialAccountPlan? @relation("AllocationLineAccountPlan", fields: [accountPlanId], references: [id])
+  quantityFactor Decimal?              @map("quantity_factor") @db.Decimal(18, 4)
 
   @@index([allocationRuleId])
   @@map("allocation_rule_items")
@@ -2872,10 +3272,200 @@ model FinancialStructureImport {
   appliedAt DateTime? @map("applied_at")
   createdBy String?   @map("created_by") @db.Uuid
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  company      Company?     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  organization         Organization                  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company              Company?                      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  rows                 FinancialStructureImportRow[]
+  storagePath          String?                       @map("storage_path")
+  importMode           StructureImportMode           @default(INSERT_ONLY) @map("import_mode")
+  mappingConfiguration Json?                         @map("mapping_configuration")
+  warningRows          Int                           @default(0) @map("warning_rows")
+  startedBy            String?                       @map("started_by") @db.Uuid
+  startedAt            DateTime?                     @map("started_at")
+  completedAt          DateTime?                     @map("completed_at")
 
   @@index([organizationId])
   @@index([companyId, entity])
   @@map("financial_structure_imports")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Estrutura Financeira — tabelas da especificação completa
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Versão do plano de contas (seções 14 e 55). Apenas uma versão pode estar `ACTIVE`
+/// por tipo de plano e empresa — regra garantida no serviço, que desativa a anterior.
+model FinancialAccountPlanVersion {
+  id             String  @id @default(uuid()) @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  companyId      String? @map("company_id") @db.Uuid
+
+  name          String
+  description   String?
+  versionNumber Int             @map("version_number")
+  planType      AccountPlanKind @default(MANAGEMENT) @map("plan_type")
+
+  startDate DateTime? @map("start_date") @db.Date
+  endDate   DateTime? @map("end_date") @db.Date
+
+  status AccountPlanVersionStatus @default(DRAFT)
+  reason String?
+
+  previousVersionId String?   @map("previous_version_id") @db.Uuid
+  activatedBy       String?   @map("activated_by") @db.Uuid
+  activatedAt       DateTime? @map("activated_at")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+
+  organization    Organization                  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company         Company?                      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  previousVersion FinancialAccountPlanVersion?  @relation("VersionChain", fields: [previousVersionId], references: [id])
+  nextVersions    FinancialAccountPlanVersion[] @relation("VersionChain")
+
+  accounts FinancialAccountPlan[]
+
+  @@unique([organizationId, companyId, planType, versionNumber])
+  @@index([organizationId])
+  @@index([companyId, status])
+  @@map("financial_account_plan_versions")
+}
+
+/// Condição de uma regra de classificação (seção 63). Separar condições da regra permite
+/// combinar vários critérios (descrição **e** faixa de valor **e** origem) sem inflar a
+/// tabela principal, como exigido pela seção 36.
+model ClassificationRuleCondition {
+  id                   String @id @default(uuid()) @db.Uuid
+  classificationRuleId String @map("classification_rule_id") @db.Uuid
+
+  field    RuleConditionField
+  operator RuleConditionOperator
+
+  value           String
+  /// Valor normalizado (maiúsculas, sem acentos/pontuação) para comparação estável.
+  normalizedValue String? @map("normalized_value")
+  /// Segundo valor, usado por `BETWEEN` (limite superior) e por listas.
+  secondaryValue  String? @map("secondary_value")
+
+  sortOrder Int @default(0) @map("sort_order")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  classificationRule ClassificationRule @relation(fields: [classificationRuleId], references: [id], onDelete: Cascade)
+
+  @@index([classificationRuleId])
+  @@map("classification_rule_conditions")
+}
+
+/// Ação aplicada quando as condições de uma regra casam (seções 37 e 63).
+model ClassificationRuleAction {
+  id                   String @id @default(uuid()) @db.Uuid
+  classificationRuleId String @map("classification_rule_id") @db.Uuid
+
+  supplierId        String? @map("supplier_id") @db.Uuid
+  customerId        String? @map("customer_id") @db.Uuid
+  categoryId        String? @map("category_id") @db.Uuid
+  subcategoryId     String? @map("subcategory_id") @db.Uuid
+  accountPlanId     String? @map("account_plan_id") @db.Uuid
+  costCenterId      String? @map("cost_center_id") @db.Uuid
+  resultCenterId    String? @map("result_center_id") @db.Uuid
+  projectId         String? @map("project_id") @db.Uuid
+  businessUnitId    String? @map("business_unit_id") @db.Uuid
+  financialNatureId String? @map("financial_nature_id") @db.Uuid
+  allocationRuleId  String? @map("allocation_rule_id") @db.Uuid
+  /// Forma de pagamento/recebimento e conta bancária — FKs lógicas até o módulo existir.
+  paymentMethodId   String? @map("payment_method_id") @db.Uuid
+  bankAccountId     String? @map("bank_account_id") @db.Uuid
+  /// Tag aplicada automaticamente ao lançamento.
+  tagId             String? @map("tag_id") @db.Uuid
+
+  defaultDescription String? @map("default_description")
+  defaultHistory     String? @map("default_history")
+  responsibleUserId  String? @map("responsible_user_id") @db.Uuid
+
+  requiresApproval      Boolean @default(false) @map("requires_approval")
+  suggestReconciliation Boolean @default(false) @map("suggest_reconciliation")
+  /// Criação de lançamento e baixa automática ficam desligadas até o módulo financeiro existir.
+  createFinancialEntry  Boolean @default(false) @map("create_financial_entry")
+  autoMatch             Boolean @default(false) @map("auto_match")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  classificationRule ClassificationRule      @relation(fields: [classificationRuleId], references: [id], onDelete: Cascade)
+  category           FinancialCategory?      @relation("RuleActionCategory", fields: [categoryId], references: [id])
+  subcategory        FinancialCategory?      @relation("RuleActionSubcategory", fields: [subcategoryId], references: [id])
+  accountPlan        FinancialAccountPlan?   @relation("RuleActionAccountPlan", fields: [accountPlanId], references: [id])
+  costCenter         CostCenter?             @relation("RuleActionCostCenter", fields: [costCenterId], references: [id])
+  resultCenter       ResultCenter?           @relation("RuleActionResultCenter", fields: [resultCenterId], references: [id])
+  project            Project?                @relation("RuleActionProject", fields: [projectId], references: [id])
+  businessUnit       BusinessUnit?           @relation("RuleActionBusinessUnit", fields: [businessUnitId], references: [id])
+  financialNature    FinancialNatureCatalog? @relation("RuleActionNature", fields: [financialNatureId], references: [id])
+  allocationRule     AllocationRule?         @relation("RuleActionAllocation", fields: [allocationRuleId], references: [id])
+  tag                FinancialTag?           @relation("RuleActionTag", fields: [tagId], references: [id])
+
+  @@index([classificationRuleId])
+  @@map("classification_rule_actions")
+}
+
+/// Linha individual de um arquivo importado (seção 65). Guardar cada linha permite
+/// mostrar erros por linha, baixar o relatório de inconsistências e rastrear qual
+/// registro foi criado a partir de qual linha.
+model FinancialStructureImportRow {
+  id       String @id @default(uuid()) @db.Uuid
+  importId String @map("import_id") @db.Uuid
+
+  rowNumber Int @map("row_number")
+
+  /// Linha como veio do arquivo e a versão normalizada usada na aplicação.
+  originalData   Json  @map("original_data")
+  normalizedData Json? @map("normalized_data")
+
+  validationStatus ImportRowStatus @default(VALID) @map("validation_status")
+  validationErrors Json?           @map("validation_errors")
+
+  createdEntityType String? @map("created_entity_type") @db.VarChar(50)
+  createdEntityId   String? @map("created_entity_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  import FinancialStructureImport @relation(fields: [importId], references: [id], onDelete: Cascade)
+
+  @@unique([importId, rowNumber])
+  @@index([importId, validationStatus])
+  @@map("financial_structure_import_rows")
+}
+
+/// Histórico de alterações de hierarquia e código (seção 66). Complementa
+/// `financial_hierarchy_versions`: enquanto a versão guarda um snapshot completo, aqui
+/// fica o antes/depois de cada movimentação individual.
+model FinancialHierarchyHistory {
+  id             String  @id @default(uuid()) @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  companyId      String? @map("company_id") @db.Uuid
+
+  entityType HierarchyEntity @map("entity_type")
+  entityId   String          @map("entity_id") @db.Uuid
+
+  previousParentId String? @map("previous_parent_id") @db.Uuid
+  newParentId      String? @map("new_parent_id") @db.Uuid
+  previousCode     String? @map("previous_code") @db.VarChar(50)
+  newCode          String? @map("new_code") @db.VarChar(50)
+  previousLevel    Int?    @map("previous_level")
+  newLevel         Int?    @map("new_level")
+
+  reason    String?
+  changedBy String?  @map("changed_by") @db.Uuid
+  changedAt DateTime @default(now()) @map("changed_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company      Company?     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([entityType, entityId])
+  @@map("financial_hierarchy_history")
 }
