@@ -759,6 +759,88 @@ contábil estão modelados e aparecem na tela marcados como **não configurado**
 o que não existe é mais honesto que omitir.
 
 
+## Processamento de Documentos
+
+O que a entrada encaminhou vira aqui **obrigação financeira**: um lançamento a pagar ou a
+receber, com parcelas, rateio, retenções e classificação aplicada.
+
+É onde o motor de classificação automática da Estrutura Financeira — que existia desde o
+Prompt 5 e só era simulável — passa a ser efetivamente usado.
+
+```
+Documento encaminhado (READY_FOR_PROCESSING, sem lançamento)
+        │
+        ▼
+Prévia ── mostra classificação, parcelas, rateio e retenções sem gravar nada
+        │
+        ▼
+Processar ─┬─ classificação: documento > regra automática > padrão do vínculo > da categoria
+           ├─ parcelas: sobra de arredondamento na última; à vista também tem parcela
+           ├─ rateio: materializado no lançamento
+           └─ retenções: calculadas do cadastro, sempre como sugestão
+        │
+        ▼
+DRAFT ──▶ PENDING_APPROVAL ──▶ OPEN ──▶ (fim deste módulo)
+   └────────────────────────────────▶ CANCELLED (devolve o documento à fila)
+```
+
+Rotas do front-end: `/financeiro/a-processar` (fila), `.../a-processar/[id]` (processar),
+`.../a-processar/parametros`, `/financeiro/contas-a-pagar`,
+`/financeiro/contas-a-receber` e `/financeiro/lancamentos/[id]`.
+
+### O lançamento para em `OPEN`
+
+`OPEN` significa "é a obrigação", não "foi pago". Não existe situação `PAID` nem na parcela
+nem no título: pagar, agendar, autorizar no banco, remeter e dar baixa são de módulos que
+ainda não existem, e inventar uma situação para eles daria a impressão de que existem.
+
+`PENDING_APPROVAL` é conferência do **lançamento** — "os dados estão certos" —, nunca
+autorização de pagamento.
+
+### Um documento gera um lançamento
+
+`source_intake_document_id` é **único** no banco. A garantia não depende de o código estar
+certo: a segunda tentativa é recusada pelo PostgreSQL. Cancelar desfaz esse vínculo e
+devolve o documento à fila, para que um cancelamento por engano não trave o documento para
+sempre.
+
+### A origem de cada decisão fica registrada
+
+Cada dimensão da classificação vem etiquetada: regra automática, padrão do fornecedor,
+padrão da categoria, definido no documento ou escolhido na tela. Sem isso, "categoria:
+Carnes" não diz se alguém conferiu aquilo — e a revisão vira adivinhação.
+
+A ordem é: **o que a pessoa decidiu na revisão do documento vence a regra automática**, que
+vence os padrões do vínculo, que vencem os da categoria. Cada dimensão é resolvida
+isoladamente: uma regra pode definir o centro de custo sem mexer na categoria.
+
+### Retenção é sugestão até alguém confirmar
+
+O cálculo usa a alíquota **do cadastro** do vínculo — o sistema não tem tabela fiscal
+embutida e não arbitra alíquota. Enquanto a retenção estiver sugerida, ela não desconta o
+valor líquido, e o título não pode ser aberto. Confirmar é o ato que muda o quanto será
+pago. O sistema não gera guia, não recolhe e não informa nada a nenhum órgão.
+
+### O rateio é gravado, não recalculado
+
+A regra de rateio é um cadastro vivo. O que foi aplicado a um título não pode mudar quando
+alguém edita a regra, senão um relatório de mês fechado passa a devolver outro número.
+Critérios por quantidade, horas, peso, área ou consumo viram percentual no momento da
+aplicação.
+
+### Depois de aberto, não se edita
+
+Um título em aberto já aparece em relatório. Alterar valor ou classificação em silêncio
+faria o relatório de ontem discordar do de hoje. A saída é cancelar com motivo e processar
+de novo.
+
+### O que ainda não existe neste módulo
+
+Autorização e agendamento de pagamento, remessa bancária, pagamento automático,
+liquidação/baixa, conciliação bancária, emissão de boleto e de nota fiscal, cobrança,
+recorrências geradas automaticamente e integração bancária real.
+
+
 ## Banco de dados e migrations
 
 O schema fica em `backend/prisma/schema.prisma`. Tabelas principais:
@@ -790,13 +872,17 @@ na mesma hierarquia), `cost_centers`, `result_centers`, `projects`, `business_un
 `intake_document_duplicate_matches`, `intake_document_relations`,
 `intake_batch_imports`, `intake_batch_import_items`, `intake_document_assignments`,
 `intake_document_status_history`, `document_intake_settings`,
+`financial_entries`, `financial_entry_installments`,
+`financial_entry_allocations`, `financial_entry_withholdings`,
+`financial_entry_status_history`, `document_processing_settings`,
 `financial_institutions`, `attachments` (anexos genéricos), `users`, `roles`,
 `permissions`, `role_permissions`, `user_organization_roles`, `user_company_roles` e
 `audit_logs`.
 
 > As migrations são sempre **incrementais**. A da tesouraria
-> (`20260730120000_treasury_module`) e a da entrada de documentos
-> (`20260730180000_document_intake_module`) só adicionam: nenhum `DROP`, nenhum
+> (`20260730120000_treasury_module`), a da entrada de documentos
+> (`20260730180000_document_intake_module`) e a do processamento
+> (`20260730200000_document_processing_module`) só adicionam: nenhum `DROP`, nenhum
 > `ALTER COLUMN`, nenhuma tabela renomeada, nenhuma rota existente alterada.
 
 ```bash
@@ -843,6 +929,28 @@ npm test        # testes unitários: isolamento multiempresa/organização, perm
                  # entrada de documentos
 npm run test:e2e
 ```
+
+### Testar manualmente o Processamento de Documentos
+
+1. Acesse **Financeiro → A processar**. O seed deixa a NF-e do Frigorífico Boi Forte na
+   fila e já processou a conta de internet, que aparece em **Contas a pagar** em aberto.
+2. Clique em **Processar** na NF-e. A tela mostra a **prévia**: classificação com a origem
+   de cada dimensão, parcelas, rateio e retenções — nada foi gravado ainda.
+3. Troque a categoria na tela e processe. No lançamento, a etiqueta daquela dimensão passa
+   a ser "Escolhido na tela".
+4. Peça 3 parcelas antes de processar e confira que a soma das parcelas fecha exatamente
+   com o valor do título — a diferença de arredondamento vai para a última.
+5. Volte à fila: o documento processado saiu dela. Tente processá-lo de novo pela URL
+   direta e o sistema recusa — um documento gera um lançamento.
+6. Cadastre uma retenção no vínculo do fornecedor (Cadastros → Fornecedores → empresa →
+   Retenções) e processe outro documento. A retenção aparece **sugerida** e o valor líquido
+   continua igual ao bruto. Tente abrir o título: é recusado até a retenção ser decidida.
+7. Confirme a retenção e repare que aí sim o líquido diminui.
+8. Abra o título. Tente editá-lo: é recusado — um lançamento em aberto não se edita.
+9. Cancele o lançamento com motivo. O documento volta para a fila de "A processar" e pode
+   ser processado de novo.
+10. Com um usuário sem `document_intake.view_sensitive_data`, abra o lançamento: a linha
+    digitável e a chave PIX chegam mascaradas do back-end, como no documento de origem.
 
 ### Testar manualmente a Entrada de Documentos
 
@@ -1031,10 +1139,8 @@ Com o back-end rodando, o Swagger fica disponível em `http://localhost:3333/doc
 
 ## Próxima etapa recomendada
 
-Módulo de **Processamento de Documentos**, que recebe o que a entrada encaminhou e o
-transforma em obrigação financeira — contas a pagar e a receber. É ele que consome todos
-os cadastros já entregues (fornecedores, clientes, dimensões da estrutura financeira,
-contas, cartões e formas de pagamento/recebimento) e finalmente ativa o motor de
-classificação automática, hoje apenas simulável. É também onde os saldos bancário,
-conciliado e disponível deixam de ser apenas saldo de implantação e passam a ser
-calculados.
+Módulo de **Pagamentos e Recebimentos**, que pega os títulos em aberto e cuida do resto do
+ciclo: autorização, agendamento, remessa bancária, liquidação e baixa. É ele que introduz
+as situações que este módulo deliberadamente não tem — nenhum título aqui pode ser marcado
+como pago — e onde os saldos bancário, conciliado e disponível deixam de ser apenas saldo
+de implantação e passam a ser calculados.

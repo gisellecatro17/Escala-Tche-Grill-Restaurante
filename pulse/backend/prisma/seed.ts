@@ -1148,6 +1148,49 @@ const PERMISSIONS: PermissionSeed[] = [
     description: 'Configurar os parâmetros da entrada de documentos',
   },
 
+  // Financeiro — Processamento de documentos
+  {
+    slug: 'document_processing.view',
+    module: 'financeiro',
+    description: 'Visualizar o processamento e os lançamentos financeiros',
+  },
+  {
+    slug: 'document_processing.process',
+    module: 'financeiro',
+    description: 'Processar documentos encaminhados e gerar lançamentos',
+  },
+  {
+    slug: 'document_processing.update',
+    module: 'financeiro',
+    description: 'Editar lançamentos que ainda não estão em aberto',
+  },
+  {
+    slug: 'document_processing.approve',
+    module: 'financeiro',
+    description:
+      'Conferir lançamentos acima do limite (conferência dos dados, não autorização de pagamento)',
+  },
+  {
+    slug: 'document_processing.open',
+    module: 'financeiro',
+    description: 'Abrir o título, tornando-o uma obrigação financeira',
+  },
+  {
+    slug: 'document_processing.cancel',
+    module: 'financeiro',
+    description: 'Cancelar lançamentos com motivo',
+  },
+  {
+    slug: 'document_processing.manage_withholdings',
+    module: 'financeiro',
+    description: 'Confirmar, descartar e incluir retenções',
+  },
+  {
+    slug: 'document_processing.manage_settings',
+    module: 'financeiro',
+    description: 'Configurar os parâmetros do processamento',
+  },
+
   // Financeiro
   {
     slug: 'financial.view',
@@ -1356,6 +1399,25 @@ const DOCUMENT_INTAKE_OPERATOR_SLUGS = DOCUMENT_INTAKE_SLUGS.filter(
     ].includes(slug),
 );
 
+const DOCUMENT_PROCESSING_SLUGS = PERMISSIONS.filter((p) =>
+  p.slug.startsWith('document_processing.'),
+).map((p) => p.slug);
+
+/**
+ * Processamento liberado para o operador financeiro.
+ *
+ * Fica de fora o que decide sozinho: conferir um lançamento acima do limite, cancelar um
+ * título já criado e configurar os parâmetros da empresa.
+ */
+const DOCUMENT_PROCESSING_OPERATOR_SLUGS = DOCUMENT_PROCESSING_SLUGS.filter(
+  (slug) =>
+    ![
+      'document_processing.approve',
+      'document_processing.cancel',
+      'document_processing.manage_settings',
+    ].includes(slug),
+);
+
 const ROLES: {
   slug: string;
   name: string;
@@ -1393,6 +1455,7 @@ const ROLES: {
       ...CADASTROS_SLUGS.filter((s) => !s.startsWith('company.')),
       ...COMPANY_OPERATIONAL_SLUGS,
       ...DOCUMENT_INTAKE_SLUGS,
+      ...DOCUMENT_PROCESSING_SLUGS,
       'financial.view',
       'financial.documents',
       'financial.process',
@@ -1461,6 +1524,7 @@ const ROLES: {
       'payment_method.view',
       'receipt_method.view',
       ...DOCUMENT_INTAKE_OPERATOR_SLUGS,
+      ...DOCUMENT_PROCESSING_OPERATOR_SLUGS,
       'financial.view',
       'financial.documents',
       'financial.process',
@@ -1480,6 +1544,8 @@ const ROLES: {
       'financial.view',
       'financial.approve',
       'document_intake.view',
+      'document_processing.view',
+      'document_processing.approve',
       'payables.view',
       'receivables.view',
       'bi.view',
@@ -1490,7 +1556,12 @@ const ROLES: {
     name: 'Gestor',
     description: 'Consulta dashboards, relatórios e indicadores.',
     isSystem: true,
-    permissions: ['financial.view', 'document_intake.view', ...BI_SLUGS],
+    permissions: [
+      'financial.view',
+      'document_intake.view',
+      'document_processing.view',
+      ...BI_SLUGS,
+    ],
   },
   {
     slug: 'accountant',
@@ -1502,6 +1573,7 @@ const ROLES: {
       'financial.paid',
       'document_intake.view',
       'document_intake.download',
+      'document_processing.view',
       ...BI_SLUGS,
     ],
   },
@@ -2036,6 +2108,12 @@ async function main() {
     organization.id,
     company.id,
     demoSupplier.id,
+    carnesCategory.id,
+    churrasqueiraCostCenter.id,
+  );
+  await seedDemoDocumentProcessing(
+    organization.id,
+    company.id,
     carnesCategory.id,
     churrasqueiraCostCenter.id,
   );
@@ -2942,6 +3020,103 @@ async function seedIntakeHistory(
   await prisma.intakeDocumentStatusHistory.createMany({
     data: entries.map((entry) => ({ documentId, ...entry })),
   });
+}
+
+
+/**
+ * Lançamento de demonstração do processamento.
+ *
+ * Processa **um** dos documentos encaminhados e deixa o outro na fila, para que as duas
+ * telas — "A processar" e "Contas a pagar" — tenham conteúdo.
+ *
+ * Nada aqui representa dinheiro que saiu: o título nasce em aberto e para aí.
+ */
+async function seedDemoDocumentProcessing(
+  organizationId: string,
+  companyId: string,
+  categoryId: string,
+  costCenterId: string,
+) {
+  console.log('Aplicando seed de processamento de demonstração...');
+
+  await prisma.documentProcessingSettings.upsert({
+    where: { companyId },
+    update: {},
+    create: { organizationId, companyId },
+  });
+
+  const internetDocumentId = '00000000-0000-0000-0000-000000001003';
+
+  const document = await prisma.intakeDocument.findUnique({
+    where: { id: internetDocumentId },
+    select: { id: true, supplierId: true },
+  });
+
+  if (!document) return;
+
+  const entry = await prisma.financialEntry.upsert({
+    where: { id: '00000000-0000-0000-0000-000000002001' },
+    update: {},
+    create: {
+      id: '00000000-0000-0000-0000-000000002001',
+      organizationId,
+      companyId,
+      sourceIntakeDocumentId: document.id,
+      direction: 'PAYABLE',
+      origin: 'DOCUMENT_INTAKE',
+      status: 'OPEN',
+      supplierId: document.supplierId,
+      documentNumber: 'CS-2026-07',
+      issueDate: new Date(Date.UTC(2026, 6, 5)),
+      competenceDate: new Date(Date.UTC(2026, 6, 1)),
+      description: 'Link dedicado — julho/2026',
+      grossAmount: 389.9,
+      netAmount: 389.9,
+      categoryId,
+      costCenterId,
+      classificationSources: {
+        categoryId: 'SUPPLIER_DEFAULT',
+        costCenterId: 'SUPPLIER_DEFAULT',
+      },
+      openedAt: new Date(Date.UTC(2026, 6, 6, 11, 40)),
+      installments: {
+        create: {
+          installmentNumber: 1,
+          totalInstallments: 1,
+          dueDate: new Date(Date.UTC(2026, 6, 20)),
+          grossAmount: 389.9,
+          netAmount: 389.9,
+        },
+      },
+      statusHistory: {
+        create: [
+          {
+            newStatus: 'DRAFT',
+            reason: 'Lançamento gerado a partir do documento encaminhado.',
+            changedAt: new Date(Date.UTC(2026, 6, 6, 11, 35)),
+          },
+          {
+            previousStatus: 'DRAFT',
+            newStatus: 'OPEN',
+            reason: 'Lançamento aberto.',
+            changedAt: new Date(Date.UTC(2026, 6, 6, 11, 40)),
+          },
+        ],
+      },
+    },
+  });
+
+  await prisma.intakeDocument.update({
+    where: { id: document.id },
+    data: {
+      processingStatus: 'PROCESSED',
+      processedAt: new Date(Date.UTC(2026, 6, 6, 11, 35)),
+    },
+  });
+
+  console.log(
+    `Processamento de demonstração criado: 1 lançamento a pagar em aberto (${entry.documentNumber}) e 1 documento ainda na fila.`,
+  );
 }
 
 main()

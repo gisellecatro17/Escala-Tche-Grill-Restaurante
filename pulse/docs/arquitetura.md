@@ -478,6 +478,79 @@ a impressão de que o validador está errado.
 contém, e a NFS-e — que aninha o CNPJ dois níveis abaixo — voltaria com emitente nulo.
 
 
+## Processamento de Documentos
+
+### O título para em `OPEN`
+
+Não existe `PAID` — nem no lançamento nem na parcela. A tentação era prever a situação para
+"quando o módulo de pagamentos chegar", mas uma situação que nada produz é uma promessa no
+schema: relatórios passariam a filtrar por ela, telas a exibi-la, e o dia em que a
+liquidação existir de verdade a semântica já teria sido definida por acidente. Quando o
+módulo existir, ele acrescenta a situação junto com o comportamento.
+
+### Unicidade no banco, não na aplicação
+
+`source_intake_document_id` é `@unique`. A verificação na aplicação existe para dar uma
+mensagem decente, mas a garantia é do PostgreSQL: duas requisições simultâneas passariam
+pela checagem em memória e só uma passa pela restrição.
+
+O efeito colateral é que cancelar precisa **desfazer** o vínculo, senão um cancelamento por
+engano travaria aquele documento para sempre.
+
+### A origem de cada dimensão, não só o valor
+
+`classification_sources` guarda um mapa `dimensão -> origem`. A alternativa era gravar só os
+IDs, que é o que o relatório precisa. Mas quem revisa não precisa do valor: precisa saber se
+aquilo foi decidido por uma regra, herdado de um cadastro ou digitado por alguém. Sem essa
+coluna, a revisão é adivinhação — e a revisão é justamente o que separa um BPO de um
+lançador de notas.
+
+### A revisão vence a regra automática
+
+A ordem de resolução é: documento > regra > vínculo > categoria. Poderia ser o contrário —
+a regra é mais "inteligente" que o campo preenchido à mão. Mas o campo preenchido no
+documento é o ato humano mais recente sobre aquele caso específico, e uma regra que
+sobrescreve o que uma pessoa acabou de decidir é uma regra que ninguém confia.
+
+Cada dimensão é resolvida isoladamente. Misturar origens no mesmo lançamento é o
+comportamento correto; o que não pode é perder o registro de qual venceu.
+
+### Retenção sugerida não desconta
+
+Confirmar a retenção é o que altera o valor líquido. Descontar no cálculo e "desfazer" se
+alguém recusar deixaria o título com um líquido provisório circulando — e líquido provisório
+é o número que alguém copia para uma planilha.
+
+Pela mesma razão, uma retenção **confirmada** não pode ser descartada: ela já mudou o valor.
+A saída é cancelar o lançamento e processar de novo.
+
+### Rateio materializado
+
+O rateio é gravado no lançamento em vez de resolvido a cada leitura. A regra é um cadastro
+vivo; o título é um fato histórico. Critérios não percentuais (quantidade, horas, peso,
+área, consumo) viram percentual no momento da aplicação: a regra guarda o peso, o lançamento
+guarda a fração que aquele peso representou naquele dia.
+
+### Sobra de arredondamento na última linha
+
+Vale para parcelas e para rateio: 100,00 em três partes dá 33,33 três vezes e perde um
+centavo. Distribuir a sobra é a convenção de mercado e a única forma de a soma fechar
+exatamente com o título. Um centavo perdido em cada lançamento vira divergência de
+conciliação meses depois.
+
+### Dia fixo limitado ao último dia do mês
+
+Vencimento no dia 31 com dia fixo cai em 28 de fevereiro, não em 3 de março.
+`new Date(2026, 1, 31)` transborda em silêncio — e um vencimento errado por três dias é o
+tipo de defeito que só aparece quando o boleto vence.
+
+### Editar só antes de abrir
+
+Depois de `OPEN` o título já está em relatório. A alternativa — permitir edição com
+histórico — parece mais flexível, mas faz o relatório de ontem discordar do de hoje sem que
+ninguém perceba. Cancelar com motivo e processar de novo deixa os dois fatos visíveis.
+
+
 ## Autenticação
 
 - Login, sessão, recuperação de senha e confirmação de e-mail são delegados ao **Supabase
