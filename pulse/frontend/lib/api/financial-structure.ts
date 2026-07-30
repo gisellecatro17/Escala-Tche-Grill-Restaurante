@@ -6,17 +6,27 @@ import { api, buildQueryString } from "@/lib/api/client";
 import type { PaginatedResult } from "@/types";
 import type {
   AccountPlan,
+  AccountPlanVersion,
   AllocationRule,
   BusinessUnit,
   ClassificationRule,
+  DiagnosticsReport,
+  DuplicationResult,
+  ExportFormat,
   FinancialNature,
   FinancialTag,
   HierarchyEntity,
   HierarchyVersion,
+  ImportRowStatus,
   Project,
   ResultCenter,
   SimulationResult,
+  StructureImportAnalysis,
   StructureImportBatch,
+  StructureImportMode,
+  StructureImportResult,
+  StructureImportRow,
+  StructureUsage,
   TreeNode,
 } from "@/types/financial-structure";
 
@@ -464,25 +474,118 @@ export function useRestoreVersion() {
   });
 }
 
-export function useValidateImport() {
+// ── Importação em 7 etapas (seções 43 e 44) ──────────────────────────────────
+
+/** Etapas 1 e 2: envia o arquivo e recebe cabeçalhos + mapeamento sugerido. */
+export function useAnalyzeImport() {
   const invalidate = useInvalidate(["financial-structure"]);
   return useMutation({
-    mutationFn: (payload: Payload) =>
-      api.post<StructureImportBatch>("/financial-structure/imports", payload),
+    mutationFn: ({
+      file,
+      ...fields
+    }: {
+      organizationId: string;
+      companyId?: string;
+      entity: HierarchyEntity;
+      file?: File;
+      content?: string;
+      fileName?: string;
+    }) => {
+      if (!file) {
+        return api.post<StructureImportAnalysis>(
+          "/financial-structure/imports",
+          fields as Payload,
+        );
+      }
+
+      // Com arquivo, o envio é multipart: o back-end lê o buffer direto.
+      const form = new FormData();
+      form.append("file", file);
+      for (const [key, value] of Object.entries(fields)) {
+        if (value !== undefined) form.append(key, String(value));
+      }
+      return api.post<StructureImportAnalysis>(
+        "/financial-structure/imports",
+        form,
+      );
+    },
     onSuccess: invalidate,
   });
 }
 
+/** Etapa 3: confirma o mapeamento campo interno → coluna do arquivo. */
+export function useSetImportMapping() {
+  const invalidate = useInvalidate(["financial-structure"]);
+  return useMutation({
+    mutationFn: ({ id, mapping }: { id: string; mapping: Record<string, string> }) =>
+      api.patch<StructureImportBatch>(
+        `/financial-structure/imports/${id}/mapping`,
+        { mapping },
+      ),
+    onSuccess: invalidate,
+  });
+}
+
+/** Etapas 4 e 5: valida linha por linha. */
+export function useValidateImport() {
+  const invalidate = useInvalidate(["financial-structure"]);
+  return useMutation({
+    mutationFn: (id: string) =>
+      api.post<StructureImportBatch>(
+        `/financial-structure/imports/${id}/validate`,
+        {},
+      ),
+    onSuccess: invalidate,
+  });
+}
+
+/** Etapas 6 e 7: aplica ou simula. */
 export function useApplyImport() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, updateExisting }: { id: string; updateExisting?: boolean }) =>
-      api.post<StructureImportBatch>(`/financial-structure/imports/${id}/apply`, {
-        updateExisting,
-      }),
+    mutationFn: ({
+      id,
+      mode,
+      includeWarnings,
+    }: {
+      id: string;
+      mode?: StructureImportMode;
+      includeWarnings?: boolean;
+    }) =>
+      api.post<StructureImportResult>(
+        `/financial-structure/imports/${id}/apply`,
+        { mode, includeWarnings },
+      ),
     onSuccess: () => void queryClient.invalidateQueries(),
   });
 }
+
+export function useImportBatches(
+  organizationId: string | undefined,
+  entity?: HierarchyEntity,
+) {
+  return useQuery({
+    queryKey: ["financial-structure", "imports", organizationId, entity],
+    queryFn: () =>
+      api.get<StructureImportBatch[]>(
+        `/financial-structure/imports${buildQueryString({ organizationId, entity })}`,
+      ),
+    enabled: Boolean(organizationId),
+  });
+}
+
+export function useImportRows(id: string | undefined, status?: ImportRowStatus) {
+  return useQuery({
+    queryKey: ["financial-structure", "import-rows", id, status],
+    queryFn: () =>
+      api.get<StructureImportRow[]>(
+        `/financial-structure/imports/${id}/rows${buildQueryString({ status })}`,
+      ),
+    enabled: Boolean(id),
+  });
+}
+
+// ── Exportação, diagnóstico e duplicação ─────────────────────────────────────
 
 export function useExportStructure() {
   return useMutation({
@@ -490,10 +593,154 @@ export function useExportStructure() {
       organizationId: string;
       companyId?: string;
       entity: HierarchyEntity;
-      format?: "csv" | "json";
+      format?: ExportFormat;
+      includeInactive?: boolean;
     }) =>
-      api.get<{ format: string; entity: string; content?: string; rows?: unknown[] }>(
-        `/financial-structure/export${buildQueryString({ ...params })}`,
+      api.get<{
+        format: string;
+        entity: string;
+        fileName?: string;
+        contentType?: string;
+        content?: string;
+        base64?: string;
+        rows?: unknown[];
+      }>(`/financial-structure/export${buildQueryString({ ...params })}`),
+  });
+}
+
+export function useStructureDiagnostics(
+  organizationId: string | undefined,
+  companyId?: string,
+) {
+  return useQuery({
+    queryKey: ["financial-structure", "diagnostics", organizationId, companyId],
+    queryFn: () =>
+      api.get<DiagnosticsReport>(
+        `/financial-structure/diagnostics${buildQueryString({ organizationId, companyId })}`,
       ),
+    enabled: Boolean(organizationId),
+  });
+}
+
+export function useDuplicateStructure() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: Payload) =>
+      api.post<DuplicationResult>("/financial-structure/duplicate", payload),
+    onSuccess: () => void queryClient.invalidateQueries(),
+  });
+}
+
+// ── Versões do plano de contas (seções 14 e 68) ───────────────────────────────
+
+export function useAccountPlanVersions(
+  organizationId: string | undefined,
+  companyId?: string,
+) {
+  return useQuery({
+    queryKey: ["account-plan-versions", organizationId, companyId],
+    queryFn: () =>
+      api.get<AccountPlanVersion[]>(
+        `/financial-account-plan-versions${buildQueryString({ organizationId, companyId })}`,
+      ),
+    enabled: Boolean(organizationId),
+  });
+}
+
+export function useCreateAccountPlanVersion() {
+  const invalidate = useInvalidate(["account-plan-versions"]);
+  return useMutation({
+    mutationFn: (payload: Payload) =>
+      api.post<AccountPlanVersion>("/financial-account-plan-versions", payload),
+    onSuccess: invalidate,
+  });
+}
+
+export function useActivateAccountPlanVersion() {
+  const invalidate = useInvalidate(["account-plan-versions", "account-plans"]);
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      api.post<AccountPlanVersion>(
+        `/financial-account-plan-versions/${id}/activate`,
+        { reason },
+      ),
+    onSuccess: invalidate,
+  });
+}
+
+export function useArchiveAccountPlanVersion() {
+  const invalidate = useInvalidate(["account-plan-versions"]);
+  return useMutation({
+    mutationFn: (id: string) =>
+      api.post<AccountPlanVersion>(
+        `/financial-account-plan-versions/${id}/archive`,
+        {},
+      ),
+    onSuccess: invalidate,
+  });
+}
+
+export function useDuplicateAccountPlanVersion() {
+  const invalidate = useInvalidate(["account-plan-versions"]);
+  return useMutation({
+    mutationFn: (id: string) =>
+      api.post<AccountPlanVersion>(
+        `/financial-account-plan-versions/${id}/duplicate`,
+        {},
+      ),
+    onSuccess: invalidate,
+  });
+}
+
+// ── Ciclo de vida dos cadastros (seção 70) ───────────────────────────────────
+
+/**
+ * Rotas de ciclo de vida, idênticas em todos os cadastros. O `basePath` é a rota do
+ * cadastro (ex.: `/cost-centers`).
+ */
+export function useStructureUsage(basePath: string, id: string | undefined) {
+  return useQuery({
+    queryKey: ["structure-usage", basePath, id],
+    queryFn: () => api.get<StructureUsage>(`${basePath}/${id}/usage`),
+    enabled: Boolean(id),
+  });
+}
+
+export function useStructureLifecycle(basePath: string, invalidateKeys: string[]) {
+  const invalidate = useInvalidate([...invalidateKeys, "structure-usage"]);
+
+  const activate = useMutation({
+    mutationFn: (id: string) => api.post(`${basePath}/${id}/activate`, {}),
+    onSuccess: invalidate,
+  });
+
+  const deactivate = useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason?: string }) =>
+      api.post(`${basePath}/${id}/deactivate`, { reason }),
+    onSuccess: invalidate,
+  });
+
+  const archive = useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason?: string }) =>
+      api.post(`${basePath}/${id}/archive`, { reason }),
+    onSuccess: invalidate,
+  });
+
+  return { activate, deactivate, archive };
+}
+
+export function useNextAccountCode(
+  organizationId: string | undefined,
+  companyId?: string,
+  parentAccountId?: string,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: ["account-plans", "next-code", organizationId, companyId, parentAccountId],
+    queryFn: () =>
+      api.get<{ code: string; level: number; parentCode: string | null }>(
+        `/financial-account-plans/next-code${buildQueryString({ organizationId, companyId, parentAccountId })}`,
+      ),
+    enabled: enabled && Boolean(organizationId),
   });
 }

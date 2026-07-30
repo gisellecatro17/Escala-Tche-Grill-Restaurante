@@ -94,6 +94,34 @@ export type StructureImportStatus =
   | "REJECTED"
   | "FAILED";
 
+/** Ciclo de vida da estrutura, separado do `status` operacional (seção 70). */
+export type StructureStatus = "DRAFT" | "ACTIVE" | "INACTIVE" | "ARCHIVED";
+
+export type AccountPlanKind =
+  | "MANAGEMENT"
+  | "FINANCIAL"
+  | "ACCOUNTING"
+  | "HYBRID";
+
+export type AccountPlanVersionStatus =
+  | "DRAFT"
+  | "IN_REVIEW"
+  | "ACTIVE"
+  | "SUPERSEDED"
+  | "ARCHIVED";
+
+export type ImportRowStatus = "VALID" | "WARNING" | "ERROR";
+
+export type StructureImportMode =
+  | "INSERT_ONLY"
+  | "UPDATE_ONLY"
+  | "INSERT_AND_UPDATE"
+  | "SIMULATE";
+
+export type DiagnosticSeverity = "CRITICAL" | "WARNING" | "INFO";
+
+export type ExportFormat = "csv" | "json" | "xlsx" | "pdf";
+
 // ── Rótulos em português ─────────────────────────────────────────────────────
 
 export const RECORD_STATUS_LABELS: Record<RecordStatus, string> = {
@@ -217,6 +245,8 @@ export interface StructureNode {
   notes: string | null;
   isSystem: boolean;
   status: RecordStatus;
+  /** Ciclo de vida da estrutura, independente do `status` operacional. */
+  structureStatus?: StructureStatus;
   createdAt: string;
   updatedAt: string;
 }
@@ -229,6 +259,18 @@ export interface AccountPlan extends StructureNode {
   accountKind: AccountKind;
   financialNatureId: string | null;
   acceptsEntries: boolean;
+  shortName?: string | null;
+  normalizedCode?: string | null;
+  planType?: AccountPlanKind;
+  versionId?: string | null;
+  accountGroup?: string | null;
+  allowsAllocations?: boolean;
+  allowsBudget?: boolean;
+  showInCashFlow?: boolean;
+  showInIncomeStatement?: boolean;
+  showInManagementBalance?: boolean;
+  showInReports?: boolean;
+  lastUsedAt?: string | null;
 }
 
 export interface ResultCenter extends StructureNode {
@@ -437,17 +479,106 @@ export interface HierarchyVersion {
 
 export interface StructureImportBatch {
   id: string;
+  organizationId: string;
+  companyId: string | null;
   entity: HierarchyEntity;
   format: string;
   status: StructureImportStatus;
+  importMode?: StructureImportMode;
   fileName: string | null;
   totalRows: number;
   validRows: number;
+  warningRows?: number;
   invalidRows: number;
   createdRows: number;
   updatedRows: number;
   errors: { line: number; message: string }[] | null;
+  mappingConfiguration?: {
+    headers?: string[];
+    mapping?: Record<string, string>;
+    confirmed?: boolean;
+  } | null;
+  appliedAt?: string | null;
   createdAt: string;
+}
+
+/** Resposta das etapas 1-2: cabeçalhos lidos e mapeamento sugerido. */
+export interface StructureImportAnalysis extends StructureImportBatch {
+  headers: string[];
+  suggestedMapping: Record<string, string>;
+  availableFields: { field: string; label: string; required: boolean }[];
+  sampleRows: Record<string, string>[];
+}
+
+/** Resposta das etapas 6-7. */
+export interface StructureImportResult extends StructureImportBatch {
+  simulated: boolean;
+  skippedRows: number;
+  messages: string[];
+}
+
+export interface StructureImportRow {
+  id: string;
+  rowNumber: number;
+  originalData: Record<string, string>;
+  normalizedData: Record<string, string> | null;
+  validationStatus: ImportRowStatus;
+  validationErrors: { field?: string; message: string }[] | null;
+  createdEntityType: string | null;
+  createdEntityId: string | null;
+}
+
+export interface DiagnosticFinding {
+  severity: DiagnosticSeverity;
+  code: string;
+  title: string;
+  detail: string;
+  entityType: string;
+  affected: { id: string; label: string }[];
+}
+
+export interface DiagnosticsReport {
+  summary: { critical: number; warning: number; info: number };
+  total: number;
+  findings: DiagnosticFinding[];
+}
+
+export interface AccountPlanVersion {
+  id: string;
+  organizationId: string;
+  companyId: string | null;
+  name: string;
+  description: string | null;
+  planType: AccountPlanKind;
+  versionNumber: number;
+  status: AccountPlanVersionStatus;
+  startDate: string | null;
+  endDate: string | null;
+  reason: string | null;
+  previousVersionId: string | null;
+  previousVersion?: { id: string; name: string; versionNumber: number } | null;
+  activatedAt: string | null;
+  createdAt: string;
+  _count?: { accounts: number };
+}
+
+/** Resposta de `GET /:id/usage`: por que um registro pode ou não ser excluído. */
+export interface StructureUsage {
+  id: string;
+  entity: string;
+  structureStatus: StructureStatus;
+  inUse: boolean;
+  canDelete: boolean;
+  total: number;
+  relations: { relation: string; label: string; count: number }[];
+}
+
+export interface DuplicationResult {
+  sourceCompanyId: string;
+  targetCompanyId: string;
+  reports: { registry: string; copied: number; skipped: number }[];
+  totalCopied: number;
+  notCopied: string[];
 }
 
 /** Nó já aninhado, como retornado pelos endpoints `/tree`. */
