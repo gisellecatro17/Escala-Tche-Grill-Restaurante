@@ -634,6 +634,131 @@ bancário, conciliado e disponível também não são calculados: só existe sal
 implantação, e somá-lo como se fosse saldo atual seria enganoso.
 
 
+## Entrada de Documentos
+
+A porta de entrada do BPO. Todo documento financeiro — boleto, nota fiscal, conta de
+consumo, guia, recibo, contrato, planilha — chega por aqui, é validado, lido,
+classificado, conferido e só então **encaminhado** para o módulo de processamento.
+
+O encaminhamento **não cria obrigação financeira**. Um documento encaminhado é um
+documento pronto para virar um título; quem cria o título é a etapa seguinte.
+
+```
+Recebimento ─┬─ upload de arquivo          ┐
+             ├─ lote                        │ implementados
+             ├─ captura por câmera          │
+             └─ digitação manual            ┘
+                 e-mail, WhatsApp, API, pasta monitorada,
+                 portal do fornecedor, integração contábil ┐ preparados,
+                                                            ┘ declarados "não configurado"
+        │
+        ▼
+Validação do arquivo ── conteúdo (não a extensão), MIME, tamanho, hash SHA-256,
+                        páginas, PDF protegido/truncado, antivírus por provider
+        │
+        ▼
+Fila de processamento (tabela no banco, SKIP LOCKED, retry com backoff, dead-letter)
+        │
+        ▼
+Extração ── XML > texto nativo do PDF > código de barras > OCR (só em imagem/PDF sem texto)
+        │
+        ▼
+Classificação ── tipo do documento e direção (a pagar / a receber)
+        │
+        ▼
+Identificação ── empresa de destino, fornecedor, cliente
+        │
+        ▼
+Duplicidade ── hash, linha digitável, chave de acesso, número, beneficiário+valor…
+        │
+        ▼
+Validação dos dados ── pendências bloqueantes e de alerta
+        │
+        ▼
+Revisão humana ──▶ Encaminhado / Rejeitado / Arquivado
+```
+
+Rotas do front-end: `/financeiro/entrada-documentos` (visão geral), `.../enviar`
+(quatro canais em abas), `.../caixa-de-entrada`, `.../processamento`, `.../pendencias`,
+`.../erros`, `.../processados`, `.../duplicidades`, `.../importacoes`, `.../historico`,
+`.../parametros`, `.../[id]` (documento, com visualizador e seis abas) e
+`.../[id]/revisar`.
+
+### O arquivo nunca é servido pela aplicação
+
+O bucket é **privado**. O back-end emite uma URL assinada válida por 5 minutos e
+registra a emissão na auditoria — `VIEW_INTAKE_DOCUMENT` ou `DOWNLOAD_INTAKE_DOCUMENT`.
+O front-end não guarda essa URL além do cache curto do React Query, e o download exige
+`document_intake.download`, uma permissão separada da de visualizar.
+
+O nome do arquivo é normalizado antes de virar caminho no storage (`../../etc/passwd`
+vira `etc_passwd`), e a separação por organização e empresa faz parte do caminho.
+
+### Nunca confiar na extensão informada
+
+A extensão e o `Content-Type` que o cliente envia são declarações, não fatos. A
+detecção é por **assinatura de bytes**, escrita à mão em
+`utils/file-signature.util.ts` — a biblioteca `file-type` disponível é ESM-only e
+quebraria os testes em CommonJS. O detector reconhece explicitamente o que precisa ser
+**bloqueado**: executáveis MZ/ELF/Mach-O, shebang e ZIP simples. Arquivos compactados
+seguem bloqueados até existirem regras específicas para eles.
+
+### OCR não é fonte infalível
+
+A ordem de leitura é obrigatória e nesta sequência: **texto nativo do PDF → XML direto →
+código de barras sem OCR → OCR apenas em imagem ou PDF sem texto**. O método usado e a
+confiança ficam gravados em cada campo extraído. Sem provedor de OCR configurado, o
+sistema **declara** que não leu — gera uma pendência de documento ilegível em vez de
+inventar texto.
+
+O sistema não fica preso a um fornecedor: `DocumentExtractionProvider` e
+`AntivirusProvider` são abstrações, e a implementação local não faz nenhuma chamada
+externa.
+
+### Boleto: ler, conferir, nunca pagar
+
+O `BoletoValidationService` converte linha digitável ↔ código de barras, confere os
+dígitos verificadores (módulo 10 por campo, módulo 11 geral), lê banco, moeda, valor e
+vencimento, e **registra a regra aplicada** em cada validação. Ele não executa nem
+autoriza pagamento — e as regras bancárias ficam no back-end, nunca em componentes da
+tela.
+
+O fator de vencimento tem quatro dígitos: estourou em 21/02/2025 e reiniciou em 1000.
+Fatores entre 1000 e 1999 são genuinamente ambíguos, e o serviço devolve os candidatos
+em vez de escolher um em silêncio.
+
+### Duplicidade: confirmar exige justificativa
+
+A comparação pesa vários sinais — hash do arquivo (100), linha digitável (98), código de
+barras (97), chave de acesso (96), número do documento (70), beneficiário+valor (65),
+valor+vencimento (45), semelhança de conteúdo (40), nome do arquivo (25). Acima de 75
+pontos, **liberar** o documento exige justificativa e a permissão
+`document_intake.override_duplicate`.
+
+### Pendência bloqueante impede encaminhamento
+
+Pendências de alerta apenas avisam; as bloqueantes travam o encaminhamento até serem
+resolvidas. Documento rejeitado mantém o histórico e o arquivo, não segue para
+processamento, pode ser reaberto por quem tem permissão e **nunca é excluído
+automaticamente**.
+
+### Mascaramento no back-end
+
+Sem `document_intake.view_sensitive_data`, linha digitável, código de barras, chave PIX
+e os CNPJ/CPF de emitente e destinatário chegam já mascarados: o valor completo não
+entra na resposta, não trafega e não fica no cache do navegador. O texto extraído
+inteiro também é omitido.
+
+### O que ainda não existe neste módulo
+
+Aprovação final de pagamentos, autorização e agendamento bancário, remessa, pagamento
+automático, contas a pagar e a receber completas, conciliação, baixa automática, emissão
+de boleto e de nota fiscal, inteligência artificial autônoma e integração bancária real.
+Os canais de e-mail, WhatsApp, API, pasta monitorada, portal do fornecedor e integração
+contábil estão modelados e aparecem na tela marcados como **não configurado** — declarar
+o que não existe é mais honesto que omitir.
+
+
 ## Banco de dados e migrations
 
 O schema fica em `backend/prisma/schema.prisma`. Tabelas principais:
@@ -660,13 +785,19 @@ na mesma hierarquia), `cost_centers`, `result_centers`, `projects`, `business_un
 `financial_account_integrations`, `financial_account_status_history`,
 `company_pix_keys`, `corporate_cards`, `corporate_card_users`, `payment_methods`,
 `receipt_methods`, `treasury_settings`,
+`intake_documents`, `intake_document_files`, `intake_document_extracted_fields`,
+`intake_document_processing_jobs`, `intake_document_issues`,
+`intake_document_duplicate_matches`, `intake_document_relations`,
+`intake_batch_imports`, `intake_batch_import_items`, `intake_document_assignments`,
+`intake_document_status_history`, `document_intake_settings`,
 `financial_institutions`, `attachments` (anexos genéricos), `users`, `roles`,
 `permissions`, `role_permissions`, `user_organization_roles`, `user_company_roles` e
 `audit_logs`.
 
-> As migrations são sempre **incrementais**. A migration da tesouraria
-> (`20260730120000_treasury_module`) só adiciona: nenhum `DROP`, nenhuma tabela
-> renomeada, nenhuma rota existente alterada.
+> As migrations são sempre **incrementais**. A da tesouraria
+> (`20260730120000_treasury_module`) e a da entrada de documentos
+> (`20260730180000_document_intake_module`) só adicionam: nenhum `DROP`, nenhum
+> `ALTER COLUMN`, nenhuma tabela renomeada, nenhuma rota existente alterada.
 
 ```bash
 cd backend
@@ -699,9 +830,49 @@ npm test        # testes unitários: isolamento multiempresa/organização, perm
                  # sobrescrito, recusa de credencial bruta em credentials_reference,
                  # normalização de chave PIX (inclusive DDI por comprimento), exigências
                  # mínimas por tipo de forma de pagamento e isolamento das rotas da
-                 # tesouraria
+                 # tesouraria, detecção de tipo de arquivo por assinatura de bytes
+                 # (inclusive executáveis e ZIP bloqueados), path traversal no nome do
+                 # arquivo, PDF protegido e truncado, dígitos verificadores de boleto
+                 # (módulo 10 por campo e módulo 11 geral), reinício do fator de
+                 # vencimento em 2025 e vencimentos ambíguos, conversão linha digitável ↔
+                 # código de barras, leitura de XML fiscal (NF-e e NFS-e aninhada),
+                 # extração de texto nativo de PDF, ordem de precedência dos métodos de
+                 # leitura, classificação por palavras-chave, pontuação de duplicidade e
+                 # exigência de justificativa acima de 75 pontos, mascaramento da linha
+                 # digitável e da chave PIX por permissão, e isolamento das rotas da
+                 # entrada de documentos
 npm run test:e2e
 ```
+
+### Testar manualmente a Entrada de Documentos
+
+1. Suba backend e frontend, faça login e selecione a empresa "Tchê Grill".
+2. Acesse **Financeiro → Entrada de documentos**. O seed cria 4 documentos fictícios:
+   um boleto de energia aguardando revisão, uma NF-e de carnes pronta para
+   processamento, uma conta de internet já encaminhada e o reenvio dessa conta em
+   possível duplicidade.
+3. Abra o boleto de energia. A linha digitável é **válida de verdade** — o seed a gera
+   com os dígitos verificadores calculados. Na revisão, cole-a no campo "Conferir uma
+   linha digitável" e clique em **Conferir**: o serviço devolve banco 001, R$ 2.450,00,
+   vencimento 10/08/2026 e as regras aplicadas, sem executar pagamento nenhum.
+4. Os documentos de demonstração não têm arquivo em storage. O visualizador avisa isso
+   em vez de mostrar um arquivo inventado.
+5. Envie um arquivo de verdade em **Enviar documento → Arquivo**. Renomeie um executável
+   para `.pdf` antes: o envio é recusado pelo **conteúdo**, não pela extensão.
+6. Envie o mesmo arquivo duas vezes. O segundo é marcado como duplicidade exata pelo
+   hash SHA-256, e liberar exige justificativa.
+7. Abra o reenvio da conta de internet (`Internet — julho/2026 (reenvio)`). Na aba
+   **Duplicidades**, tente **Não é duplicidade**: como a semelhança é de 70 pontos, a
+   justificativa é opcional; suba o caso acima de 75 e ela passa a ser exigida.
+8. Com um usuário sem `document_intake.view_sensitive_data`, reabra o boleto: a linha
+   digitável e a chave PIX chegam mascaradas do back-end — confira na aba de rede do
+   navegador que o valor completo não trafega.
+9. Com um usuário sem `document_intake.download`, o botão **Baixar** não aparece; chamar
+   a rota direto devolve 403.
+10. Tente encaminhar um documento com pendência bloqueante: o botão fica desabilitado e
+    o motivo é exibido. Resolva a pendência e o encaminhamento passa a ser possível.
+11. Rejeite um documento. Ele sai da fila, mantém histórico e arquivo, e continua
+    acessível — nada é excluído.
 
 ### Testar manualmente a Tesouraria
 
@@ -860,9 +1031,10 @@ Com o back-end rodando, o Swagger fica disponível em `http://localhost:3333/doc
 
 ## Próxima etapa recomendada
 
-Módulo **Financeiro (Contas a Pagar e Contas a Receber)**, que passa a consumir todos os
-cadastros já entregues — fornecedores, clientes, as dimensões da estrutura financeira e
-agora as contas, cartões e formas de pagamento/recebimento da tesouraria — e finalmente
-ativa o motor de classificação automática, hoje apenas simulável. É também onde os
-saldos bancário, conciliado e disponível deixam de ser apenas saldo de implantação e
-passam a ser calculados.
+Módulo de **Processamento de Documentos**, que recebe o que a entrada encaminhou e o
+transforma em obrigação financeira — contas a pagar e a receber. É ele que consome todos
+os cadastros já entregues (fornecedores, clientes, dimensões da estrutura financeira,
+contas, cartões e formas de pagamento/recebimento) e finalmente ativa o motor de
+classificação automática, hoje apenas simulável. É também onde os saldos bancário,
+conciliado e disponível deixam de ser apenas saldo de implantação e passam a ser
+calculados.

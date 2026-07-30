@@ -3,7 +3,16 @@ import {
   PrismaClient,
   type AccountPlanType,
   type FinancialNatureKind,
+  type IntakeExtractionMethod,
+  type IntakeIssueSeverity,
+  type IntakeIssueType,
+  type IntakeProcessingStatus,
+  type IntakeReviewStatus,
 } from '@prisma/client';
+
+// Gerador de boleto válido por construção. É a mesma função usada nos testes: os dígitos
+// verificadores são calculados, então o boleto de demonstração passa na validação real.
+import { buildValidBoleto } from '../src/modules/document-intake/utils/boleto-fixture.util';
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
@@ -1031,6 +1040,114 @@ const PERMISSIONS: PermissionSeed[] = [
     description: 'Excluir formas de recebimento',
   },
 
+  // Financeiro — Entrada de documentos
+  {
+    slug: 'document_intake.view',
+    module: 'financeiro',
+    description: 'Visualizar a entrada de documentos',
+  },
+  {
+    slug: 'document_intake.upload',
+    module: 'financeiro',
+    description: 'Enviar documentos',
+  },
+  {
+    slug: 'document_intake.batch_upload',
+    module: 'financeiro',
+    description: 'Enviar documentos em lote',
+  },
+  {
+    slug: 'document_intake.capture',
+    module: 'financeiro',
+    description: 'Capturar documentos pela câmera',
+  },
+  {
+    slug: 'document_intake.manual_entry',
+    module: 'financeiro',
+    description: 'Digitar documentos manualmente',
+  },
+  {
+    slug: 'document_intake.update',
+    module: 'financeiro',
+    description: 'Editar os dados do documento recebido',
+  },
+  {
+    slug: 'document_intake.review',
+    module: 'financeiro',
+    description: 'Revisar documentos recebidos',
+  },
+  {
+    slug: 'document_intake.classify',
+    module: 'financeiro',
+    description: 'Classificar documentos recebidos',
+  },
+  {
+    slug: 'document_intake.forward',
+    module: 'financeiro',
+    description: 'Encaminhar documentos para processamento',
+  },
+  {
+    slug: 'document_intake.reject',
+    module: 'financeiro',
+    description: 'Rejeitar documentos recebidos',
+  },
+  {
+    slug: 'document_intake.reopen',
+    module: 'financeiro',
+    description: 'Reabrir documentos rejeitados ou arquivados',
+  },
+  {
+    slug: 'document_intake.archive',
+    module: 'financeiro',
+    description: 'Arquivar documentos recebidos',
+  },
+  {
+    slug: 'document_intake.assign',
+    module: 'financeiro',
+    description: 'Atribuir documentos a responsáveis',
+  },
+  {
+    slug: 'document_intake.reprocess',
+    module: 'financeiro',
+    description: 'Reprocessar a leitura de documentos',
+  },
+  {
+    slug: 'document_intake.change_company',
+    module: 'financeiro',
+    description: 'Alterar a empresa de destino do documento',
+  },
+  {
+    slug: 'document_intake.manage_duplicates',
+    module: 'financeiro',
+    description: 'Tratar duplicidades de documentos',
+  },
+  {
+    slug: 'document_intake.override_duplicate',
+    module: 'financeiro',
+    description: 'Liberar documento com alta semelhança, mediante justificativa',
+  },
+  {
+    slug: 'document_intake.download',
+    module: 'financeiro',
+    description: 'Baixar o arquivo original do documento',
+  },
+  {
+    slug: 'document_intake.view_sensitive_data',
+    module: 'financeiro',
+    description:
+      'Visualizar linha digitável, código de barras e chave PIX sem mascaramento',
+  },
+  {
+    slug: 'document_intake.delete',
+    module: 'financeiro',
+    description: 'Excluir documentos ainda não encaminhados',
+  },
+  {
+    slug: 'document_intake.manage_settings',
+    module: 'financeiro',
+    description: 'Configurar os parâmetros da entrada de documentos',
+  },
+
   // Financeiro
   {
     slug: 'financial.view',
@@ -1216,6 +1333,29 @@ const COMPANY_OPERATIONAL_SLUGS = [
   'company.manage_logo',
 ];
 
+const DOCUMENT_INTAKE_SLUGS = PERMISSIONS.filter((p) =>
+  p.slug.startsWith('document_intake.'),
+).map((p) => p.slug);
+
+/**
+ * Entrada de documentos liberada para o operador financeiro.
+ *
+ * Fica de fora o que muda o escopo ou afrouxa uma trava: trocar a empresa do documento,
+ * liberar uma duplicidade de alta semelhança, ver linha digitável e chave PIX sem
+ * mascaramento, excluir e configurar os parâmetros da empresa.
+ */
+const DOCUMENT_INTAKE_OPERATOR_SLUGS = DOCUMENT_INTAKE_SLUGS.filter(
+  (slug) =>
+    ![
+      'document_intake.change_company',
+      'document_intake.override_duplicate',
+      'document_intake.view_sensitive_data',
+      'document_intake.delete',
+      'document_intake.manage_settings',
+      'document_intake.reopen',
+    ].includes(slug),
+);
+
 const ROLES: {
   slug: string;
   name: string;
@@ -1252,6 +1392,7 @@ const ROLES: {
     permissions: [
       ...CADASTROS_SLUGS.filter((s) => !s.startsWith('company.')),
       ...COMPANY_OPERATIONAL_SLUGS,
+      ...DOCUMENT_INTAKE_SLUGS,
       'financial.view',
       'financial.documents',
       'financial.process',
@@ -1319,6 +1460,7 @@ const ROLES: {
       'card.view',
       'payment_method.view',
       'receipt_method.view',
+      ...DOCUMENT_INTAKE_OPERATOR_SLUGS,
       'financial.view',
       'financial.documents',
       'financial.process',
@@ -1337,6 +1479,7 @@ const ROLES: {
     permissions: [
       'financial.view',
       'financial.approve',
+      'document_intake.view',
       'payables.view',
       'receivables.view',
       'bi.view',
@@ -1347,14 +1490,20 @@ const ROLES: {
     name: 'Gestor',
     description: 'Consulta dashboards, relatórios e indicadores.',
     isSystem: true,
-    permissions: ['financial.view', ...BI_SLUGS],
+    permissions: ['financial.view', 'document_intake.view', ...BI_SLUGS],
   },
   {
     slug: 'accountant',
     name: 'Contador',
     description: 'Consulta dados contábeis, relatórios e exportações.',
     isSystem: true,
-    permissions: ['financial.view', 'financial.paid', ...BI_SLUGS],
+    permissions: [
+      'financial.view',
+      'financial.paid',
+      'document_intake.view',
+      'document_intake.download',
+      ...BI_SLUGS,
+    ],
   },
 ];
 
@@ -1883,6 +2032,13 @@ async function main() {
 
   await seedDemoStructure(organization.id, company.id);
   await seedDemoTreasury(organization.id, company.id);
+  await seedDemoDocumentIntake(
+    organization.id,
+    company.id,
+    demoSupplier.id,
+    carnesCategory.id,
+    churrasqueiraCostCenter.id,
+  );
 
   console.log('Seed concluído com sucesso.');
   console.log(
@@ -2390,6 +2546,402 @@ async function seedDemoTreasury(organizationId: string, companyId: string) {
   console.log(
     'Tesouraria de demonstração criada: 3 contas, saldos iniciais, chave PIX, cartão corporativo, 5 formas de pagamento, 5 de recebimento e parâmetros.',
   );
+}
+
+/**
+ * Documentos de demonstração da entrada de documentos (seção 83).
+ *
+ * Todos os dados são fictícios. Nenhum documento aqui tem arquivo em storage: o registro
+ * existe para que as telas tenham o que mostrar, e a visualização do arquivo avisa
+ * corretamente que não há arquivo armazenado — inventar um PDF falso seria pior.
+ *
+ * Nenhum destes documentos é uma obrigação financeira: mesmo o que está "pronto para
+ * processamento" apenas aguarda o módulo seguinte.
+ */
+async function seedDemoDocumentIntake(
+  organizationId: string,
+  companyId: string,
+  demoSupplierId: string,
+  categoryId: string,
+  costCenterId: string,
+) {
+  console.log('Aplicando seed de entrada de documentos de demonstração...');
+
+  // Fornecedores fictícios de utilidades, para os documentos de energia e internet.
+  const energySupplier = await prisma.supplier.upsert({
+    where: { normalizedDocumentNumber: '31500900000106' },
+    update: {},
+    create: {
+      organizationId,
+      personType: 'LEGAL_ENTITY',
+      documentNumber: '31500900000106',
+      normalizedDocumentNumber: '31500900000106',
+      legalName: 'Coelba Distribuidora de Energia S.A.',
+      tradeName: 'Coelba',
+      displayName: 'Coelba',
+      systemStatus: 'ACTIVE',
+      segment: 'Energia elétrica',
+      email: 'faturamento@coelba.example.com',
+    },
+  });
+
+  const internetSupplier = await prisma.supplier.upsert({
+    where: { normalizedDocumentNumber: '09876543000121' },
+    update: {},
+    create: {
+      organizationId,
+      personType: 'LEGAL_ENTITY',
+      documentNumber: '09876543000121',
+      normalizedDocumentNumber: '09876543000121',
+      legalName: 'Conecta Sul Telecomunicações Ltda.',
+      tradeName: 'Conecta Sul',
+      displayName: 'Conecta Sul',
+      systemStatus: 'ACTIVE',
+      segment: 'Telecomunicações',
+      email: 'financeiro@conectasul.example.com',
+    },
+  });
+
+  for (const supplierId of [energySupplier.id, internetSupplier.id]) {
+    await prisma.supplierCompanyLink.upsert({
+      where: { supplierId_companyId: { supplierId, companyId } },
+      update: {},
+      create: {
+        supplierId,
+        companyId,
+        supplierTypes: ['SERVICE'],
+        financialNature: 'EXPENSE',
+        status: 'ACTIVE',
+        autoIdentificationEnabled: true,
+      },
+    });
+  }
+
+  // Boleto válido por construção — os dígitos verificadores são calculados, não inventados.
+  const energyDueDate = new Date(Date.UTC(2026, 7, 10));
+  const energyBoleto = buildValidBoleto({
+    bankCode: '001',
+    amount: 2450,
+    dueDate: energyDueDate,
+    seed: 'coelba-demo',
+  });
+
+  // 1. Boleto de energia aguardando revisão.
+  const energyDocument = await prisma.intakeDocument.upsert({
+    where: { id: '00000000-0000-0000-0000-000000001001' },
+    update: {},
+    create: {
+      id: '00000000-0000-0000-0000-000000001001',
+      organizationId,
+      companyId,
+      supplierId: energySupplier.id,
+      documentType: 'BOLETO',
+      documentDirection: 'PAYABLE',
+      sourceChannel: 'MANUAL_UPLOAD',
+      originalFileName: 'boleto-energia-agosto.pdf',
+      displayName: 'Boleto de energia — agosto/2026',
+      mimeType: 'application/pdf',
+      fileExtension: 'pdf',
+      fileSize: 184_320,
+      pageCount: 1,
+      documentNumber: '2026080001',
+      issueDate: new Date(Date.UTC(2026, 6, 26)),
+      competenceDate: new Date(Date.UTC(2026, 6, 1)),
+      dueDate: energyDueDate,
+      grossAmount: 2450,
+      netAmount: 2450,
+      barcode: energyBoleto.barcode,
+      normalizedBarcode: energyBoleto.barcode,
+      digitableLine: energyBoleto.digitableLine,
+      normalizedDigitableLine: energyBoleto.digitableLine.replace(/\D/g, ''),
+      issuerDocument: '31500900000106',
+      issuerName: 'Coelba Distribuidora de Energia S.A.',
+      recipientName: 'Tchê Grill Restaurante Ltda.',
+      description: 'Energia elétrica — competência julho/2026',
+      priority: 'HIGH',
+      processingStatus: 'PENDING_REVIEW',
+      reviewStatus: 'NOT_REVIEWED',
+      duplicateStatus: 'NO_DUPLICATE',
+      confidence: 92,
+      companyConfidence: 99,
+      supplierConfidence: 99,
+      typeConfidence: 98,
+      extractionMethod: 'DIGITABLE_LINE',
+      categoryId,
+      costCenterId,
+      receivedAt: new Date(Date.UTC(2026, 6, 27, 13, 12)),
+    },
+  });
+
+  await seedIntakeFields(energyDocument.id, [
+    { fieldName: 'digitableLine', value: energyBoleto.digitableLine, method: 'DIGITABLE_LINE', confidence: 98 },
+    { fieldName: 'dueDate', value: '2026-08-10', method: 'DIGITABLE_LINE', confidence: 98 },
+    { fieldName: 'grossAmount', value: '2450.00', method: 'DIGITABLE_LINE', confidence: 98 },
+    { fieldName: 'issuerDocument', value: '31500900000106', method: 'PDF_TEXT', confidence: 90 },
+  ]);
+
+  await seedIntakeIssue(energyDocument.id, {
+    issueType: 'CATEGORY_MISSING',
+    severity: 'WARNING',
+    description:
+      'A categoria sugerida veio do vínculo do fornecedor e ainda não foi confirmada na revisão.',
+  });
+
+  await seedIntakeHistory(energyDocument.id, [
+    { newProcessingStatus: 'UPLOADED', changedAt: new Date(Date.UTC(2026, 6, 27, 13, 12)) },
+    { newProcessingStatus: 'EXTRACTING', changedAt: new Date(Date.UTC(2026, 6, 27, 13, 12, 20)) },
+    { newProcessingStatus: 'PENDING_REVIEW', changedAt: new Date(Date.UTC(2026, 6, 27, 13, 13)) },
+  ]);
+
+  // 2. Nota fiscal de carnes, pronta para o processamento.
+  const meatDocument = await prisma.intakeDocument.upsert({
+    where: { id: '00000000-0000-0000-0000-000000001002' },
+    update: {},
+    create: {
+      id: '00000000-0000-0000-0000-000000001002',
+      organizationId,
+      companyId,
+      supplierId: demoSupplierId,
+      documentType: 'NFE',
+      documentDirection: 'PAYABLE',
+      sourceChannel: 'MANUAL_UPLOAD',
+      originalFileName: 'nfe-boi-forte-4471.xml',
+      displayName: 'NF-e 4471 — Frigorífico Boi Forte',
+      mimeType: 'application/xml',
+      fileExtension: 'xml',
+      fileSize: 22_016,
+      documentNumber: '4471',
+      documentSeries: '1',
+      accessKey: '29260722333444000155550010000044711000044718',
+      issueDate: new Date(Date.UTC(2026, 6, 24)),
+      competenceDate: new Date(Date.UTC(2026, 6, 1)),
+      dueDate: new Date(Date.UTC(2026, 7, 23)),
+      grossAmount: 8900,
+      netAmount: 8900,
+      issuerDocument: '22333444000155',
+      issuerName: 'Frigorífico Boi Forte Ltda.',
+      recipientName: 'Tchê Grill Restaurante Ltda.',
+      description: 'Compra de carnes para churrasco',
+      processingStatus: 'READY_FOR_PROCESSING',
+      reviewStatus: 'REVIEWED',
+      duplicateStatus: 'NO_DUPLICATE',
+      confidence: 100,
+      companyConfidence: 100,
+      supplierConfidence: 99,
+      typeConfidence: 100,
+      extractionMethod: 'XML_PARSE',
+      categoryId,
+      costCenterId,
+      receivedAt: new Date(Date.UTC(2026, 6, 24, 9, 40)),
+      processedAt: new Date(Date.UTC(2026, 6, 24, 9, 41)),
+      forwardedAt: new Date(Date.UTC(2026, 6, 25, 10, 5)),
+    },
+  });
+
+  await seedIntakeFields(meatDocument.id, [
+    { fieldName: 'accessKey', value: '29260722333444000155550010000044711000044718', method: 'XML_PARSE', confidence: 100 },
+    { fieldName: 'documentNumber', value: '4471', method: 'XML_PARSE', confidence: 100 },
+    { fieldName: 'grossAmount', value: '8900.00', method: 'XML_PARSE', confidence: 100 },
+    { fieldName: 'issuerDocument', value: '22333444000155', method: 'XML_PARSE', confidence: 100 },
+  ]);
+
+  await seedIntakeHistory(meatDocument.id, [
+    { newProcessingStatus: 'UPLOADED', changedAt: new Date(Date.UTC(2026, 6, 24, 9, 40)) },
+    { newProcessingStatus: 'PENDING_REVIEW', changedAt: new Date(Date.UTC(2026, 6, 24, 9, 41)) },
+    {
+      newProcessingStatus: 'READY_FOR_PROCESSING',
+      newReviewStatus: 'REVIEWED',
+      reason: 'Revisado e encaminhado para processamento.',
+      changedAt: new Date(Date.UTC(2026, 6, 25, 10, 5)),
+    },
+  ]);
+
+  // 3. Conta de internet já encaminhada — é o documento que o próximo repete.
+  const internetOriginal = await prisma.intakeDocument.upsert({
+    where: { id: '00000000-0000-0000-0000-000000001003' },
+    update: {},
+    create: {
+      id: '00000000-0000-0000-0000-000000001003',
+      organizationId,
+      companyId,
+      supplierId: internetSupplier.id,
+      documentType: 'UTILITY_BILL',
+      documentDirection: 'PAYABLE',
+      sourceChannel: 'MANUAL_UPLOAD',
+      originalFileName: 'internet-julho.pdf',
+      displayName: 'Internet — julho/2026',
+      mimeType: 'application/pdf',
+      fileExtension: 'pdf',
+      fileSize: 96_256,
+      pageCount: 2,
+      documentNumber: 'CS-2026-07',
+      issueDate: new Date(Date.UTC(2026, 6, 5)),
+      dueDate: new Date(Date.UTC(2026, 6, 20)),
+      grossAmount: 389.9,
+      netAmount: 389.9,
+      issuerDocument: '09876543000121',
+      issuerName: 'Conecta Sul Telecomunicações Ltda.',
+      description: 'Link dedicado — julho/2026',
+      processingStatus: 'READY_FOR_PROCESSING',
+      reviewStatus: 'REVIEWED',
+      duplicateStatus: 'NO_DUPLICATE',
+      confidence: 88,
+      extractionMethod: 'PDF_TEXT',
+      receivedAt: new Date(Date.UTC(2026, 6, 6, 8, 15)),
+      forwardedAt: new Date(Date.UTC(2026, 6, 6, 11, 30)),
+    },
+  });
+
+  // 4. A mesma conta de internet reenviada — possível duplicidade, aguardando decisão.
+  const internetDuplicate = await prisma.intakeDocument.upsert({
+    where: { id: '00000000-0000-0000-0000-000000001004' },
+    update: {},
+    create: {
+      id: '00000000-0000-0000-0000-000000001004',
+      organizationId,
+      companyId,
+      supplierId: internetSupplier.id,
+      documentType: 'UTILITY_BILL',
+      documentDirection: 'PAYABLE',
+      sourceChannel: 'CAMERA_CAPTURE',
+      originalFileName: 'foto-conta-internet.jpg',
+      displayName: 'Internet — julho/2026 (reenvio)',
+      mimeType: 'image/jpeg',
+      fileExtension: 'jpg',
+      fileSize: 1_248_576,
+      pageCount: 1,
+      documentNumber: 'CS-2026-07',
+      issueDate: new Date(Date.UTC(2026, 6, 5)),
+      dueDate: new Date(Date.UTC(2026, 6, 20)),
+      grossAmount: 389.9,
+      netAmount: 389.9,
+      issuerDocument: '09876543000121',
+      issuerName: 'Conecta Sul Telecomunicações Ltda.',
+      description: 'Link dedicado — julho/2026',
+      processingStatus: 'PENDING_REVIEW',
+      reviewStatus: 'NOT_REVIEWED',
+      duplicateStatus: 'POSSIBLE_DUPLICATE',
+      confidence: 61,
+      supplierConfidence: 96,
+      typeConfidence: 84,
+      extractionMethod: 'OCR',
+      receivedAt: new Date(Date.UTC(2026, 6, 28, 16, 5)),
+    },
+  });
+
+  await prisma.intakeDocumentDuplicateMatch.upsert({
+    where: { id: '00000000-0000-0000-0000-000000001101' },
+    update: {},
+    create: {
+      id: '00000000-0000-0000-0000-000000001101',
+      documentId: internetDuplicate.id,
+      matchedDocumentId: internetOriginal.id,
+      matchType: 'DOCUMENT_NUMBER',
+      similarityScore: 70,
+      matchingFields: {
+        documentNumber: 'CS-2026-07',
+        grossAmount: '389.90',
+        dueDate: '2026-07-20',
+      },
+      status: 'POSSIBLE_DUPLICATE',
+      decision: 'PENDING',
+    },
+  });
+
+  await seedIntakeIssue(internetDuplicate.id, {
+    issueType: 'DUPLICATE_DOCUMENT',
+    severity: 'WARNING',
+    description:
+      'Mesmo número de documento, valor e vencimento de um documento já encaminhado em 06/07/2026.',
+  });
+
+  await seedIntakeIssue(internetDuplicate.id, {
+    issueType: 'AMOUNT_NOT_IDENTIFIED',
+    severity: 'WARNING',
+    description:
+      'A leitura veio de uma foto e a confiança ficou abaixo do mínimo. Confira o valor antes de encaminhar.',
+  });
+
+  await seedIntakeHistory(internetDuplicate.id, [
+    { newProcessingStatus: 'UPLOADED', changedAt: new Date(Date.UTC(2026, 6, 28, 16, 5)) },
+    { newProcessingStatus: 'MATCHING', changedAt: new Date(Date.UTC(2026, 6, 28, 16, 6)) },
+    {
+      newProcessingStatus: 'PENDING_REVIEW',
+      reason: 'Possível duplicidade encontrada.',
+      changedAt: new Date(Date.UTC(2026, 6, 28, 16, 6, 30)),
+    },
+  ]);
+
+  await prisma.documentIntakeSettings.upsert({
+    where: { companyId },
+    update: {},
+    create: { organizationId, companyId },
+  });
+
+  console.log(
+    'Entrada de documentos de demonstração criada: 4 documentos (boleto aguardando revisão, NF-e pronta, conta encaminhada e o reenvio em possível duplicidade), campos extraídos, pendências e histórico.',
+  );
+}
+
+async function seedIntakeFields(
+  documentId: string,
+  fields: {
+    fieldName: string;
+    value: string;
+    method: IntakeExtractionMethod;
+    confidence: number;
+  }[],
+) {
+  for (const field of fields) {
+    await prisma.intakeDocumentExtractedField.upsert({
+      where: { documentId_fieldName: { documentId, fieldName: field.fieldName } },
+      update: {},
+      create: {
+        documentId,
+        fieldName: field.fieldName,
+        originalValue: field.value,
+        normalizedValue: field.value,
+        sourceMethod: field.method,
+        confidence: field.confidence,
+        validationStatus: field.confidence >= 95 ? 'VALID' : 'NOT_VALIDATED',
+      },
+    });
+  }
+}
+
+async function seedIntakeIssue(
+  documentId: string,
+  issue: {
+    issueType: IntakeIssueType;
+    severity: IntakeIssueSeverity;
+    description: string;
+  },
+) {
+  const existing = await prisma.intakeDocumentIssue.findFirst({
+    where: { documentId, issueType: issue.issueType },
+  });
+  if (existing) return;
+
+  await prisma.intakeDocumentIssue.create({ data: { documentId, ...issue } });
+}
+
+async function seedIntakeHistory(
+  documentId: string,
+  entries: {
+    newProcessingStatus?: IntakeProcessingStatus;
+    newReviewStatus?: IntakeReviewStatus;
+    reason?: string;
+    changedAt: Date;
+  }[],
+) {
+  const existing = await prisma.intakeDocumentStatusHistory.count({
+    where: { documentId },
+  });
+  if (existing > 0) return;
+
+  await prisma.intakeDocumentStatusHistory.createMany({
+    data: entries.map((entry) => ({ documentId, ...entry })),
+  });
 }
 
 main()

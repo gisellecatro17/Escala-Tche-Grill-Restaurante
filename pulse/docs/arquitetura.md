@@ -397,6 +397,87 @@ implantação, e apresentá-lo como saldo atual seria informação errada, não 
 incompleta.
 
 
+## Entrada de Documentos
+
+### Fila no banco, não no Redis
+
+A fila de processamento (`intake_document_processing_jobs`) é uma tabela, consumida com
+`SELECT ... WHERE status='PENDING' AND available_at <= NOW() ORDER BY priority, available_at
+LIMIT 1 FOR UPDATE SKIP LOCKED`. A alternativa seria Redis com BullMQ.
+
+A tabela ganhou porque não acrescenta infraestrutura para rodar e porque idempotência,
+retry com backoff, dead-letter e histórico de tentativas passam a ser auditáveis em SQL e
+sobrevivem a reinício do processo. `SKIP LOCKED` dá a exclusão mútua entre workers
+concorrentes sem lock global. O custo é polling em vez de push — aceitável em uma fila que
+processa dezenas de documentos por dia, não milhares por segundo.
+
+O worker roda dentro do processo da API por padrão (`INTAKE_WORKER_ENABLED`), e desligá-lo
+é uma variável de ambiente, não uma mudança de código: quando a fila for consumida por um
+processo separado, nada no domínio muda.
+
+### Detecção de tipo de arquivo escrita à mão
+
+`file-type@21` é ESM-only e quebraria os testes em CommonJS. Em vez de reconfigurar o Jest
+do projeto inteiro por causa de uma dependência, `utils/file-signature.util.ts` lê as
+assinaturas de bytes diretamente.
+
+O efeito colateral foi bom: o detector reconhece explicitamente os formatos que precisam
+ser **bloqueados** (MZ, ELF, Mach-O, shebang, ZIP simples), coisa que uma biblioteca
+genérica só reportaria como "é um zip" e deixaria a decisão para quem chamou.
+
+### PDF lido com `zlib`, sem biblioteca de PDF
+
+O texto nativo do PDF é extraído inflando os streams `FlateDecode` com o `zlib` do próprio
+Node e interpretando os operadores `Tj`, `TJ`, `'` e `"`. Não é um parser completo de PDF —
+e não precisa ser: o objetivo é decidir se **existe** texto aproveitável antes de recorrer
+ao OCR. Quando o texto nativo fica abaixo do limiar de utilidade, ele é aproveitado assim
+mesmo com confiança reduzida, em vez de descartado; descartar levava a OCR e, sem provedor,
+a nada.
+
+### Confiança de identificação abaixo do piso de "média"
+
+`TEXT_SIMILARITY` vale 60 pontos — deliberadamente abaixo dos 75 que separam confiança
+média de baixa. Um nome parecido nunca preenche o fornecedor sozinho. E quando os dois
+melhores candidatos ficam a menos de 5 pontos um do outro, o serviço devolve `ambiguous`
+em vez de escolher: um empate resolvido em silêncio é pior que um empate declarado.
+
+### Mascaramento aplicado no back-end
+
+O mesmo padrão da tesouraria e dos fornecedores: o valor protegido é substituído **antes**
+de virar resposta. Mascarar no front-end deixaria o valor completo passar pela rede e ficar
+no cache do navegador — o mascaramento seria estética, não controle de acesso.
+
+### O documento não é uma obrigação financeira
+
+`intake_documents` guarda um documento em trânsito, não um título. Encaminhar cria o
+registro de processamento futuro e nada mais. A separação é o que permite rejeitar, dividir
+em parcelas, trocar a empresa de destino e reabrir um documento sem que nada disso tenha
+efeito contábil.
+
+### Parcelas sem `onDelete: Cascade`
+
+A divisão em parcelas cria documentos filhos ligados ao pai por `parentDocumentId`, sem
+cascade. Excluir o pai não pode apagar as parcelas derivadas em silêncio: cada uma já pode
+ter seguido caminho próprio.
+
+### Fator de vencimento do boleto: ambiguidade declarada
+
+O fator tem quatro dígitos e estourou em 21/02/2025, reiniciando em 1000. Fatores de 1000 a
+1999 correspondem a duas datas possíveis. O validador devolve os dois candidatos em vez de
+escolher — um vencimento errado por um ciclo inteiro é pior que um vencimento em aberto.
+
+Foi por isso também que os boletos de teste passaram a ser **gerados** por
+`utils/boleto-fixture.util.ts` em vez de copiados de documentação bancária: as linhas que
+circulam por aí costumam ser ilustrativas e falham no dígito verificador geral, o que daria
+a impressão de que o validador está errado.
+
+### Nomes de folha na leitura do XML fiscal
+
+`readParty` procura o CNPJ apenas por nomes de **folha**. Incluir contêineres como
+`CpfCnpj` ou `IdentificacaoPrestador` na mesma lista os faria ganhar da folha que os
+contém, e a NFS-e — que aninha o CNPJ dois níveis abaixo — voltaria com emitente nulo.
+
+
 ## Autenticação
 
 - Login, sessão, recuperação de senha e confirmação de e-mail são delegados ao **Supabase
