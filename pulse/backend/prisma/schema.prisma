@@ -912,6 +912,9 @@ model Organization {
   intakeBatchImports     IntakeBatchImport[]
   documentIntakeSettings DocumentIntakeSettings[]
 
+  financialEntries           FinancialEntry[]
+  documentProcessingSettings DocumentProcessingSettings[]
+
   @@map("organizations")
 }
 
@@ -1040,6 +1043,9 @@ model Company {
   intakeDocuments        IntakeDocument[]
   intakeBatchImports     IntakeBatchImport[]
   documentIntakeSettings DocumentIntakeSettings?
+
+  financialEntries           FinancialEntry[]
+  documentProcessingSettings DocumentProcessingSettings?
 
   @@unique([organizationId, internalCode])
   @@index([organizationId])
@@ -1604,6 +1610,7 @@ model Supplier {
   primaryForProjects       Project[]                 @relation("ProjectPrimarySupplier")
   receiptMethodsAsAcquirer ReceiptMethod[]           @relation("ReceiptMethodAcquirer")
   intakeDocuments          IntakeDocument[]
+  financialEntries         FinancialEntry[]
 
   @@index([organizationId])
   @@index([systemStatus])
@@ -2170,6 +2177,7 @@ model Customer {
   projects                Project[]                @relation("ProjectCustomer")
   primaryForResultCenters ResultCenter[]           @relation("ResultCenterPrimaryCustomer")
   intakeDocuments         IntakeDocument[]
+  financialEntries        FinancialEntry[]
 
   @@index([organizationId])
   @@index([systemStatus])
@@ -4768,6 +4776,9 @@ model IntakeDocument {
   matchedAgainst   IntakeDocumentDuplicateMatch[] @relation("IntakeDuplicateTarget")
   outgoingRelations IntakeDocumentRelation[] @relation("IntakeRelationSource")
   incomingRelations IntakeDocumentRelation[] @relation("IntakeRelationTarget")
+
+  /// O lançamento gerado por este documento. Um para um: reprocessar não duplica.
+  financialEntry FinancialEntry?
   assignments    IntakeDocumentAssignment[]
   statusHistory  IntakeDocumentStatusHistory[]
   batchItems     IntakeBatchImportItem[]
@@ -5138,4 +5149,350 @@ model DocumentIntakeSettings {
   company      Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@map("document_intake_settings")
+}
+
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║  PROCESSAMENTO DE DOCUMENTOS                                             ║
+// ║  O documento encaminhado pela entrada vira aqui uma obrigação financeira. ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+
+/// Sentido da obrigação. Um lançamento é sempre a pagar **ou** a receber — nunca ambos.
+enum FinancialEntryDirection {
+  PAYABLE
+  RECEIVABLE
+
+  @@map("financial_entry_direction")
+}
+
+/// De onde veio o lançamento. `DOCUMENT_INTAKE` é o caminho normal; os demais existem
+/// para quando o financeiro precisa lançar algo que não chegou como documento.
+enum FinancialEntryOrigin {
+  DOCUMENT_INTAKE
+  MANUAL
+  RECURRENCE
+  CONTRACT
+
+  @@map("financial_entry_origin")
+}
+
+/// Situação do lançamento.
+///
+/// Termina em `OPEN`: o título fica **em aberto**, aguardando o pagamento ou o
+/// recebimento. Pagar, agendar, autorizar no banco e dar baixa são de módulos que ainda
+/// não existem — e nenhuma situação aqui representa dinheiro que saiu ou entrou.
+enum FinancialEntryStatus {
+  /// Criado e ainda editável. Não conta como obrigação em nenhum relatório.
+  DRAFT
+  /// Acima do limite do vínculo: aguarda conferência de quem tem permissão.
+  /// Conferência do **lançamento**, não autorização de pagamento.
+  PENDING_APPROVAL
+  /// Em aberto: é a obrigação financeira.
+  OPEN
+  /// Cancelado com motivo. O registro permanece.
+  CANCELLED
+
+  @@map("financial_entry_status")
+}
+
+/// Situação de cada parcela. Sem `PAID`: liquidação é de outro módulo.
+enum FinancialEntryInstallmentStatus {
+  OPEN
+  CANCELLED
+
+  @@map("financial_entry_installment_status")
+}
+
+/// De onde saiu o valor de cada dimensão da classificação.
+///
+/// Guardado para que a revisão saiba o que foi decidido por regra, o que veio do cadastro
+/// e o que uma pessoa digitou — sem isso, "categoria: Carnes" não diz se alguém conferiu.
+enum FinancialEntryDimensionSource {
+  CLASSIFICATION_RULE
+  SUPPLIER_DEFAULT
+  CUSTOMER_DEFAULT
+  CATEGORY_DEFAULT
+  DOCUMENT
+  MANUAL
+
+  @@map("financial_entry_dimension_source")
+}
+
+/// Situação da retenção calculada.
+enum FinancialEntryWithholdingStatus {
+  /// Calculada pelo sistema, aguardando confirmação humana.
+  SUGGESTED
+  /// Confirmada por quem tem permissão.
+  CONFIRMED
+  /// Descartada com motivo.
+  DISMISSED
+
+  @@map("financial_entry_withholding_status")
+}
+
+/// Lançamento financeiro — a obrigação a pagar ou a receber.
+///
+/// É o que a entrada de documentos **não** criava: lá o documento apenas percorria
+/// validação e revisão. Aqui ele vira título, com parcelas, rateio e retenções.
+///
+/// Um documento encaminhado gera **um** lançamento: `sourceIntakeDocumentId` é único, e é
+/// o que impede que reprocessar duplique a obrigação.
+model FinancialEntry {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  companyId      String @map("company_id") @db.Uuid
+
+  /// Documento de origem. Nulo em lançamento manual.
+  sourceIntakeDocumentId String? @unique @map("source_intake_document_id") @db.Uuid
+
+  direction FinancialEntryDirection
+  origin    FinancialEntryOrigin    @default(DOCUMENT_INTAKE)
+  status    FinancialEntryStatus    @default(DRAFT)
+
+  supplierId            String? @map("supplier_id") @db.Uuid
+  supplierCompanyLinkId String? @map("supplier_company_link_id") @db.Uuid
+  customerId            String? @map("customer_id") @db.Uuid
+  customerCompanyLinkId String? @map("customer_company_link_id") @db.Uuid
+
+  documentNumber String?   @map("document_number")
+  documentSeries String?   @map("document_series")
+  accessKey      String?   @map("access_key")
+  issueDate      DateTime? @map("issue_date")
+  competenceDate DateTime? @map("competence_date")
+
+  description String?
+  history     String?
+  notes       String?
+
+  grossAmount       Decimal  @map("gross_amount") @db.Decimal(18, 2)
+  discountAmount    Decimal  @default(0) @map("discount_amount") @db.Decimal(18, 2)
+  interestAmount    Decimal  @default(0) @map("interest_amount") @db.Decimal(18, 2)
+  penaltyAmount     Decimal  @default(0) @map("penalty_amount") @db.Decimal(18, 2)
+  withholdingAmount Decimal  @default(0) @map("withholding_amount") @db.Decimal(18, 2)
+  netAmount         Decimal  @map("net_amount") @db.Decimal(18, 2)
+  currencyCode      String   @default("BRL") @map("currency_code") @db.VarChar(3)
+
+  // ── Classificação. Colunas simples, como em `intake_documents`: as dimensões vivem
+  //    nos cadastros da Estrutura Financeira e são resolvidas pela aplicação.
+  categoryId        String? @map("category_id") @db.Uuid
+  subcategoryId     String? @map("subcategory_id") @db.Uuid
+  accountPlanId     String? @map("account_plan_id") @db.Uuid
+  costCenterId      String? @map("cost_center_id") @db.Uuid
+  resultCenterId    String? @map("result_center_id") @db.Uuid
+  projectId         String? @map("project_id") @db.Uuid
+  businessUnitId    String? @map("business_unit_id") @db.Uuid
+  financialNatureId String? @map("financial_nature_id") @db.Uuid
+
+  /// Regra de classificação que decidiu as dimensões, quando houve uma.
+  appliedClassificationRuleId String? @map("applied_classification_rule_id") @db.Uuid
+  /// Regra de rateio aplicada, quando houve uma.
+  appliedAllocationRuleId     String? @map("applied_allocation_rule_id") @db.Uuid
+
+  /// Mapa `dimensão -> FinancialEntryDimensionSource`. Diz quem decidiu cada campo.
+  classificationSources Json? @map("classification_sources")
+
+  /// Sugestões que acompanham o título para a etapa de pagamento. Nenhuma delas
+  /// autoriza, agenda ou executa coisa alguma.
+  financialAccountId String? @map("financial_account_id") @db.Uuid
+  paymentMethodId    String? @map("payment_method_id") @db.Uuid
+  receiptMethodId    String? @map("receipt_method_id") @db.Uuid
+
+  /// Dados de cobrança copiados do documento, para conferência. Continuam mascarados
+  /// para quem não tem permissão de dados sensíveis.
+  barcode       String?
+  digitableLine String? @map("digitable_line")
+  pixKey        String? @map("pix_key")
+
+  /// `true` quando o valor superou o limite do vínculo do fornecedor.
+  requiresApproval Boolean   @default(false) @map("requires_approval")
+  approvedBy       String?   @map("approved_by") @db.Uuid
+  approvedAt       DateTime? @map("approved_at")
+
+  cancellationReason String?   @map("cancellation_reason")
+  cancelledBy        String?   @map("cancelled_by") @db.Uuid
+  cancelledAt        DateTime? @map("cancelled_at")
+
+  openedAt  DateTime? @map("opened_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company      Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  sourceIntakeDocument IntakeDocument? @relation(fields: [sourceIntakeDocumentId], references: [id])
+  supplier             Supplier?       @relation(fields: [supplierId], references: [id])
+  customer             Customer?       @relation(fields: [customerId], references: [id])
+
+  installments  FinancialEntryInstallment[]
+  allocations   FinancialEntryAllocation[]
+  withholdings  FinancialEntryWithholding[]
+  statusHistory FinancialEntryStatusHistory[]
+
+  @@index([organizationId, companyId, status])
+  @@index([companyId, direction, status])
+  @@index([supplierId])
+  @@index([customerId])
+  @@map("financial_entries")
+}
+
+/// Parcela do lançamento. Um lançamento à vista tem uma parcela — assim relatórios e
+/// telas leem sempre a mesma estrutura, sem caso especial.
+model FinancialEntryInstallment {
+  id      String @id @default(uuid()) @db.Uuid
+  entryId String @map("entry_id") @db.Uuid
+
+  installmentNumber Int      @map("installment_number")
+  totalInstallments Int      @map("total_installments")
+  dueDate           DateTime @map("due_date")
+
+  grossAmount    Decimal @map("gross_amount") @db.Decimal(18, 2)
+  discountAmount Decimal @default(0) @map("discount_amount") @db.Decimal(18, 2)
+  netAmount      Decimal @map("net_amount") @db.Decimal(18, 2)
+
+  /// Código de cobrança específico desta parcela, quando o documento traz um por parcela.
+  barcode       String?
+  digitableLine String? @map("digitable_line")
+
+  status FinancialEntryInstallmentStatus @default(OPEN)
+  notes  String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  entry FinancialEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  @@unique([entryId, installmentNumber])
+  @@index([entryId])
+  @@index([dueDate])
+  @@map("financial_entry_installments")
+}
+
+/// Rateio **materializado** do lançamento.
+///
+/// A regra de rateio pode mudar depois; o que foi aplicado a este título, não. Por isso o
+/// resultado é gravado aqui em vez de recalculado a cada leitura.
+model FinancialEntryAllocation {
+  id      String @id @default(uuid()) @db.Uuid
+  entryId String @map("entry_id") @db.Uuid
+
+  targetType AllocationTargetType @map("target_type")
+
+  costCenterId   String? @map("cost_center_id") @db.Uuid
+  resultCenterId String? @map("result_center_id") @db.Uuid
+  projectId      String? @map("project_id") @db.Uuid
+  businessUnitId String? @map("business_unit_id") @db.Uuid
+  categoryId     String? @map("category_id") @db.Uuid
+  accountPlanId  String? @map("account_plan_id") @db.Uuid
+
+  percentage Decimal @db.Decimal(7, 4)
+  amount     Decimal @db.Decimal(18, 2)
+
+  sortOrder Int     @default(0) @map("sort_order")
+  notes     String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  entry FinancialEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  @@index([entryId])
+  @@map("financial_entry_allocations")
+}
+
+/// Retenção calculada para o lançamento.
+///
+/// O cálculo é uma sugestão: enquanto a retenção estiver `SUGGESTED`, ela **não** entra no
+/// valor líquido. Só a confirmação humana faz o desconto valer.
+model FinancialEntryWithholding {
+  id      String @id @default(uuid()) @db.Uuid
+  entryId String @map("entry_id") @db.Uuid
+
+  /// Retenção cadastrada no vínculo do fornecedor que originou o cálculo, quando houve.
+  supplierTaxWithholdingId String? @map("supplier_tax_withholding_id") @db.Uuid
+
+  taxType         TaxWithholdingType @map("tax_type")
+  calculationBase Decimal            @map("calculation_base") @db.Decimal(18, 2)
+  rate            Decimal            @db.Decimal(5, 2)
+  amount          Decimal            @db.Decimal(18, 2)
+
+  /// Valor mínimo abaixo do qual a retenção não se aplica, copiado do cadastro.
+  minimumAmount Decimal? @map("minimum_amount") @db.Decimal(18, 2)
+
+  status FinancialEntryWithholdingStatus @default(SUGGESTED)
+
+  decisionReason String?   @map("decision_reason")
+  decidedBy      String?   @map("decided_by") @db.Uuid
+  decidedAt      DateTime? @map("decided_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  entry FinancialEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  @@unique([entryId, taxType])
+  @@index([entryId])
+  @@map("financial_entry_withholdings")
+}
+
+/// Histórico de situação do lançamento. Quem mudou, quando e por quê.
+model FinancialEntryStatusHistory {
+  id      String @id @default(uuid()) @db.Uuid
+  entryId String @map("entry_id") @db.Uuid
+
+  previousStatus FinancialEntryStatus?
+  newStatus      FinancialEntryStatus
+
+  reason    String?
+  changedBy String?  @map("changed_by") @db.Uuid
+  changedAt DateTime @default(now()) @map("changed_at")
+
+  entry FinancialEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  @@index([entryId])
+  @@map("financial_entry_status_history")
+}
+
+/// Parâmetros do processamento, por empresa.
+model DocumentProcessingSettings {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  companyId      String @unique @map("company_id") @db.Uuid
+
+  /// Aplica a regra de classificação automática que casar. Desligado, a classificação
+  /// vem apenas dos padrões do cadastro e do que a pessoa escolher.
+  autoClassificationEnabled Boolean @default(true) @map("auto_classification_enabled")
+  /// Aplica o rateio padrão do vínculo/categoria.
+  autoAllocationEnabled     Boolean @default(true) @map("auto_allocation_enabled")
+  /// Calcula as retenções do vínculo. O cálculo continua sendo sugestão.
+  autoWithholdingEnabled    Boolean @default(true) @map("auto_withholding_enabled")
+
+  /// Abre o lançamento direto em `OPEN` quando não há nada pendente. Desligado, todo
+  /// lançamento nasce em `DRAFT` e alguém precisa abri-lo.
+  autoOpenWhenComplete Boolean @default(false) @map("auto_open_when_complete")
+
+  /// Acima deste valor o lançamento exige conferência. Nulo = sem limite próprio;
+  /// vale o limite do vínculo do fornecedor, se houver.
+  approvalThresholdAmount Decimal? @map("approval_threshold_amount") @db.Decimal(18, 2)
+
+  requireCategory   Boolean @default(true) @map("require_category")
+  requireCostCenter Boolean @default(false) @map("require_cost_center")
+  requireProject    Boolean @default(false) @map("require_project")
+
+  /// Impede abrir um lançamento cuja soma das parcelas não bate com o valor líquido.
+  blockInstallmentMismatch Boolean @default(true) @map("block_installment_mismatch")
+
+  /// Prazo padrão em dias quando o documento não traz vencimento.
+  defaultPaymentTermDays Int @default(30) @map("default_payment_term_days")
+
+  createdBy String?  @map("created_by") @db.Uuid
+  updatedBy String?  @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company      Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@map("document_processing_settings")
 }
