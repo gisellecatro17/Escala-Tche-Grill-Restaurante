@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { PrismaModule } from '../../prisma/prisma.module';
+import { ApprovalsModule } from '../approvals/approvals.module';
 import { AuditModule } from '../audit/audit.module';
 import { DocumentIntakeModule } from '../document-intake/document-intake.module';
 import { FinancialStructureModule } from '../financial-structure/financial-structure.module';
@@ -23,6 +24,7 @@ import { WithholdingCalculatorService } from './withholding-calculator.service';
   imports: [
     PrismaModule,
     AuditModule,
+    ApprovalsModule,
     DocumentIntakeModule,
     FinancialStructureModule,
   ],

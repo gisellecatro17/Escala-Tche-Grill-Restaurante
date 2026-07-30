@@ -102,7 +102,9 @@ function buildService(
     },
     financialEntry: {
       findUnique: jest.fn().mockResolvedValue(options.existingEntry ?? null),
+      update: jest.fn().mockResolvedValue(created),
     },
+    financialEntryStatusHistory: { create: jest.fn().mockResolvedValue({}) },
     documentProcessingSettings: {
       findUnique: jest.fn().mockResolvedValue(settings),
       create: jest.fn().mockResolvedValue(settings),
@@ -138,6 +140,9 @@ function buildService(
     materialize: jest.fn().mockResolvedValue(options.allocations ?? []),
   } as unknown as AllocationApplicationService;
 
+  // Sem fluxo de aprovação por padrão: os testes do gate ficam no módulo de autorizações.
+  const approvals = { openFor: jest.fn().mockResolvedValue(null) };
+
   const service = new DocumentProcessingService(
     prisma as never,
     audit as never,
@@ -145,9 +150,18 @@ function buildService(
     withholdings,
     new InstallmentGeneratorService(),
     allocations,
+    approvals as never,
   );
 
-  return { service, prisma, tx, audit, classification, withholdings };
+  return {
+    service,
+    prisma,
+    tx,
+    audit,
+    classification,
+    withholdings,
+    approvals,
+  };
 }
 
 describe('Motor do processamento', () => {
@@ -355,6 +369,34 @@ describe('Motor do processamento', () => {
       }),
     );
     expect(tx.intakeDocumentStatusHistory.create).toHaveBeenCalled();
+  });
+
+  it('abre a solicitação de autorização do lançamento gerado', async () => {
+    const { service, approvals } = buildService();
+
+    await service.process('doc-1', {}, ACTOR);
+
+    expect(approvals.openFor).toHaveBeenCalled();
+  });
+
+  it('coloca o lançamento em conferência quando um fluxo de aprovação corresponde', async () => {
+    const { service, approvals, prisma } = buildService({
+      settings: { autoOpenWhenComplete: true },
+    });
+    approvals.openFor.mockResolvedValue({ id: 'approval-1' });
+
+    await service.process('doc-1', {}, ACTOR);
+
+    // A abertura automática não vence a governança: o título volta para conferência.
+    expect(prisma.financialEntry.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'PENDING_APPROVAL',
+          requiresApproval: true,
+          openedAt: null,
+        }),
+      }),
+    );
   });
 
   it('registra na auditoria que nenhum pagamento foi autorizado', async () => {

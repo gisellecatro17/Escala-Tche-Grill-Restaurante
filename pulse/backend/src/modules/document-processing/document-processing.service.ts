@@ -18,6 +18,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import type { RequestUser } from '../../common/types/authenticated-request';
 import { AuditService } from '../audit/audit.service';
+import { ApprovalRequestsService } from '../approvals/approval-requests.service';
 import { AllocationApplicationService } from './allocation-application.service';
 import { EntryClassificationService } from './entry-classification.service';
 import { InstallmentGeneratorService } from './installment-generator.service';
@@ -48,6 +49,7 @@ export class DocumentProcessingService {
     private readonly withholdings: WithholdingCalculatorService,
     private readonly installments: InstallmentGeneratorService,
     private readonly allocations: AllocationApplicationService,
+    private readonly approvals: ApprovalRequestsService,
   ) {}
 
   // ── Parâmetros ────────────────────────────────────────────────────────────
@@ -314,6 +316,37 @@ export class DocumentProcessingService {
       return created;
     });
 
+    // Fluxo do módulo de Autorizações: A Processar → Autorizações → Contas a Pagar.
+    // Quando um fluxo de aprovação corresponde ao lançamento, o título passa a aguardar
+    // autorização — mesmo que a empresa tenha pedido abertura automática.
+    const approval = await this.approvals.openFor(entry, actor);
+
+    if (approval && entry.status !== FinancialEntryStatus.PENDING_APPROVAL) {
+      await this.prisma.$transaction([
+        this.prisma.financialEntry.update({
+          where: { id: entry.id },
+          data: {
+            status: FinancialEntryStatus.PENDING_APPROVAL,
+            requiresApproval: true,
+            openedAt: null,
+          },
+        }),
+        this.prisma.financialEntryStatusHistory.create({
+          data: {
+            entryId: entry.id,
+            previousStatus: entry.status,
+            newStatus: FinancialEntryStatus.PENDING_APPROVAL,
+            reason: 'Lançamento encaminhado para o fluxo de autorização.',
+            changedBy: actor.id,
+          },
+        }),
+      ]);
+
+      entry.status = FinancialEntryStatus.PENDING_APPROVAL;
+      entry.requiresApproval = true;
+      entry.openedAt = null;
+    }
+
     await this.audit.log({
       organizationId: document.organizationId,
       companyId: document.companyId,
@@ -327,8 +360,9 @@ export class DocumentProcessingService {
         status: entry.status,
         netAmount: numberOf(entry.netAmount),
         installments: entry.installments.length,
-        // Explícito no log: o título nasce em aberto, nada foi pago.
-        note: 'Título em aberto. Nenhum pagamento autorizado, agendado ou executado.',
+        approvalRequestId: approval?.id ?? null,
+        // Explícito no log: nenhum dinheiro se moveu.
+        note: 'Título criado. Nenhum pagamento autorizado, agendado ou executado.',
       },
       reason: dto.notes ?? null,
     });

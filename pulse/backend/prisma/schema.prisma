@@ -915,6 +915,11 @@ model Organization {
   financialEntries           FinancialEntry[]
   documentProcessingSettings DocumentProcessingSettings[]
 
+  approvalFlows       ApprovalFlow[]
+  approvalRequests    ApprovalRequest[]
+  approvalDelegations ApprovalDelegation[]
+  approvalSettings    ApprovalSettings[]
+
   @@map("organizations")
 }
 
@@ -1046,6 +1051,11 @@ model Company {
 
   financialEntries           FinancialEntry[]
   documentProcessingSettings DocumentProcessingSettings?
+
+  approvalFlows       ApprovalFlow[]
+  approvalRequests    ApprovalRequest[]
+  approvalDelegations ApprovalDelegation[]
+  approvalSettings    ApprovalSettings?
 
   @@unique([organizationId, internalCode])
   @@index([organizationId])
@@ -5330,6 +5340,8 @@ model FinancialEntry {
   withholdings  FinancialEntryWithholding[]
   statusHistory FinancialEntryStatusHistory[]
 
+  approvalRequests ApprovalRequest[]
+
   @@index([organizationId, companyId, status])
   @@index([companyId, direction, status])
   @@index([supplierId])
@@ -5495,4 +5507,478 @@ model DocumentProcessingSettings {
   company      Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@map("document_processing_settings")
+}
+
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║  AUTORIZAÇÕES                                                            ║
+// ║  Entre "A Processar" e "Contas a Pagar": quem pode aprovar, até quanto,  ║
+// ║  em que ordem e o que precisa acontecer antes de o título virar dívida.  ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+
+/// Situação da solicitação de aprovação (seção 4).
+enum ApprovalRequestStatus {
+  /// Criada, nenhuma etapa começou.
+  PENDING
+  /// Alguma etapa está em andamento.
+  IN_PROGRESS
+  /// Todas as etapas obrigatórias foram aprovadas.
+  APPROVED
+  /// Reprovada em alguma etapa. O lançamento não segue.
+  REJECTED
+  /// Um aprovador pediu ajuste ou documento e devolveu a bola.
+  WAITING_INFORMATION
+  /// Cancelada com motivo.
+  CANCELLED
+  /// Passou da data limite sem decisão.
+  EXPIRED
+
+  @@map("approval_request_status")
+}
+
+/// Situação de cada etapa da solicitação.
+enum ApprovalStepStatus {
+  PENDING
+  IN_PROGRESS
+  APPROVED
+  REJECTED
+  WAITING_INFORMATION
+  /// Etapa não obrigatória que a faixa de valor dispensou.
+  SKIPPED
+
+  @@map("approval_step_status")
+}
+
+/// Como a etapa identifica quem pode aprovar.
+enum ApprovalApproverType {
+  /// Uma pessoa específica.
+  SPECIFIC_USER
+  /// Qualquer pessoa com o perfil informado, na empresa do lançamento.
+  ROLE
+  /// Qualquer pessoa com a permissão `approvals.approve` na empresa.
+  ANY_WITH_PERMISSION
+
+  @@map("approval_approver_type")
+}
+
+/// Ação registrada no histórico (seção 15).
+enum ApprovalActionType {
+  CREATED
+  APPROVED
+  REJECTED
+  CHANGES_REQUESTED
+  DOCUMENTS_REQUESTED
+  DELEGATED
+  FORWARDED
+  COMMENTED
+  CANCELLED
+  RESTARTED
+  EXPIRED
+  FLOW_CHANGED
+  APPROVERS_CHANGED
+  THRESHOLD_CHANGED
+  PRIORITY_CHANGED
+
+  @@map("approval_action_type")
+}
+
+/// Urgência da solicitação — usada na ordenação da fila e nas regras por urgência.
+enum ApprovalPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+
+  @@map("approval_priority")
+}
+
+/// Motivo de uma delegação (seção 11).
+enum ApprovalDelegationReason {
+  VACATION
+  LEAVE
+  TRAVEL
+  ABSENCE
+  OTHER
+
+  @@map("approval_delegation_reason")
+}
+
+/// Canal por onde a notificação sairá. Nenhum envio real acontece nesta etapa —
+/// a estrutura existe para o módulo de notificações que virá depois (seção 14).
+enum ApprovalNotificationChannel {
+  EMAIL
+  PUSH
+  WHATSAPP
+  TEAMS
+  SLACK
+
+  @@map("approval_notification_channel")
+}
+
+/// Fluxo de aprovação configurável (seções 6 e 7).
+///
+/// O fluxo é escolhido por **casamento de critérios**: o de maior prioridade cujos
+/// critérios batem com o lançamento vence. Critérios nulos significam "qualquer" — um
+/// fluxo sem nenhum critério é o fluxo padrão da empresa.
+model ApprovalFlow {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  companyId      String @map("company_id") @db.Uuid
+
+  name        String
+  description String?
+
+  // ── Critérios de casamento (seção 7) ──
+  categoryId        String? @map("category_id") @db.Uuid
+  costCenterId      String? @map("cost_center_id") @db.Uuid
+  projectId         String? @map("project_id") @db.Uuid
+  businessUnitId    String? @map("business_unit_id") @db.Uuid
+  financialNatureId String? @map("financial_nature_id") @db.Uuid
+  contractId        String? @map("contract_id") @db.Uuid
+  supplierId        String? @map("supplier_id") @db.Uuid
+  paymentMethodId   String? @map("payment_method_id") @db.Uuid
+
+  documentType IntakeDocumentType?      @map("document_type")
+  direction    FinancialEntryDirection?
+
+  minimumAmount Decimal? @map("minimum_amount") @db.Decimal(18, 2)
+  maximumAmount Decimal? @map("maximum_amount") @db.Decimal(18, 2)
+
+  /// Só se aplica a solicitações com urgência igual ou maior.
+  minimumPriority ApprovalPriority? @map("minimum_priority")
+
+  /// Menor número = maior prioridade. Empate resolve pelo fluxo mais específico.
+  priority Int @default(100)
+
+  /// Prazo padrão das etapas, em horas. Cada etapa pode ter o seu.
+  defaultDeadlineHours Int @default(48) @map("default_deadline_hours")
+
+  /// Canais de notificação declarados. Nada é enviado nesta etapa.
+  notificationChannels ApprovalNotificationChannel[] @map("notification_channels")
+
+  isDefault Boolean      @default(false) @map("is_default")
+  status    RecordStatus @default(ACTIVE)
+
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company      Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  steps    ApprovalFlowStep[]
+  requests ApprovalRequest[]
+
+  @@index([organizationId, companyId, status])
+  @@index([companyId, priority])
+  @@map("approval_flows")
+}
+
+/// Etapa do fluxo (seções 5 e 6).
+///
+/// A alçada financeira mora aqui: uma etapa com `minimumAmount` de 10.000 só entra em
+/// lançamentos acima disso. Assim "até R$ 1.000 → Supervisor; acima de R$ 100.000 →
+/// Diretor + Sócio" é um único fluxo com etapas de faixas diferentes, e não há duas fontes
+/// de verdade sobre quem aprova o quê.
+model ApprovalFlowStep {
+  id     String @id @default(uuid()) @db.Uuid
+  flowId String @map("flow_id") @db.Uuid
+
+  stepOrder Int    @map("step_order")
+  name      String
+
+  approverType ApprovalApproverType @default(ROLE) @map("approver_type")
+  approverUserId  String?           @map("approver_user_id") @db.Uuid
+  approverRoleId  String?           @map("approver_role_id") @db.Uuid
+
+  /// Quantas aprovações distintas esta etapa exige. `2` é a dupla aprovação.
+  requiredApprovals Int @default(1) @map("required_approvals")
+
+  /// Etapa não obrigatória pode ser dispensada quando a faixa de valor não a alcança.
+  isMandatory Boolean @default(true) @map("is_mandatory")
+
+  /// Faixa de valor em que a etapa se aplica. Nula = sempre.
+  minimumAmount Decimal? @map("minimum_amount") @db.Decimal(18, 2)
+  maximumAmount Decimal? @map("maximum_amount") @db.Decimal(18, 2)
+
+  /// Prazo próprio da etapa, em horas. Nulo = usa o do fluxo.
+  deadlineHours Int? @map("deadline_hours")
+
+  /// Impede que quem criou o lançamento aprove a própria solicitação.
+  blockSelfApproval Boolean @default(true) @map("block_self_approval")
+
+  notes String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  flow ApprovalFlow @relation(fields: [flowId], references: [id], onDelete: Cascade)
+
+  requestSteps ApprovalRequestStep[]
+
+  @@unique([flowId, stepOrder])
+  @@index([flowId])
+  @@map("approval_flow_steps")
+}
+
+/// Solicitação de aprovação de um lançamento financeiro.
+///
+/// Um lançamento tem **uma** solicitação viva por vez: `entryId` é único enquanto a
+/// solicitação não é encerrada. Reiniciar o fluxo encerra a anterior e cria outra, para que
+/// o histórico das duas continue existindo.
+model ApprovalRequest {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  companyId      String @map("company_id") @db.Uuid
+
+  entryId String @map("entry_id") @db.Uuid
+  flowId  String @map("flow_id") @db.Uuid
+
+  /// Sequência da solicitação para o mesmo lançamento. Reiniciar incrementa.
+  attempt Int @default(1)
+
+  status   ApprovalRequestStatus @default(PENDING)
+  priority ApprovalPriority      @default(NORMAL)
+
+  /// Valor considerado na escolha do fluxo e das alçadas. Copiado do lançamento no
+  /// momento da abertura: mudar o lançamento depois não reescreve o que foi decidido.
+  amount Decimal @db.Decimal(18, 2)
+
+  currentStepOrder Int? @map("current_step_order")
+
+  /// Data limite da solicitação inteira, derivada dos prazos das etapas.
+  dueAt       DateTime? @map("due_at")
+  startedAt   DateTime? @map("started_at")
+  decidedAt   DateTime? @map("decided_at")
+  /// Tempo total até a decisão, em segundos. Gravado para o indicador de tempo médio não
+  /// depender de recalcular a diferença em toda consulta.
+  decisionSeconds Int?  @map("decision_seconds")
+
+  requestedBy String? @map("requested_by") @db.Uuid
+
+  rejectionReason    String? @map("rejection_reason")
+  cancellationReason String? @map("cancellation_reason")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company      Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  entry        FinancialEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  flow         ApprovalFlow   @relation(fields: [flowId], references: [id])
+
+  steps    ApprovalRequestStep[]
+  comments ApprovalComment[]
+  history  ApprovalHistory[]
+
+  @@unique([entryId, attempt])
+  @@index([organizationId, companyId, status])
+  @@index([companyId, status, dueAt])
+  @@index([entryId])
+  @@map("approval_requests")
+}
+
+/// Etapa materializada da solicitação.
+///
+/// É cópia do que a etapa do fluxo dizia **no momento da abertura**. Editar o fluxo depois
+/// não muda uma solicitação em andamento: quem aprovou aprovou sob as regras vigentes.
+model ApprovalRequestStep {
+  id        String @id @default(uuid()) @db.Uuid
+  requestId String @map("request_id") @db.Uuid
+  /// Etapa de origem. Nula se a etapa do fluxo foi excluída depois.
+  flowStepId String? @map("flow_step_id") @db.Uuid
+
+  stepOrder Int    @map("step_order")
+  name      String
+
+  approverType   ApprovalApproverType @map("approver_type")
+  approverUserId String?              @map("approver_user_id") @db.Uuid
+  approverRoleId String?              @map("approver_role_id") @db.Uuid
+
+  requiredApprovals Int     @default(1) @map("required_approvals")
+  approvalsGiven    Int     @default(0) @map("approvals_given")
+  isMandatory       Boolean @default(true) @map("is_mandatory")
+  blockSelfApproval Boolean @default(true) @map("block_self_approval")
+
+  status ApprovalStepStatus @default(PENDING)
+
+  /// Quem efetivamente decidiu, quando a etapa exige uma única aprovação.
+  decidedBy       String?   @map("decided_by") @db.Uuid
+  decidedAt       DateTime? @map("decided_at")
+  decisionComment String?   @map("decision_comment")
+
+  /// Preenchido quando quem decidiu agiu por delegação.
+  actedOnBehalfOf String? @map("acted_on_behalf_of") @db.Uuid
+
+  dueAt     DateTime? @map("due_at")
+  startedAt DateTime? @map("started_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  request  ApprovalRequest   @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  flowStep ApprovalFlowStep? @relation(fields: [flowStepId], references: [id])
+
+  approvals ApprovalStepApproval[]
+
+  @@unique([requestId, stepOrder])
+  @@index([requestId])
+  @@index([status, dueAt])
+  @@map("approval_request_steps")
+}
+
+/// Cada aprovação individual dentro de uma etapa.
+///
+/// Existe por causa da **dupla aprovação**: com duas assinaturas exigidas, guardar só
+/// `decidedBy` perderia quem foi o segundo — e é exatamente o segundo que a governança
+/// quer poder auditar.
+model ApprovalStepApproval {
+  id           String @id @default(uuid()) @db.Uuid
+  requestStepId String @map("request_step_id") @db.Uuid
+
+  approvedBy      String    @map("approved_by") @db.Uuid
+  /// Preenchido quando a aprovação foi dada por delegação.
+  onBehalfOf      String?   @map("on_behalf_of") @db.Uuid
+  delegationId    String?   @map("delegation_id") @db.Uuid
+  comment         String?
+  approvedAt      DateTime  @default(now()) @map("approved_at")
+
+  requestStep ApprovalRequestStep @relation(fields: [requestStepId], references: [id], onDelete: Cascade)
+
+  @@unique([requestStepId, approvedBy])
+  @@index([requestStepId])
+  @@map("approval_step_approvals")
+}
+
+/// Comentário na solicitação (seção 10).
+model ApprovalComment {
+  id        String @id @default(uuid()) @db.Uuid
+  requestId String @map("request_id") @db.Uuid
+
+  /// Etapa a que o comentário se refere, quando há uma.
+  stepOrder Int? @map("step_order")
+
+  authorId String @map("author_id") @db.Uuid
+  text     String
+
+  /// Anexos do comentário, reaproveitando a tabela genérica `attachments`.
+  attachmentIds String[] @map("attachment_ids") @db.Uuid
+
+  /// `true` quando o comentário acompanha um pedido de documento.
+  isDocumentRequest Boolean @default(false) @map("is_document_request")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  request ApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([requestId])
+  @@map("approval_comments")
+}
+
+/// Delegação de aprovações por período (seção 11).
+///
+/// A delegação não transfere permissão: quem recebe precisa ter `approvals.approve` na
+/// empresa. Ela apenas permite agir **no lugar de** outra pessoa, e toda aprovação feita
+/// assim fica marcada com `on_behalf_of`.
+model ApprovalDelegation {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  companyId      String @map("company_id") @db.Uuid
+
+  delegatorId String @map("delegator_id") @db.Uuid
+  delegateId  String @map("delegate_id") @db.Uuid
+
+  reason      ApprovalDelegationReason @default(ABSENCE)
+  description String?
+
+  startsAt DateTime @map("starts_at")
+  endsAt   DateTime @map("ends_at")
+
+  /// Teto próprio da delegação. Nulo = vale o limite de quem delegou.
+  maximumAmount Decimal? @map("maximum_amount") @db.Decimal(18, 2)
+
+  status RecordStatus @default(ACTIVE)
+
+  revokedBy String?   @map("revoked_by") @db.Uuid
+  revokedAt DateTime? @map("revoked_at")
+
+  createdBy String?  @map("created_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company      Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, delegateId, status])
+  @@index([companyId, delegatorId, status])
+  @@map("approval_delegations")
+}
+
+/// Histórico de tudo o que aconteceu na solicitação (seção 15).
+///
+/// Tabela separada dos comentários de propósito: comentário é conversa, histórico é
+/// registro. Misturar os dois faria uma conversa longa esconder a linha do tempo das
+/// decisões.
+model ApprovalHistory {
+  id        String @id @default(uuid()) @db.Uuid
+  requestId String @map("request_id") @db.Uuid
+
+  action    ApprovalActionType
+  stepOrder Int?    @map("step_order")
+
+  actorId    String? @map("actor_id") @db.Uuid
+  onBehalfOf String? @map("on_behalf_of") @db.Uuid
+
+  previousStatus ApprovalRequestStatus? @map("previous_status")
+  newStatus      ApprovalRequestStatus? @map("new_status")
+
+  reason   String?
+  metadata Json?
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  request ApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([requestId, createdAt])
+  @@map("approval_history")
+}
+
+/// Parâmetros das autorizações, por empresa.
+model ApprovalSettings {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  companyId      String @unique @map("company_id") @db.Uuid
+
+  /// Exige aprovação de todo lançamento, mesmo sem fluxo específico. Desligado, o
+  /// lançamento sem fluxo correspondente segue direto.
+  requireApprovalForAll Boolean @default(false) @map("require_approval_for_all")
+
+  /// Valor a partir do qual a aprovação é obrigatória mesmo sem fluxo específico.
+  mandatoryAboveAmount Decimal? @map("mandatory_above_amount") @db.Decimal(18, 2)
+
+  /// Impede aprovar o que a própria pessoa criou, mesmo que a etapa permita.
+  blockSelfApprovalGlobally Boolean @default(true) @map("block_self_approval_globally")
+
+  /// Respeita o limite individual gravado no vínculo do usuário com a empresa.
+  enforceIndividualLimit Boolean @default(true) @map("enforce_individual_limit")
+
+  /// Marca como expirada a solicitação que passar da data limite.
+  expireOverdueRequests Boolean @default(true) @map("expire_overdue_requests")
+
+  defaultDeadlineHours Int @default(48) @map("default_deadline_hours")
+
+  /// Canais de notificação declarados. Nenhum envio real acontece nesta etapa.
+  notificationChannels ApprovalNotificationChannel[] @map("notification_channels")
+
+  createdBy String?  @map("created_by") @db.Uuid
+  updatedBy String?  @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company      Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@map("approval_settings")
 }

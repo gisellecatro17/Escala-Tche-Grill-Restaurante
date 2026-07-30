@@ -11,6 +11,7 @@ import { paginate } from '../../common/dto/pagination-query.dto';
 import { maskPixKeyValue } from '../../common/utils/mask.util';
 import type { RequestUser } from '../../common/types/authenticated-request';
 import { AuditService } from '../audit/audit.service';
+import { ApprovalRequestsService } from '../approvals/approval-requests.service';
 import type {
   FinancialEntryQueryDto,
   ManualWithholdingDto,
@@ -56,6 +57,7 @@ export class FinancialEntriesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly approvals: ApprovalRequestsService,
   ) {}
 
   /** Organização e empresa do lançamento, para o controlador validar a permissão. */
@@ -334,6 +336,15 @@ export class FinancialEntriesService {
     if (undecided.length > 0) {
       throw new BadRequestException(
         `Decida as retenções sugeridas (${undecided.map((item) => item.taxType).join(', ')}) antes de abrir o lançamento.`,
+      );
+    }
+
+    // Critério de aceite 9 do módulo de Autorizações: nada chega a Contas a Pagar sem
+    // concluir as etapas obrigatórias. O gate mora aqui porque abrir o título é o exato
+    // momento em que ele vira obrigação.
+    if (await this.approvals.hasPendingApproval(id)) {
+      throw new BadRequestException(
+        'Este lançamento está em autorização. Conclua o fluxo de aprovação antes de abrir o título.',
       );
     }
 

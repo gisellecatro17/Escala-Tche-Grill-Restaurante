@@ -75,8 +75,18 @@ function buildService(entry: Record<string, unknown> = {}) {
 
   const audit = { log: jest.fn().mockResolvedValue(undefined) };
 
+  // Sem aprovação pendente por padrão: cada teste que precisa do gate sobrescreve.
+  const approvals = {
+    hasPendingApproval: jest.fn().mockResolvedValue(false),
+  };
+
   return {
-    service: new FinancialEntriesService(prisma as never, audit as never),
+    approvals,
+    service: new FinancialEntriesService(
+      prisma as never,
+      audit as never,
+      approvals as never,
+    ),
     prisma,
     tx,
     audit,
@@ -115,6 +125,17 @@ describe('Lançamento financeiro — ciclo de vida', () => {
     });
 
     await expect(service.open('entry-1', buildActor())).rejects.toThrow('IRRF');
+  });
+
+  it('não abre enquanto houver autorização pendente', async () => {
+    const { service, approvals } = buildService({
+      withholdings: [{ id: 'wh-1', taxType: 'IRRF', status: 'CONFIRMED' }],
+    });
+    approvals.hasPendingApproval.mockResolvedValue(true);
+
+    await expect(service.open('entry-1', buildActor())).rejects.toThrow(
+      'está em autorização',
+    );
   });
 
   it('abre quando todas as retenções foram decididas', async () => {
