@@ -684,9 +684,28 @@ export class StructureImportService {
         if (outcome.message)
           messages.push(`Linha ${row.rowNumber}: ${outcome.message}`);
       }
+
+      // Uma conta que ganhou filha deixa de ser folha. A criação avulsa já faz isso; a
+      // importação precisa fazer também, senão o próprio diagnóstico acusaria a árvore
+      // recém-importada como inconsistente.
+      if (
+        parentId &&
+        mode !== StructureImportMode.SIMULATE &&
+        batch.entity === HierarchyEntity.ACCOUNT_PLAN
+      ) {
+        await this.promoteToSynthetic(parentId);
+      }
     }
 
     return { created, updated, skipped, messages };
+  }
+
+  /** Converte a conta em sintética quando ela passa a agrupar outras. */
+  private async promoteToSynthetic(accountId: string) {
+    await this.prisma.financialAccountPlan.updateMany({
+      where: { id: accountId, accountKind: AccountKind.ANALYTICAL },
+      data: { accountKind: AccountKind.SYNTHETIC, acceptsEntries: false },
+    });
   }
 
   /** Id de um registro já cadastrado pelo código, para reaproveitar como pai. */

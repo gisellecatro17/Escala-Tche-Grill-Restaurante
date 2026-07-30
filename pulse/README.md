@@ -336,15 +336,25 @@ telefone/e-mail dos contatos mascarados.
 
 Este é o módulo que alimenta praticamente todo o resto do sistema. A ideia central é
 separar dimensões que os ERPs tradicionais costumam misturar, de modo que um mesmo
-lançamento possa ser analisado por vários ângulos ao mesmo tempo:
+lançamento possa ser analisado por vários ângulos ao mesmo tempo. As dimensões são
+**independentes**, não aninhadas: uma despesa pode ter categoria, centro de custo,
+centro de resultado, projeto e unidade de negócio ao mesmo tempo.
 
 ```
-Plano de contas → Categoria → Subcategoria → Centro de custo → Centro de resultado
-                → Projeto → Unidade de negócio → Natureza financeira → Tags
+Plano de contas ─┐
+Categoria ───────┤
+Centro de custo ─┼─→ um único lançamento, analisado por qualquer combinação
+Centro de result.┤
+Projeto ─────────┤
+Unidade de neg. ─┤
+Natureza / Tags ─┘
 ```
 
-Rotas do front-end: `/cadastros/plano-de-contas`, `/cadastros/categorias`,
-`/cadastros/centros-de-custo`, `/cadastros/centros-de-resultado`, `/cadastros/projetos`,
+Rotas do front-end: `/cadastros/estrutura-financeira` (visão geral),
+`/cadastros/estrutura-financeira/importar` (assistente em 7 etapas),
+`/cadastros/estrutura-financeira/duplicar`, `/cadastros/estrutura-financeira/historico`,
+`/cadastros/plano-de-contas`, `/cadastros/categorias`, `/cadastros/centros-de-custo`,
+`/cadastros/centros-de-resultado`, `/cadastros/projetos`,
 `/cadastros/unidades-de-negocio`, `/cadastros/naturezas-financeiras`,
 `/cadastros/tags-financeiras`, `/cadastros/rateios` e
 `/cadastros/regras-de-classificacao`.
@@ -352,58 +362,153 @@ Rotas do front-end: `/cadastros/plano-de-contas`, `/cadastros/categorias`,
 Todas as árvores (plano de contas, categorias, centros de custo, centros de resultado e
 unidades de negócio) têm **profundidade ilimitada**, podem ser expandidas/recolhidas,
 movidas, duplicadas, importadas e exportadas — e qualquer movimentação grava
-automaticamente uma **versão** da estrutura anterior, que pode ser restaurada depois.
+automaticamente uma **versão** da estrutura anterior, que pode ser restaurada depois. O
+plano de contas tem ainda uma **visão em tabela** ao lado da visão em árvore.
 
 Principais endpoints da API (todos documentados no Swagger):
 
 | Rota | Descrição |
 | --- | --- |
-| `GET/POST /account-plans` · `GET /account-plans/tree` | Plano de contas (lista e árvore aninhada) |
-| `PATCH/DELETE /account-plans/:id` | Edição e exclusão lógica (bloqueada se houver filhas ou uso) |
-| `POST /account-plans/:id/move` \| `/duplicate` | Movimentação na árvore (versiona antes) e duplicação com subárvore |
-| `GET/POST /categories` · `GET /categories/tree` · `POST /categories/:id/move` \| `/duplicate` | Categorias e subcategorias (mesma hierarquia) |
-| `GET/POST /cost-centers` · `GET /cost-centers/tree` · `POST /cost-centers/:id/move` | Centros de custo |
-| `GET/POST /result-centers` · `GET /result-centers/tree` · `POST /result-centers/:id/move` | Centros de resultado |
+| `GET/POST /financial-account-plans` · `GET .../tree` | Plano de contas (lista e árvore aninhada) |
+| `GET /financial-account-plans/next-code` | Prévia do próximo código, gerada pela mesma função que a criação usa |
+| `PATCH/DELETE /financial-account-plans/:id` | Edição e exclusão lógica (bloqueada se houver filhas ou uso) |
+| `POST /financial-account-plans/:id/move` \| `/duplicate` | Movimentação na árvore (versiona antes) e duplicação com subárvore |
+| `GET/POST /financial-account-plan-versions` | Versões do plano, cada uma com seu próprio ciclo de vida |
+| `POST /financial-account-plan-versions/:id/activate` \| `/archive` \| `/duplicate` | Ativação exclusiva, arquivamento e duplicação com as contas |
+| `GET/POST /financial-categories` · `GET .../tree` · `POST .../:id/move` \| `/duplicate` | Categorias e subcategorias (mesma hierarquia) |
+| `GET/POST /cost-centers` · `GET .../tree` · `POST .../:id/move` | Centros de custo |
+| `GET/POST /result-centers` · `GET .../tree` · `POST .../:id/move` | Centros de resultado |
 | `GET/POST/PATCH/DELETE /projects` | Projetos (valor realizado e margem ficam a cargo do módulo financeiro futuro) |
-| `GET/POST /business-units` · `GET /business-units/tree` | Unidades de negócio |
+| `POST /projects/:id/pause` \| `/resume` \| `/complete` \| `/cancel` | Ciclo operacional do projeto, com transições validadas |
+| `GET/POST /business-units` · `GET .../tree` | Unidades de negócio |
 | `GET/POST/PATCH/DELETE /financial-natures` | Catálogo de naturezas financeiras |
-| `GET/POST/PATCH/DELETE /financial-tags` · `POST /financial-tags/link` \| `/unlink` · `GET /financial-tags/:id/entities` | Tags e seus vínculos com qualquer cadastro da estrutura |
+| `GET/POST/PATCH/DELETE /financial-tags` · `POST .../link` \| `/unlink` | Tags e seus vínculos com qualquer cadastro da estrutura |
 | `GET/POST/PATCH/DELETE /allocation-rules` | Rateios padrão (percentuais validados para fechar 100%) |
-| `GET/POST/PATCH/DELETE /classification-rules` | Regras de classificação automática |
-| `POST /classification-rules/simulate` | Simula a classificação de um lançamento hipotético — **nada é persistido** |
-| `POST /financial-structure/imports` · `POST /financial-structure/imports/:id/apply` | Importação em duas etapas: valida e pré-visualiza, depois aplica |
-| `GET /financial-structure/export` | Exportação em CSV ou JSON |
-| `GET/POST /financial-structure/versions` · `POST /financial-structure/versions/:id/restore` | Versionamento e restauração das árvores |
+| `GET/POST/PATCH/DELETE /classification-rules` | Regras de classificação, com condições e ações próprias |
+| `POST /classification-rules/test` · `GET .../conflicts` | Testa a regra contra um lançamento hipotético e detecta conflitos — **nada é persistido** |
+| `GET /:id/usage` (todos os cadastros) | Vínculos do registro, com `inUse` e `canDelete` |
+| `POST /:id/activate` \| `/deactivate` \| `/archive` (todos os cadastros) | Ciclo de vida — **nunca exclui nada** |
+| `POST /financial-structure/imports` | Etapas 1-2: lê XLSX/CSV/JSON e sugere o mapeamento de colunas |
+| `PATCH /financial-structure/imports/:id/mapping` | Etapa 3: confirma o mapeamento coluna → campo |
+| `POST /financial-structure/imports/:id/validate` | Etapas 4-5: valida linha por linha |
+| `POST /financial-structure/imports/:id/apply` | Etapas 6-7: aplica ou simula |
+| `GET /financial-structure/imports/:id/rows` | Resultado por linha, com o registro que cada uma criou |
+| `GET /financial-structure/export` | Exportação em CSV, JSON, XLSX ou PDF |
+| `POST /financial-structure/duplicate` | Duplicação da estrutura entre empresas da mesma organização |
+| `GET /financial-structure/diagnostics` | Diagnóstico de inconsistências (12 verificações) |
+| `GET/POST /financial-structure/versions` · `POST .../:id/restore` | Versionamento e restauração das árvores |
 
-Permissões granulares (todas por cadastro e por tipo de operação):
-`account-plan.{view,manage,manage_tree,delete}`,
-`categories.{view,manage,manage_tree,manage_rules,delete}`,
-`cost-centers.{view,manage,manage_tree,delete}`,
-`result-centers.{view,manage,manage_tree,delete}`,
-`projects.{view,manage,delete}`, `business-units.{view,manage,delete}`,
-`financial-natures.{view,manage,delete}`, `financial-tags.{view,manage,delete}`,
-`allocation-rules.{view,manage,delete}`, `classification-rules.{view,manage,delete}` e
-`financial-structure.{import,export,duplicate,manage_versions,view_audit}`.
-A reorganização da árvore é uma permissão **separada** da edição do cadastro
-(`manage_tree` ≠ `manage`), porque mover contas altera relatórios históricos.
+Permissões granulares, em `snake_case`, por cadastro e por operação:
+`account_plan.{view,create,update,move,activate,deactivate,delete,import,export,version}`,
+`financial_category.*`, `cost_center.*`, `result_center.*`,
+`project.{...,pause,complete,cancel,archive}`, `business_unit.*`, `financial_nature.*`,
+`financial_tag.*`, `allocation_rule.*`, `classification_rule.{...,test}` e
+`financial_structure.{view,manage,import,export,duplicate,manage_versions,view_audit}`.
 
-**Rateios**: aceitam percentual, valor, quantidade, horas, peso ou critério
-personalizado. Rateios percentuais são validados para fechar exatamente 100% (com
-tolerância de 0,01% para arredondamento), destinos repetidos são recusados e cada linha
-precisa apontar para o tipo de dimensão que declarou.
+Duas separações de permissão são deliberadas:
 
-**Classificação automática**: nesta etapa as regras são apenas **cadastradas e
-simuláveis**. Nenhum lançamento é classificado automaticamente, porque os módulos de
-importação bancária e de contas a pagar/receber ainda não existem. A estrutura de
-aprendizado (`matchCount`, `confirmedCount`, `rejectedCount`, `confidenceThreshold`,
-`source: LEARNED`) já está no schema, pronta para o motor de inteligência financeira
-futuro.
+- **`move` ≠ `update`** — mover contas na árvore altera relatórios históricos.
+- **`deactivate` ≠ `delete`** — inativar preserva o histórico; excluir só é permitido
+  quando o registro não tem nenhum vínculo.
 
-**Importação**: aceita CSV/TSV com separador `,`, `;` ou tabulação, e reconhece
-cabeçalhos em português e inglês. Os "modelos" de Conta Azul, Omie, SAP e TOTVS não são
-integrações — apenas mapeiam nomes de coluna diferentes para o mesmo formato tabular. A
-importação é sempre feita em duas etapas (validar/pré-visualizar e depois aplicar) e
-versiona a árvore antes de aplicar.
+Toda permissão é validada contra a organização/empresa **do próprio registro**, nunca
+contra o que veio no payload. O front-end filtra apenas para exibição.
+
+### Ciclo de vida (`structure_status`)
+
+Cada cadastro tem um `structure_status` (`DRAFT`, `ACTIVE`, `INACTIVE`, `ARCHIVED`)
+separado do `status` operacional. Inativar e arquivar **apenas mudam o status**: o
+`deleted_at` não é tocado, então lançamentos e histórico que referenciam o registro
+continuam íntegros. Duas travas:
+
+- inativar/arquivar é recusado quando existem filhos ativos, para não deixá-los órfãos
+  dentro de uma subárvore inativa;
+- ativar é recusado quando o registro superior está inativo, porque o pai filtra a
+  subárvore inteira nas árvores e relatórios.
+
+O projeto é o caso especial: guarda o andamento em `status` (`ProjectStatus`) e a
+vigência em `record_status`, então o ciclo de vida nunca escreve no campo de andamento.
+
+### Versionamento do plano de contas
+
+As versões são uma tabela própria (`financial_account_plan_versions`) com ciclo próprio:
+`DRAFT` → `IN_REVIEW` → `ACTIVE` → `SUPERSEDED` → `ARCHIVED`. Apenas **uma** versão fica
+ativa por tipo de plano e empresa: ativar uma nova marca a anterior como `SUPERSEDED`
+dentro da mesma transação. Versões ativas, substituídas e arquivadas não podem ser
+editadas — elas são o registro histórico do que estava valendo.
+
+### Codificação automática
+
+Com `autoGenerateCode`, o back-end gera o próximo código a partir da conta superior
+(`5.02` com filhas `5.02.001` e `5.02.002` produz `5.02.003`). Sem ele, o código
+informado precisa começar pelo código do pai. O `normalized_code` (sem separadores nem
+zeros à esquerda) garante que `5.02` e `05.2` sejam reconhecidos como o mesmo código.
+
+### Rateios
+
+Aceitam percentual, valor, quantidade, horas, peso ou critério personalizado. Rateios
+percentuais são validados para fechar exatamente 100% (com tolerância de 0,01 para
+arredondamento, de modo que 33,33 + 33,33 + 33,34 é aceito), destinos repetidos são
+recusados e cada linha precisa apontar para o tipo de dimensão que declarou.
+
+### Classificação automática
+
+As regras têm condições e ações em tabelas próprias. As condições são combinadas com
+**E** e uma regra sem nenhuma condição nunca casa — se casasse, ela se aplicaria a todo
+lançamento. Quando duas regras de mesma prioridade aplicariam valores diferentes na
+mesma dimensão, o conflito é detectado e a automação fica suspensa (`automationSuspended`)
+até o desempate.
+
+Nesta etapa as regras são apenas **cadastradas e testáveis**. Nenhum lançamento é
+classificado automaticamente, porque os módulos de importação bancária e de contas a
+pagar/receber ainda não existem. A estrutura de aprendizado (`matchCount`,
+`confirmedCount`, `rejectedCount`, `confidenceThreshold`, `source: LEARNED`) já está no
+schema, pronta para o motor de inteligência financeira futuro — sem nenhuma decisão
+autônoma agora.
+
+### Importação em 7 etapas
+
+1. envio do arquivo (XLSX via `exceljs`, CSV/TSV ou JSON);
+2. escolha do cadastro de destino;
+3. mapeamento coluna → campo, com sugestão automática que o usuário confirma;
+4. validação linha por linha;
+5. revisão das inconsistências;
+6. escolha do modo e simulação;
+7. resultado.
+
+Cada linha do arquivo é gravada em `financial_structure_import_rows` com o status de
+validação e o registro que ela criou, então a origem de qualquer conta é rastreável.
+Erro bloqueia a linha (código ou nome ausente, código repetido, registro superior
+inexistente); código já cadastrado é apenas **aviso** — a decisão é do usuário.
+
+Os modos são `INSERT_ONLY`, `UPDATE_ONLY`, `INSERT_AND_UPDATE` e `SIMULATE`. **Nenhum
+modo exclui registros existentes**, e a atualização toca apenas em nome, nome curto e
+observações: código e posição na árvore não são sobrescritos por importação. A árvore é
+versionada antes de aplicar, então a importação inteira pode ser desfeita.
+
+Os "modelos" de Conta Azul, Omie, SAP e TOTVS não são integrações — apenas mapeiam nomes
+de coluna diferentes para o mesmo formato tabular.
+
+### Duplicação entre empresas
+
+Copia **apenas a estrutura** de uma empresa para outra da mesma organização. Nunca copia
+lançamentos, saldos, movimentações, conciliações, orçamentos realizados, histórico de uso
+ou a auditoria da origem. O que já existe no destino é preservado, jamais sobrescrito ou
+excluído, e os padrões das categorias são remapeados para as cópias — o que não foi
+copiado fica nulo em vez de apontar para outra empresa. A permissão é exigida nas **duas**
+empresas.
+
+### Diagnóstico de inconsistências
+
+`GET /financial-structure/diagnostics` roda 12 verificações e devolve os achados com os
+críticos primeiro: categoria sem conta vinculada, conta analítica com filhas, conta
+sintética aceitando lançamentos, centro de custo sem responsável, centro com vigência
+encerrada ainda ativo, projeto com prazo vencido em andamento, regra sem condição ou
+sem ação, regras conflitantes, rateio que não fecha 100%, códigos equivalentes
+duplicados, estrutura sem versão ativa e categoria inativa em uso. A rotina **apenas
+relata**: nada é corrigido automaticamente, porque a correção depende de decisão do
+usuário.
+
 
 ## Banco de dados e migrations
 
@@ -420,10 +525,12 @@ O schema fica em `backend/prisma/schema.prisma`. Tabelas principais:
 `customer_collection_history`, `payment_promises`, `customer_contracts`,
 `customer_contract_amendments`, `customer_recurring_receivables`,
 `customer_registry_queries`, `customer_status_history`, `financial_account_plans`,
-`categories` (categorias **e** subcategorias, na mesma hierarquia), `cost_centers`,
-`result_centers`, `projects`, `business_units`, `financial_natures`, `financial_tags`,
-`financial_tag_links`, `classification_rules`, `allocation_rules`,
-`allocation_rule_lines`, `financial_hierarchy_versions`, `financial_structure_imports`,
+`financial_account_plan_versions`, `financial_categories` (categorias **e** subcategorias,
+na mesma hierarquia), `cost_centers`, `result_centers`, `projects`, `business_units`,
+`financial_natures`, `financial_tags`, `financial_tag_links`, `classification_rules`,
+`classification_rule_conditions`, `classification_rule_actions`, `allocation_rules`,
+`allocation_rule_items`, `financial_hierarchy_versions`, `financial_hierarchy_history`,
+`financial_structure_imports`, `financial_structure_import_rows`,
 `financial_institutions`, `attachments` (anexos genéricos), `users`, `roles`,
 `permissions`, `role_permissions`, `user_organization_roles`, `user_company_roles` e
 `audit_logs`.
@@ -448,28 +555,56 @@ npm test        # testes unitários: isolamento multiempresa/organização, perm
                  # bloqueio/motivo obrigatório do vínculo, mascaramento de crédito por
                  # permissão dedicada, conversão de prospect com validação de pendências,
                  # ciclos na árvore, rateio fechando 100%, parsing de importação CSV,
-                 # versionamento e simulação de classificação automática
+                 # versionamento e simulação de classificação automática, ciclo de vida
+                 # (ativar/inativar/arquivar sem excluir nada), ativação exclusiva de
+                 # versão do plano, geração automática de código, leitura de XLSX/CSV/JSON,
+                 # importação em 7 etapas com simulação, exportação nos quatro formatos,
+                 # duplicação entre empresas e diagnóstico de inconsistências
 npm run test:e2e
 ```
 
 ### Testar manualmente a Estrutura Financeira
 
 1. Suba backend e frontend, faça login e selecione a empresa "Tchê Grill".
-2. Acesse **Cadastros → Plano de contas** — o seed já traz os grupos 1 Ativo, 2 Passivo,
-   3 Receitas, 4 Custos e 5 Despesas. Clique no `+` de uma conta para criar uma conta
-   filha e observe que o pai vira automaticamente **sintética** (deixa de aceitar
-   lançamentos).
-3. Use "Mover na árvore" para reorganizar uma conta e tente movê-la para dentro de uma
-   conta filha — a operação deve ser recusada. Depois confira em
-   `GET /financial-structure/versions` que a estrutura anterior foi versionada.
-4. Em **Cadastros → Rateios**, crie um rateio de energia com 60% Restaurante e 40%
+2. Acesse **Cadastros → Estrutura financeira** — a visão geral traz a contagem de cada
+   cadastro e o painel de diagnóstico. Se houver algum achado, confirme que os críticos
+   aparecem primeiro e que nada foi corrigido sozinho.
+3. Em **Plano de contas**, alterne entre as visões **Árvore** e **Tabela**. Na tabela,
+   busque por um código de nível profundo e confirme que os grupos superiores continuam
+   visíveis (sem eles a linha apareceria solta).
+4. Clique no `+` de uma conta para criar uma conta filha deixando **Gerar o código
+   automaticamente** marcado — o próximo código disponível aparece antes de salvar. O pai
+   vira automaticamente **sintética** (deixa de aceitar lançamentos).
+5. Desmarque a geração automática e tente informar um código que não comece pelo código
+   do pai — a operação deve ser recusada.
+6. Use "Mover na árvore" para reorganizar uma conta e tente movê-la para dentro de uma
+   conta filha — deve ser recusada. Depois confira em **Estrutura financeira → Histórico**
+   que a estrutura anterior foi versionada.
+7. Use **Inativar** em uma conta que tenha filhas ativas — deve ser recusado. Inative
+   primeiro as filhas e confirme, em `GET /financial-account-plans/:id/usage`, que os
+   vínculos continuam contabilizados (nada foi excluído).
+8. Em **Cadastros → Rateios**, crie um rateio de energia com 60% Restaurante e 40%
    Administrativo; tente salvar com 60% + 30% e confirme que o sistema recusa por não
-   fechar 100%.
-5. Em **Cadastros → Regras de classificação**, crie a regra "descrição contém COELBA →
-   categoria Energia" e use o botão **Simular** com a descrição `COELBA FATURA 09/2026`.
-   Confirme que a simulação indica a regra aplicada e avisa que nada foi persistido.
-6. Em qualquer árvore, use **Exportar** para baixar o CSV e depois reenvie o mesmo
-   arquivo em `POST /financial-structure/imports` para ver a validação em duas etapas.
+   fechar 100%. Depois teste 33,33 + 33,33 + 33,34 e confirme que é aceito.
+9. Em **Cadastros → Regras de classificação**, crie a regra "descrição contém COELBA →
+   categoria Energia" e use **Testar** com a descrição `COELBA FATURA 09/2026`. Confirme
+   que o resultado indica a regra aplicada e avisa que nada foi persistido. Crie uma
+   segunda regra de mesma prioridade apontando para outra categoria e confirme que o
+   conflito é detectado e a automação fica suspensa.
+10. Em **Plano de contas → Exportar**, baixe o arquivo nos quatro formatos (XLSX, CSV,
+    JSON e PDF).
+11. Em **Estrutura financeira → Importar**, reenvie o XLSX exportado e percorra as 7
+    etapas. Na etapa de mapeamento, confirme que as colunas foram reconhecidas. Antes de
+    aplicar, use **Simular** e confira que o número de registros que seriam criados bate
+    com o resultado real da aplicação. Depois tente aplicar o mesmo lote de novo — deve
+    ser recusado.
+12. Monte um arquivo com uma linha sem código, uma com código repetido e uma apontando
+    para um pai inexistente. Confirme que as três aparecem na etapa de inconsistências
+    com o motivo de cada uma, e que o restante do arquivo continua importável.
+13. Em **Estrutura financeira → Duplicar**, copie a estrutura da "Tchê Grill" para outra
+    empresa da mesma organização. Confirme no relatório que apenas a estrutura foi
+    copiada e que o que já existia no destino foi preservado. Tente duplicar para uma
+    empresa de outra organização — deve ser recusado.
 
 ### Testar manualmente o Cadastro de Clientes
 

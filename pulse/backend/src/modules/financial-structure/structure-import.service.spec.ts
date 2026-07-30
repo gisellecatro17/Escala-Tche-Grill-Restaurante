@@ -40,6 +40,7 @@ function buildService(prismaOverrides: Record<string, unknown> = {}) {
         ...data,
       })),
       update: jest.fn(),
+      updateMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
     ...prismaOverrides,
   };
@@ -303,6 +304,7 @@ describe('StructureImportService.validateBatch', () => {
         findMany: jest.fn().mockResolvedValue(existing),
         create: jest.fn(),
         update: jest.fn(),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
     });
 
@@ -439,6 +441,7 @@ describe('StructureImportService.applyBatch', () => {
           ...data,
         })),
         update: jest.fn(),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
         ...accountOverrides,
       },
     });
@@ -487,6 +490,28 @@ describe('StructureImportService.applyBatch', () => {
       where: { id: 'row-2' },
       data: { createdEntityType: 'ACCOUNT_PLAN', createdEntityId: 'acc-1' },
     });
+  });
+
+  it('converte em sintética a conta que ganhou filha na importação', async () => {
+    const updateMany = jest.fn().mockResolvedValue({ count: 1 });
+    const { service } = setup(ROWS, { updateMany });
+
+    await service.applyBatch('batch-1', {}, actor);
+
+    // Sem isso, a árvore recém-importada seria acusada pelo próprio diagnóstico.
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { id: 'acc-1', accountKind: 'ANALYTICAL' },
+      data: { accountKind: 'SYNTHETIC', acceptsEntries: false },
+    });
+  });
+
+  it('não altera nada na simulação, nem a natureza do pai', async () => {
+    const updateMany = jest.fn();
+    const { service } = setup(ROWS, { updateMany });
+
+    await service.applyBatch('batch-1', { mode: 'SIMULATE' }, actor);
+
+    expect(updateMany).not.toHaveBeenCalled();
   });
 
   it('impede aplicar o mesmo lote duas vezes', async () => {
@@ -593,6 +618,7 @@ describe('StructureImportService.export', () => {
         findFirst: jest.fn(),
         create: jest.fn(),
         update: jest.fn(),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
     });
   }

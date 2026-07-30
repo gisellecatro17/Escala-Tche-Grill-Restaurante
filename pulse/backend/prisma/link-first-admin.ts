@@ -16,7 +16,9 @@ async function main() {
   const email = process.argv[2];
 
   if (!email) {
-    console.error('Informe o e-mail do usuário. Ex.: npm run seed:admin -- voce@empresa.com');
+    console.error(
+      'Informe o e-mail do usuário. Ex.: npm run seed:admin -- voce@empresa.com',
+    );
     process.exit(1);
   }
 
@@ -24,7 +26,9 @@ async function main() {
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!supabaseUrl || !serviceRoleKey) {
-    console.error('Defina SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY no .env antes de rodar este script.');
+    console.error(
+      'Defina SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY no .env antes de rodar este script.',
+    );
     process.exit(1);
   }
 
@@ -32,8 +36,8 @@ async function main() {
     auth: { autoRefreshToken: false, persistSession: false },
   });
   const prisma = new PrismaClient({
-  adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
-});
+    adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
+  });
 
   try {
     const { data, error } = await supabase.auth.admin.listUsers();
@@ -42,7 +46,9 @@ async function main() {
       throw error;
     }
 
-    const authUser = data.users.find((u) => u.email?.toLowerCase() === email.toLowerCase());
+    const authUser = data.users.find(
+      (u) => u.email?.toLowerCase() === email.toLowerCase(),
+    );
 
     if (!authUser) {
       console.error(
@@ -57,19 +63,33 @@ async function main() {
       create: {
         id: authUser.id,
         email,
-        name: (authUser.user_metadata?.full_name as string | undefined) ?? email,
+        name:
+          (authUser.user_metadata?.full_name as string | undefined) ?? email,
       },
     });
 
-    const role = await prisma.role.findUniqueOrThrow({ where: { slug: 'organization_admin' } });
-
-    await prisma.userOrganizationRole.upsert({
-      where: { userId_organizationId: { userId: authUser.id, organizationId: DEMO_ORGANIZATION_ID } },
-      update: { roleId: role.id, status: 'ACTIVE' },
-      create: { userId: authUser.id, organizationId: DEMO_ORGANIZATION_ID, roleId: role.id },
+    const role = await prisma.role.findUniqueOrThrow({
+      where: { slug: 'organization_admin' },
     });
 
-    console.log(`Usuário ${email} vinculado como Administrador da organização "Tchê Grill".`);
+    await prisma.userOrganizationRole.upsert({
+      where: {
+        userId_organizationId: {
+          userId: authUser.id,
+          organizationId: DEMO_ORGANIZATION_ID,
+        },
+      },
+      update: { roleId: role.id, status: 'ACTIVE' },
+      create: {
+        userId: authUser.id,
+        organizationId: DEMO_ORGANIZATION_ID,
+        roleId: role.id,
+      },
+    });
+
+    console.log(
+      `Usuário ${email} vinculado como Administrador da organização "Tchê Grill".`,
+    );
   } finally {
     await prisma.$disconnect();
   }
