@@ -67,7 +67,12 @@ function extractStreams(buffer: Buffer): PdfStream[] {
 function tryInflate(raw: Buffer): Buffer | null {
   // Streams costumam vir com um `\r\n` sobrando na borda; tentamos algumas janelas antes
   // de desistir, em vez de descartar o stream inteiro por um byte de diferença.
-  const candidates = [raw, raw.subarray(1), raw.subarray(0, raw.length - 1), raw.subarray(1, raw.length - 1)];
+  const candidates = [
+    raw,
+    raw.subarray(1),
+    raw.subarray(0, raw.length - 1),
+    raw.subarray(1, raw.length - 1),
+  ];
 
   for (const candidate of candidates) {
     if (candidate.length === 0) continue;
@@ -122,7 +127,8 @@ function decodePdfString(raw: string): string {
       default:
         if (next >= '0' && next <= '7') {
           // Escape octal: até três dígitos.
-          const octal = raw.slice(index, index + 3).match(/^[0-7]{1,3}/)?.[0] ?? next;
+          const octal =
+            raw.slice(index, index + 3).match(/^[0-7]{1,3}/)?.[0] ?? next;
           index += octal.length - 1;
           result += String.fromCharCode(parseInt(octal, 8));
         } else {
@@ -145,9 +151,11 @@ function textFromContentStream(content: string): string {
 
   let match: RegExpExecArray | null;
   while ((match = arrayPattern.exec(content)) !== null) {
-    const inner = match[1];
-    const parts = inner.match(stringPattern) ?? [];
-    pieces.push(parts.map((part) => decodePdfString(part.slice(1, -1))).join(''));
+    const inner: string = match[1];
+    const parts: string[] = inner.match(stringPattern) ?? [];
+    pieces.push(
+      parts.map((part) => decodePdfString(part.slice(1, -1))).join(''),
+    );
   }
 
   // Operadores que recebem uma única string.
@@ -191,7 +199,10 @@ export function extractPdfText(buffer: Buffer): PdfTextResult {
   try {
     for (const stream of extractStreams(buffer)) {
       // Imagens e fontes também são streams; só nos interessam os de conteúdo.
-      if (/\/Subtype\s*\/Image|\/Type\s*\/Font|\/FontFile/.test(stream.dictionary)) continue;
+      if (
+        /\/Subtype\s*\/Image|\/Type\s*\/Font|\/FontFile/.test(stream.dictionary)
+      )
+        continue;
 
       const content = stream.data.toString('latin1');
       if (!/(Tj|TJ)\b/.test(content)) continue;

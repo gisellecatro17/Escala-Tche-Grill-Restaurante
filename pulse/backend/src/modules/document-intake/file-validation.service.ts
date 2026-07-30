@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 
-import { AntivirusScanner, type AntivirusResult } from './providers/antivirus.provider';
+import {
+  AntivirusScanner,
+  type AntivirusResult,
+} from './providers/antivirus.provider';
 import {
   countPdfPages,
   detectFileSignature,
@@ -124,7 +127,9 @@ export class FileValidationService {
       );
     }
 
-    const allowed = limits.allowedExtensions.map((value) => value.toLowerCase());
+    const allowed = limits.allowedExtensions.map((value) =>
+      value.toLowerCase(),
+    );
     const contentExtension = expectedExtensions[0];
     if (contentExtension && !allowed.includes(contentExtension)) {
       errors.push('O formato deste arquivo não é permitido.');
@@ -165,7 +170,10 @@ export class FileValidationService {
       errors.push('O XML enviado não está bem formado.');
     }
 
-    if ((signature.kind === 'png' || signature.kind === 'jpg') && fileSize < 1024) {
+    if (
+      (signature.kind === 'png' || signature.kind === 'jpg') &&
+      fileSize < 1024
+    ) {
       warnings.push(
         'A imagem é muito pequena e pode não ter resolução suficiente para leitura.',
       );
@@ -175,7 +183,11 @@ export class FileValidationService {
     const antivirus =
       errors.length === 0
         ? await this.antivirus.scan(buffer, normalizedFileName)
-        : { verdict: 'NOT_SCANNED' as const, scanned: false, provider: 'skipped' };
+        : {
+            verdict: 'NOT_SCANNED' as const,
+            scanned: false,
+            provider: 'skipped',
+          };
 
     if (antivirus.verdict === 'INFECTED') {
       errors.push('O arquivo foi bloqueado pela varredura de segurança.');

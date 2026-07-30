@@ -81,7 +81,10 @@ export class BoletoValidationService {
    * ciclo original (1997 + fator dias) ou do ciclo reiniciado em 22/02/2025. Devolvemos
    * as duas datas e deixamos a decisão para a revisão humana.
    */
-  resolveDueDateFromFactor(factor: number, today = new Date()): BoletoDueDateResult {
+  resolveDueDateFromFactor(
+    factor: number,
+    today = new Date(),
+  ): BoletoDueDateResult {
     if (!Number.isInteger(factor) || factor <= 0 || factor > FACTOR_MAXIMUM) {
       return {
         factor,
@@ -108,7 +111,8 @@ export class BoletoValidationService {
 
     // Na faixa reiniciada, um vencimento no passado distante é implausível: preferimos o
     // ciclo novo, mas registramos a alternativa.
-    const isFirstCyclePlausible = firstCycle.getTime() >= today.getTime() - 365 * MILLISECONDS_PER_DAY;
+    const isFirstCyclePlausible =
+      firstCycle.getTime() >= today.getTime() - 365 * MILLISECONDS_PER_DAY;
 
     return {
       factor,
@@ -223,7 +227,10 @@ export class BoletoValidationService {
    * entre eles seja detectável. Nunca lança: o resultado carrega os erros, porque um
    * boleto inválido é um caso de negócio (pendência), não uma exceção.
    */
-  validate(input: string, options: { today?: Date } = {}): BoletoValidationResult {
+  validate(
+    input: string,
+    options: { today?: Date } = {},
+  ): BoletoValidationResult {
     const digits = this.normalize(input);
     const errors: string[] = [];
     const warnings: string[] = [];
@@ -290,7 +297,9 @@ export class BoletoValidationService {
 
       const converted = this.digitableLineToBarcode(digits);
       if (!converted) {
-        errors.push('Não foi possível interpretar a linha digitável informada.');
+        errors.push(
+          'Não foi possível interpretar a linha digitável informada.',
+        );
         return empty;
       }
       barcode = converted;
@@ -305,7 +314,9 @@ export class BoletoValidationService {
     const withoutCheckDigit = `${barcode.slice(0, 4)}${barcode.slice(5, 44)}`;
     const expectedGeneral = this.modulo11(withoutCheckDigit);
     if (String(expectedGeneral) !== barcode[4]) {
-      errors.push('O código de barras possui divergência no dígito verificador geral.');
+      errors.push(
+        'O código de barras possui divergência no dígito verificador geral.',
+      );
     }
     rulesApplied.push('BARCODE_GENERAL_MODULO_11');
 
@@ -325,7 +336,9 @@ export class BoletoValidationService {
     rulesApplied.push(dueDateResult.ruleApplied);
 
     if (factor === 0) {
-      warnings.push('O boleto não traz fator de vencimento — o vencimento precisa ser informado manualmente.');
+      warnings.push(
+        'O boleto não traz fator de vencimento — o vencimento precisa ser informado manualmente.',
+      );
     }
 
     const ambiguous =
@@ -340,7 +353,9 @@ export class BoletoValidationService {
     }
 
     if (amount === 0) {
-      warnings.push('O valor não está embutido no código — trata-se de boleto com valor em aberto.');
+      warnings.push(
+        'O valor não está embutido no código — trata-se de boleto com valor em aberto.',
+      );
     }
 
     return {
@@ -405,20 +420,26 @@ export class BoletoValidationService {
 
     if (digits.length === 48) {
       // 48 dígitos = 4 blocos de 12, cada um com 11 dígitos de dados + 1 DV.
-      const blocks = [0, 1, 2, 3].map((index) => digits.slice(index * 12, index * 12 + 12));
+      const blocks = [0, 1, 2, 3].map((index) =>
+        digits.slice(index * 12, index * 12 + 12),
+      );
       barcode = blocks.map((block) => block.slice(0, 11)).join('');
       digitableLine = digits;
       const useModulo10 = barcode[2] === '6' || barcode[2] === '7';
       for (const [index, block] of blocks.entries()) {
         const data = block.slice(0, 11);
-        const expected = useModulo10 ? this.modulo10(data) : this.modulo11Utility(data);
+        const expected = useModulo10
+          ? this.modulo10(data)
+          : this.modulo11Utility(data);
         if (String(expected) !== block[11]) {
           errors.push(
             `A linha digitável possui divergência no dígito verificador do bloco ${index + 1}.`,
           );
         }
       }
-      rulesApplied.push(useModulo10 ? 'UTILITY_BLOCK_MODULO_10' : 'UTILITY_BLOCK_MODULO_11');
+      rulesApplied.push(
+        useModulo10 ? 'UTILITY_BLOCK_MODULO_10' : 'UTILITY_BLOCK_MODULO_11',
+      );
     } else {
       barcode = digits;
       digitableLine = null;
@@ -432,14 +453,20 @@ export class BoletoValidationService {
       : this.modulo11Utility(withoutCheckDigit);
 
     if (String(expectedGeneral) !== barcode[3]) {
-      errors.push('O código de barras da conta de consumo possui divergência no dígito verificador geral.');
+      errors.push(
+        'O código de barras da conta de consumo possui divergência no dígito verificador geral.',
+      );
     }
-    rulesApplied.push(useModulo10 ? 'UTILITY_GENERAL_MODULO_10' : 'UTILITY_GENERAL_MODULO_11');
+    rulesApplied.push(
+      useModulo10 ? 'UTILITY_GENERAL_MODULO_10' : 'UTILITY_GENERAL_MODULO_11',
+    );
 
     const amount = Number(barcode.slice(4, 15)) / 100;
 
     // Conta de consumo não carrega fator de vencimento: a data vem do corpo do documento.
-    warnings.push('Contas de consumo não trazem o vencimento no código — informe a data manualmente.');
+    warnings.push(
+      'Contas de consumo não trazem o vencimento no código — informe a data manualmente.',
+    );
 
     return {
       valid: errors.length === 0,
@@ -467,12 +494,26 @@ export class BoletoValidationService {
    * bloqueia é a regra de pendência.
    */
   compare(
-    fromDocument: { barcode?: string | null; digitableLine?: string | null; amount?: number | null; dueDate?: Date | null },
-    informed: { barcode?: string | null; digitableLine?: string | null; amount?: number | null; dueDate?: Date | null },
+    fromDocument: {
+      barcode?: string | null;
+      digitableLine?: string | null;
+      amount?: number | null;
+      dueDate?: Date | null;
+    },
+    informed: {
+      barcode?: string | null;
+      digitableLine?: string | null;
+      amount?: number | null;
+      dueDate?: Date | null;
+    },
   ): BoletoComparisonResult {
     const differences: BoletoComparisonResult['differences'] = [];
 
-    const compareDigits = (field: string, a?: string | null, b?: string | null) => {
+    const compareDigits = (
+      field: string,
+      a?: string | null,
+      b?: string | null,
+    ) => {
       const left = this.normalize(a);
       const right = this.normalize(b);
       if (left && right && left !== right) {
@@ -481,7 +522,11 @@ export class BoletoValidationService {
     };
 
     compareDigits('barcode', fromDocument.barcode, informed.barcode);
-    compareDigits('digitableLine', fromDocument.digitableLine, informed.digitableLine);
+    compareDigits(
+      'digitableLine',
+      fromDocument.digitableLine,
+      informed.digitableLine,
+    );
 
     if (
       fromDocument.amount != null &&
@@ -499,7 +544,11 @@ export class BoletoValidationService {
       const left = fromDocument.dueDate.toISOString().slice(0, 10);
       const right = informed.dueDate.toISOString().slice(0, 10);
       if (left !== right) {
-        differences.push({ field: 'dueDate', fromDocument: left, informed: right });
+        differences.push({
+          field: 'dueDate',
+          fromDocument: left,
+          informed: right,
+        });
       }
     }
 

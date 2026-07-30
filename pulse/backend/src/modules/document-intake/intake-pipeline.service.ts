@@ -133,7 +133,11 @@ export class IntakePipelineService {
    * A chave de idempotência inclui o ciclo de reprocessamento, para que reprocessar um
    * documento não colida com os jobs do processamento anterior.
    */
-  async enqueueNext(documentId: string, currentJobType: IntakeJobType, cycle = 1) {
+  async enqueueNext(
+    documentId: string,
+    currentJobType: IntakeJobType,
+    cycle = 1,
+  ) {
     const index = PIPELINE_ORDER.indexOf(currentJobType);
     if (index === -1 || index === PIPELINE_ORDER.length - 1) return null;
 
@@ -214,9 +218,11 @@ export class IntakePipelineService {
     jobId: string,
     error: { code?: string; message: string },
   ): Promise<{ willRetry: boolean; nextAttemptAt: Date | null }> {
-    const job = await this.prisma.intakeDocumentProcessingJob.findUniqueOrThrow({
-      where: { id: jobId },
-    });
+    const job = await this.prisma.intakeDocumentProcessingJob.findUniqueOrThrow(
+      {
+        where: { id: jobId },
+      },
+    );
 
     const willRetry = job.attemptNumber < job.maximumAttempts;
 
@@ -318,7 +324,13 @@ export class IntakePipelineService {
    * então precisa ser idempotente — as etapas do pipeline gravam com `upsert` por isso.
    */
   async runJob(
-    job: { id: string; documentId: string; jobType: IntakeJobType; attemptNumber: number; metadata: Prisma.JsonValue | null },
+    job: {
+      id: string;
+      documentId: string;
+      jobType: IntakeJobType;
+      attemptNumber: number;
+      metadata: Prisma.JsonValue | null;
+    },
     handler: JobHandler,
   ): Promise<{ succeeded: boolean; willRetry: boolean }> {
     try {
@@ -326,7 +338,8 @@ export class IntakePipelineService {
       await this.completeJob(job.id);
       return { succeeded: true, willRetry: false };
     } catch (caught) {
-      const message = caught instanceof Error ? caught.message : 'Erro desconhecido.';
+      const message =
+        caught instanceof Error ? caught.message : 'Erro desconhecido.';
       const code = caught instanceof Error ? caught.name : 'UNKNOWN';
       const { willRetry } = await this.failJob(job.id, { code, message });
       return { succeeded: false, willRetry };
@@ -345,25 +358,26 @@ export class IntakePipelineService {
       },
     };
 
-    const [pending, running, deadLetter, cancelled, oldestPending] = await Promise.all([
-      this.prisma.intakeDocumentProcessingJob.count({
-        where: { ...scope, status: IntakeJobStatus.PENDING },
-      }),
-      this.prisma.intakeDocumentProcessingJob.count({
-        where: { ...scope, status: IntakeJobStatus.RUNNING },
-      }),
-      this.prisma.intakeDocumentProcessingJob.count({
-        where: { ...scope, status: IntakeJobStatus.DEAD_LETTER },
-      }),
-      this.prisma.intakeDocumentProcessingJob.count({
-        where: { ...scope, status: IntakeJobStatus.CANCELLED },
-      }),
-      this.prisma.intakeDocumentProcessingJob.findFirst({
-        where: { ...scope, status: IntakeJobStatus.PENDING },
-        orderBy: { availableAt: 'asc' },
-        select: { availableAt: true, jobType: true, documentId: true },
-      }),
-    ]);
+    const [pending, running, deadLetter, cancelled, oldestPending] =
+      await Promise.all([
+        this.prisma.intakeDocumentProcessingJob.count({
+          where: { ...scope, status: IntakeJobStatus.PENDING },
+        }),
+        this.prisma.intakeDocumentProcessingJob.count({
+          where: { ...scope, status: IntakeJobStatus.RUNNING },
+        }),
+        this.prisma.intakeDocumentProcessingJob.count({
+          where: { ...scope, status: IntakeJobStatus.DEAD_LETTER },
+        }),
+        this.prisma.intakeDocumentProcessingJob.count({
+          where: { ...scope, status: IntakeJobStatus.CANCELLED },
+        }),
+        this.prisma.intakeDocumentProcessingJob.findFirst({
+          where: { ...scope, status: IntakeJobStatus.PENDING },
+          orderBy: { availableAt: 'asc' },
+          select: { availableAt: true, jobType: true, documentId: true },
+        }),
+      ]);
 
     return { pending, running, deadLetter, cancelled, oldestPending };
   }

@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   IntakeDuplicateDecision,
   IntakeDuplicateMatchType,
@@ -97,7 +101,11 @@ export class DuplicateDetectionService {
 
     const found = new Map<
       string,
-      { matchedDocumentId: string; matchType: IntakeDuplicateMatchType; fields: string[] }
+      {
+        matchedDocumentId: string;
+        matchType: IntakeDuplicateMatchType;
+        fields: string[];
+      }
     >();
 
     const remember = (
@@ -106,7 +114,8 @@ export class DuplicateDetectionService {
       fields: string[],
     ) => {
       const key = `${matchedDocumentId}:${matchType}`;
-      if (!found.has(key)) found.set(key, { matchedDocumentId, matchType, fields });
+      if (!found.has(key))
+        found.set(key, { matchedDocumentId, matchType, fields });
     };
 
     // 1. Hash do arquivo — o critério mais forte.
@@ -116,17 +125,22 @@ export class DuplicateDetectionService {
         select: { id: true },
         take: 10,
       });
-      for (const other of sameFile) remember(other.id, 'FILE_HASH', ['fileHash']);
+      for (const other of sameFile)
+        remember(other.id, 'FILE_HASH', ['fileHash']);
     }
 
     // 2. Linha digitável e código de barras normalizados.
     if (document.normalizedDigitableLine) {
       const sameLine = await this.prisma.intakeDocument.findMany({
-        where: { ...scope, normalizedDigitableLine: document.normalizedDigitableLine },
+        where: {
+          ...scope,
+          normalizedDigitableLine: document.normalizedDigitableLine,
+        },
         select: { id: true },
         take: 10,
       });
-      for (const other of sameLine) remember(other.id, 'DIGITABLE_LINE', ['digitableLine']);
+      for (const other of sameLine)
+        remember(other.id, 'DIGITABLE_LINE', ['digitableLine']);
     }
 
     if (document.normalizedBarcode) {
@@ -135,7 +149,8 @@ export class DuplicateDetectionService {
         select: { id: true },
         take: 10,
       });
-      for (const other of sameBarcode) remember(other.id, 'BARCODE', ['barcode']);
+      for (const other of sameBarcode)
+        remember(other.id, 'BARCODE', ['barcode']);
     }
 
     // 3. Chave fiscal — para NF-e e CT-e, é única por documento no país.
@@ -145,7 +160,8 @@ export class DuplicateDetectionService {
         select: { id: true },
         take: 10,
       });
-      for (const other of sameKey) remember(other.id, 'ACCESS_KEY', ['accessKey']);
+      for (const other of sameKey)
+        remember(other.id, 'ACCESS_KEY', ['accessKey']);
     }
 
     // 4. Número + série + emitente: a mesma nota do mesmo fornecedor.
@@ -155,13 +171,18 @@ export class DuplicateDetectionService {
           ...scope,
           documentNumber: document.documentNumber,
           issuerDocument: document.issuerDocument,
-          ...(document.documentSeries ? { documentSeries: document.documentSeries } : {}),
+          ...(document.documentSeries
+            ? { documentSeries: document.documentSeries }
+            : {}),
         },
         select: { id: true },
         take: 10,
       });
       for (const other of sameNumber) {
-        remember(other.id, 'DOCUMENT_NUMBER', ['documentNumber', 'issuerDocument']);
+        remember(other.id, 'DOCUMENT_NUMBER', [
+          'documentNumber',
+          'issuerDocument',
+        ]);
       }
     }
 
@@ -200,7 +221,8 @@ export class DuplicateDetectionService {
         select: { id: true },
         take: 5,
       });
-      for (const other of sameName) remember(other.id, 'FILE_NAME', ['originalFileName']);
+      for (const other of sameName)
+        remember(other.id, 'FILE_NAME', ['originalFileName']);
     }
 
     // Grava os achados, sem duplicar o que já existe.
@@ -209,13 +231,15 @@ export class DuplicateDetectionService {
     for (const entry of found.values()) {
       const score = MATCH_WEIGHTS[entry.matchType];
 
-      const existing = await this.prisma.intakeDocumentDuplicateMatch.findFirst({
-        where: {
-          documentId,
-          matchedDocumentId: entry.matchedDocumentId,
-          matchType: entry.matchType,
+      const existing = await this.prisma.intakeDocumentDuplicateMatch.findFirst(
+        {
+          where: {
+            documentId,
+            matchedDocumentId: entry.matchedDocumentId,
+            matchType: entry.matchType,
+          },
         },
-      });
+      );
 
       const record = existing
         ? await this.prisma.intakeDocumentDuplicateMatch.update({
@@ -246,7 +270,10 @@ export class DuplicateDetectionService {
       (highest, match) => Math.max(highest, match.similarityScore),
       0,
     );
-    const status = matches.length === 0 ? IntakeDuplicateStatus.NO_DUPLICATE : classify(highestScore);
+    const status =
+      matches.length === 0
+        ? IntakeDuplicateStatus.NO_DUPLICATE
+        : classify(highestScore);
 
     await this.prisma.intakeDocument.update({
       where: { id: documentId },
@@ -317,9 +344,21 @@ export class DuplicateDetectionService {
       ['Chave de acesso', current.accessKey, other.accessKey],
       ['Emissão', isoDate(current.issueDate), isoDate(other.issueDate)],
       ['Vencimento', isoDate(current.dueDate), isoDate(other.dueDate)],
-      ['Valor bruto', decimalToString(current.grossAmount), decimalToString(other.grossAmount)],
-      ['Valor líquido', decimalToString(current.netAmount), decimalToString(other.netAmount)],
-      ['Linha digitável', current.normalizedDigitableLine, other.normalizedDigitableLine],
+      [
+        'Valor bruto',
+        decimalToString(current.grossAmount),
+        decimalToString(other.grossAmount),
+      ],
+      [
+        'Valor líquido',
+        decimalToString(current.netAmount),
+        decimalToString(other.netAmount),
+      ],
+      [
+        'Linha digitável',
+        current.normalizedDigitableLine,
+        other.normalizedDigitableLine,
+      ],
       ['Hash do arquivo', current.fileHash, other.fileHash],
     ] as const;
 
@@ -333,7 +372,9 @@ export class DuplicateDetectionService {
         label,
         current: currentValue ?? null,
         existing: otherValue ?? null,
-        equal: normalizeForComparison(currentValue) === normalizeForComparison(otherValue),
+        equal:
+          normalizeForComparison(currentValue) ===
+          normalizeForComparison(otherValue),
       })),
     };
   }
@@ -382,7 +423,11 @@ export class DuplicateDetectionService {
       action: 'CONFIRM_INTAKE_DUPLICATE',
       entity: 'IntakeDocument',
       entityId: documentId,
-      newValue: { matchId, matchType: match.matchType, score: Number(match.similarityScore) },
+      newValue: {
+        matchId,
+        matchType: match.matchType,
+        score: Number(match.similarityScore),
+      },
       reason: reason ?? null,
     });
 
@@ -502,7 +547,8 @@ export class DuplicateDetectionService {
         data: {
           documentId: match.matchedDocumentId,
           newProcessingStatus: IntakeProcessingStatus.ARCHIVED,
-          reason: `Substituído pelo documento ${documentId}. ${reason ?? ''}`.trim(),
+          reason:
+            `Substituído pelo documento ${documentId}. ${reason ?? ''}`.trim(),
           changedBy: actor.id,
         },
       }),
@@ -525,10 +571,13 @@ export class DuplicateDetectionService {
   private async findMatchOrThrow(documentId: string, matchId: string) {
     const match = await this.prisma.intakeDocumentDuplicateMatch.findFirst({
       where: { id: matchId, documentId },
-      include: { document: { select: { organizationId: true, companyId: true } } },
+      include: {
+        document: { select: { organizationId: true, companyId: true } },
+      },
     });
 
-    if (!match) throw new NotFoundException('Suspeita de duplicidade não encontrada.');
+    if (!match)
+      throw new NotFoundException('Suspeita de duplicidade não encontrada.');
     return match;
   }
 }
@@ -538,7 +587,8 @@ export class DuplicateDetectionService {
 function classify(score: number): IntakeDuplicateStatus {
   if (score >= EXACT_THRESHOLD) return IntakeDuplicateStatus.EXACT_DUPLICATE;
   if (score >= HIGH_THRESHOLD) return IntakeDuplicateStatus.HIGH_PROBABILITY;
-  if (score >= POSSIBLE_THRESHOLD) return IntakeDuplicateStatus.POSSIBLE_DUPLICATE;
+  if (score >= POSSIBLE_THRESHOLD)
+    return IntakeDuplicateStatus.POSSIBLE_DUPLICATE;
   return IntakeDuplicateStatus.NO_DUPLICATE;
 }
 
@@ -554,7 +604,14 @@ function decimalToString(value: Prisma.Decimal | null): string | null {
   return value === null ? null : value.toFixed(2);
 }
 
-function normalizeForComparison(value: unknown): string {
+/**
+ * Os valores comparados na tabela são sempre primitivos (as datas e decimais já vêm
+ * convertidos para texto acima), então o tipo é explícito — `unknown` deixaria um objeto
+ * passar e virar "[object Object]" na comparação.
+ */
+function normalizeForComparison(
+  value: string | number | null | undefined,
+): string {
   if (value === null || value === undefined) return '';
   return String(value).trim().toLowerCase();
 }

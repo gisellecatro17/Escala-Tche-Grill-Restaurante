@@ -51,7 +51,11 @@ const FACTOR_CYCLE_DAYS = 9000;
  */
 export function dueDateToFactor(dueDate: Date): number {
   const days = Math.round(
-    (Date.UTC(dueDate.getUTCFullYear(), dueDate.getUTCMonth(), dueDate.getUTCDate()) -
+    (Date.UTC(
+      dueDate.getUTCFullYear(),
+      dueDate.getUTCMonth(),
+      dueDate.getUTCDate(),
+    ) -
       BASE_DATE) /
       MILLISECONDS_PER_DAY,
   );
@@ -102,7 +106,13 @@ export function buildValidBoleto(options: {
     `${field3}${modulo10(field3)}` +
     `${generalCheckDigit}${factor}${amount}`;
 
-  return { barcode, digitableLine, amount: options.amount, dueDate: options.dueDate, bankCode };
+  return {
+    barcode,
+    digitableLine,
+    amount: options.amount,
+    dueDate: options.dueDate,
+    bankCode,
+  };
 }
 
 /** Versão formatada da linha digitável, como aparece impressa no boleto. */

@@ -3,7 +3,10 @@ import { ConfigService } from '@nestjs/config';
 
 import { extractPdfText } from '../utils/pdf-text.util';
 import { parseFiscalXml, type FiscalXmlResult } from '../utils/fiscal-xml.util';
-import { detectFileSignature, type DetectedKind } from '../utils/file-signature.util';
+import {
+  detectFileSignature,
+  type DetectedKind,
+} from '../utils/file-signature.util';
 
 /**
  * Abstração da extração de dados de documentos (seção 19).
@@ -58,12 +61,18 @@ export interface ExtractionResult {
 export abstract class DocumentExtractionProvider {
   abstract readonly name: string;
 
-  abstract extractText(input: ExtractionInput): Promise<{ text: string; usedOcr: boolean; confidence: number }>;
+  abstract extractText(
+    input: ExtractionInput,
+  ): Promise<{ text: string; usedOcr: boolean; confidence: number }>;
   abstract extractFields(input: ExtractionInput): Promise<ExtractionResult>;
-  abstract detectDocumentType(input: ExtractionInput): Promise<{ kind: DetectedKind }>;
+  abstract detectDocumentType(
+    input: ExtractionInput,
+  ): Promise<{ kind: DetectedKind }>;
   abstract extractBarcode(input: ExtractionInput): Promise<string[]>;
   abstract extractQrCode(input: ExtractionInput): Promise<string[]>;
-  abstract extractXmlData(input: ExtractionInput): Promise<FiscalXmlResult | null>;
+  abstract extractXmlData(
+    input: ExtractionInput,
+  ): Promise<FiscalXmlResult | null>;
   abstract getConfidence(result: ExtractionResult): number;
 }
 
@@ -74,7 +83,10 @@ export abstract class DocumentExtractionProvider {
  * Fixar isso em um só lugar impede que uma leitura de OCR seja tratada como se fosse tão
  * confiável quanto um XML — é essa diferença que governa o preenchimento automático.
  */
-const CONFIDENCE_BY_METHOD: Record<ExtractedFieldValue['sourceMethod'], number> = {
+const CONFIDENCE_BY_METHOD: Record<
+  ExtractedFieldValue['sourceMethod'],
+  number
+> = {
   XML_PARSE: 100,
   BARCODE: 99,
   DIGITABLE_LINE: 98,
@@ -96,7 +108,9 @@ export class LocalDocumentExtractionProvider extends DocumentExtractionProvider 
     this.ocrProvider = this.config.get<string>('OCR_PROVIDER') ?? 'none';
   }
 
-  async detectDocumentType(input: ExtractionInput): Promise<{ kind: DetectedKind }> {
+  async detectDocumentType(
+    input: ExtractionInput,
+  ): Promise<{ kind: DetectedKind }> {
     await Promise.resolve();
     return { kind: detectFileSignature(input.buffer).kind };
   }
@@ -130,13 +144,21 @@ export class LocalDocumentExtractionProvider extends DocumentExtractionProvider 
     if (kind === 'pdf') {
       const native = extractPdfText(input.buffer);
       if (native.hasUsefulText) {
-        return { text: native.text, usedOcr: false, confidence: CONFIDENCE_BY_METHOD.PDF_TEXT };
+        return {
+          text: native.text,
+          usedOcr: false,
+          confidence: CONFIDENCE_BY_METHOD.PDF_TEXT,
+        };
       }
 
       // Sem texto nativo suficiente: é aqui que o OCR entraria.
       const ocr = await this.runOcr(input);
       if (ocr.text.length > 0) {
-        return { text: ocr.text, usedOcr: ocr.attempted, confidence: ocr.confidence };
+        return {
+          text: ocr.text,
+          usedOcr: ocr.attempted,
+          confidence: ocr.confidence,
+        };
       }
 
       // O OCR não trouxe nada. Se havia **algum** texto nativo, ele é melhor que vazio —
@@ -155,7 +177,11 @@ export class LocalDocumentExtractionProvider extends DocumentExtractionProvider 
 
     if (kind === 'jpg' || kind === 'png') {
       const ocr = await this.runOcr(input);
-      return { text: ocr.text, usedOcr: ocr.attempted, confidence: ocr.confidence };
+      return {
+        text: ocr.text,
+        usedOcr: ocr.attempted,
+        confidence: ocr.confidence,
+      };
     }
 
     return { text: '', usedOcr: false, confidence: 0 };
@@ -187,7 +213,9 @@ export class LocalDocumentExtractionProvider extends DocumentExtractionProvider 
     return { text: '', attempted: false, confidence: 0 };
   }
 
-  async extractXmlData(input: ExtractionInput): Promise<FiscalXmlResult | null> {
+  async extractXmlData(
+    input: ExtractionInput,
+  ): Promise<FiscalXmlResult | null> {
     await Promise.resolve();
     if (detectFileSignature(input.buffer).kind !== 'xml') return null;
     return parseFiscalXml(input.buffer);
@@ -238,22 +266,36 @@ export class LocalDocumentExtractionProvider extends DocumentExtractionProvider 
       signature.kind === 'xml' ? [] : findBarcodeCandidates(text);
     for (const candidate of barcodeCandidates.slice(0, 1)) {
       fields.push({
-        fieldName: candidate.length === 47 || candidate.length === 48 ? 'digitableLine' : 'barcode',
+        fieldName:
+          candidate.length === 47 || candidate.length === 48
+            ? 'digitableLine'
+            : 'barcode',
         originalValue: candidate,
         normalizedValue: candidate,
         dataType: 'barcode',
         sourceMethod: candidate.length === 44 ? 'BARCODE' : 'DIGITABLE_LINE',
-        confidence: candidate.length === 44 ? CONFIDENCE_BY_METHOD.BARCODE : CONFIDENCE_BY_METHOD.DIGITABLE_LINE,
+        confidence:
+          candidate.length === 44
+            ? CONFIDENCE_BY_METHOD.BARCODE
+            : CONFIDENCE_BY_METHOD.DIGITABLE_LINE,
       });
     }
 
     // Campos que dá para tirar do texto corrido, quando o XML não os trouxe.
     if (text.length > 0 && signature.kind !== 'xml') {
-      const method = usedOcr ? 'OCR' : signature.kind === 'csv' ? 'SPREADSHEET_PARSE' : 'PDF_TEXT';
+      const method = usedOcr
+        ? 'OCR'
+        : signature.kind === 'csv'
+          ? 'SPREADSHEET_PARSE'
+          : 'PDF_TEXT';
       fields.push(...fieldsFromPlainText(text, method));
     }
 
-    if (text.length === 0 && signature.kind !== 'xlsx' && signature.kind !== 'xls') {
+    if (
+      text.length === 0 &&
+      signature.kind !== 'xlsx' &&
+      signature.kind !== 'xls'
+    ) {
       warnings.push(
         this.ocrProvider === 'none'
           ? 'Não foi possível extrair texto deste documento e nenhum provedor de OCR está configurado neste ambiente.'
@@ -289,10 +331,15 @@ export class LocalDocumentExtractionProvider extends DocumentExtractionProvider 
   getConfidence(result: ExtractionResult): number {
     if (result.fields.length === 0) return 0;
 
-    const sum = result.fields.reduce((total, field) => total + field.confidence, 0);
+    const sum = result.fields.reduce(
+      (total, field) => total + field.confidence,
+      0,
+    );
     const average = sum / result.fields.length;
 
-    return Math.round(Math.min(average, result.confidence || average) * 100) / 100;
+    return (
+      Math.round(Math.min(average, result.confidence || average) * 100) / 100
+    );
   }
 }
 
@@ -307,7 +354,11 @@ export class MockDocumentExtractionProvider extends DocumentExtractionProvider {
     this.scripted = result;
   }
 
-  async extractText(): Promise<{ text: string; usedOcr: boolean; confidence: number }> {
+  async extractText(): Promise<{
+    text: string;
+    usedOcr: boolean;
+    confidence: number;
+  }> {
     await Promise.resolve();
     return {
       text: this.scripted.text ?? '',
@@ -332,7 +383,9 @@ export class MockDocumentExtractionProvider extends DocumentExtractionProvider {
     };
   }
 
-  async detectDocumentType(input: ExtractionInput): Promise<{ kind: DetectedKind }> {
+  async detectDocumentType(
+    input: ExtractionInput,
+  ): Promise<{ kind: DetectedKind }> {
     await Promise.resolve();
     return { kind: detectFileSignature(input.buffer).kind };
   }
@@ -380,7 +433,10 @@ export function findBarcodeCandidates(text: string): string[] {
 
     // A linha inteira, quando é só o código com separadores.
     const lineDigits = line.replace(/\D/g, '');
-    if (validLengths.includes(lineDigits.length) && /^[\d.\s]+$/.test(line.trim())) {
+    if (
+      validLengths.includes(lineDigits.length) &&
+      /^[\d.\s]+$/.test(line.trim())
+    ) {
       candidates.add(lineDigits);
     }
 
@@ -427,8 +483,12 @@ function fieldsFromFiscalXml(xml: FiscalXmlResult): ExtractedFieldValue[] {
   add('netAmount', xml.netAmount, 'number');
   add('description', xml.additionalInformation, 'string');
 
-  const totalWithholding = Object.values(xml.withholdings).reduce((sum, value) => sum + value, 0);
-  if (totalWithholding > 0) add('withholdingAmount', totalWithholding, 'number');
+  const totalWithholding = Object.values(xml.withholdings).reduce(
+    (sum, value) => sum + value,
+    0,
+  );
+  if (totalWithholding > 0)
+    add('withholdingAmount', totalWithholding, 'number');
 
   return fields;
 }
@@ -461,36 +521,65 @@ function fieldsFromPlainText(
 
   // CNPJ / CPF formatados.
   const cnpj = /(\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2})/.exec(text);
-  if (cnpj) push('issuerDocument', cnpj[1], cnpj[1].replace(/\D/g, ''), 'document');
+  if (cnpj)
+    push('issuerDocument', cnpj[1], cnpj[1].replace(/\D/g, ''), 'document');
 
   const cpf = /(?<!\d)(\d{3}\.\d{3}\.\d{3}-\d{2})(?!\d)/.exec(text);
-  if (cpf && !cnpj) push('issuerDocument', cpf[1], cpf[1].replace(/\D/g, ''), 'document');
+  if (cpf && !cnpj)
+    push('issuerDocument', cpf[1], cpf[1].replace(/\D/g, ''), 'document');
 
   // Valor com rótulo tem prioridade sobre qualquer número solto na página.
   const labelledAmount =
-    /(?:valor\s*(?:do\s*)?(?:documento|total|a\s*pagar|cobran[çc]a)?|total)\s*:?\s*R?\$?\s*([\d.]+,\d{2})/i.exec(text);
+    /(?:valor\s*(?:do\s*)?(?:documento|total|a\s*pagar|cobran[çc]a)?|total)\s*:?\s*R?\$?\s*([\d.]+,\d{2})/i.exec(
+      text,
+    );
   if (labelledAmount) {
-    push('grossAmount', labelledAmount[1], normalizeBrazilianAmount(labelledAmount[1]), 'number');
+    push(
+      'grossAmount',
+      labelledAmount[1],
+      normalizeBrazilianAmount(labelledAmount[1]),
+      'number',
+    );
   }
 
   const labelledDueDate =
-    /(?:vencimento|vence\s*em|data\s*de\s*vencimento)\s*:?\s*(\d{2}\/\d{2}\/\d{4})/i.exec(text);
+    /(?:vencimento|vence\s*em|data\s*de\s*vencimento)\s*:?\s*(\d{2}\/\d{2}\/\d{4})/i.exec(
+      text,
+    );
   if (labelledDueDate) {
     push('dueDate', labelledDueDate[1], toIsoDate(labelledDueDate[1]), 'date');
   }
 
   const labelledIssueDate =
-    /(?:emiss[ãa]o|data\s*(?:de\s*)?emiss[ãa]o|processamento)\s*:?\s*(\d{2}\/\d{2}\/\d{4})/i.exec(text);
+    /(?:emiss[ãa]o|data\s*(?:de\s*)?emiss[ãa]o|processamento)\s*:?\s*(\d{2}\/\d{2}\/\d{4})/i.exec(
+      text,
+    );
   if (labelledIssueDate) {
-    push('issueDate', labelledIssueDate[1], toIsoDate(labelledIssueDate[1]), 'date');
+    push(
+      'issueDate',
+      labelledIssueDate[1],
+      toIsoDate(labelledIssueDate[1]),
+      'date',
+    );
   }
 
-  const documentNumber = /(?:n[uú]mero\s*(?:do\s*)?documento|nosso\s*n[uú]mero|n[.º°]?\s*documento)\s*:?\s*([\w./-]{3,25})/i.exec(text);
-  if (documentNumber) push('documentNumber', documentNumber[1], documentNumber[1], 'string');
+  const documentNumber =
+    /(?:n[uú]mero\s*(?:do\s*)?documento|nosso\s*n[uú]mero|n[.º°]?\s*documento)\s*:?\s*([\w./-]{3,25})/i.exec(
+      text,
+    );
+  if (documentNumber)
+    push('documentNumber', documentNumber[1], documentNumber[1], 'string');
 
   // Chave PIX no formato de e-mail, útil para identificar o favorecido.
   const pixEmail = /\b[\w.+-]+@[\w-]+\.[\w.-]{2,}\b/.exec(text);
-  if (pixEmail) push('pixKey', pixEmail[0], pixEmail[0].toLowerCase(), 'string', confidence - 15);
+  if (pixEmail)
+    push(
+      'pixKey',
+      pixEmail[0],
+      pixEmail[0].toLowerCase(),
+      'string',
+      confidence - 15,
+    );
 
   return fields;
 }
@@ -511,14 +600,16 @@ function resolvePredominantMethod(
   text: string,
   kind: DetectedKind,
 ): ExtractedFieldValue['sourceMethod'] | null {
-  if (fields.some((field) => field.sourceMethod === 'XML_PARSE')) return 'XML_PARSE';
+  if (fields.some((field) => field.sourceMethod === 'XML_PARSE'))
+    return 'XML_PARSE';
   if (usedOcr) return 'OCR';
 
   if (fields.length === 0) {
     // Nenhum campo reconhecido, mas houve leitura: registra o método da leitura.
     if (text.length === 0) return null;
     if (kind === 'xml') return 'XML_PARSE';
-    if (kind === 'csv' || kind === 'xlsx' || kind === 'xls') return 'SPREADSHEET_PARSE';
+    if (kind === 'csv' || kind === 'xlsx' || kind === 'xls')
+      return 'SPREADSHEET_PARSE';
     if (kind === 'pdf') return 'PDF_TEXT';
     return null;
   }

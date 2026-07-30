@@ -46,7 +46,9 @@ export class AntivirusScanner extends AntivirusProvider {
     await Promise.resolve();
 
     if (this.name === 'eicar') {
-      const head = buffer.subarray(0, Math.min(buffer.length, 4096)).toString('latin1');
+      const head = buffer
+        .subarray(0, Math.min(buffer.length, 4096))
+        .toString('latin1');
       if (head.includes(EICAR_SIGNATURE)) {
         this.logger.warn(`Arquivo bloqueado pela varredura: ${fileName}`);
         return {

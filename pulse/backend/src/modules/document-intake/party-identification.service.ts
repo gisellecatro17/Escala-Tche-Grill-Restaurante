@@ -37,7 +37,11 @@ export interface IdentificationInput {
   recipientDocument?: string | null;
   recipientName?: string | null;
   pixKey?: string | null;
-  bankAccount?: { institution?: string | null; branch?: string | null; account?: string | null } | null;
+  bankAccount?: {
+    institution?: string | null;
+    branch?: string | null;
+    account?: string | null;
+  } | null;
   barcode?: string | null;
   text?: string | null;
 }
@@ -86,9 +90,15 @@ const CUSTOMER_SELECT = {
   normalizedDocumentNumber: true,
 } satisfies Prisma.CustomerSelect;
 
-export type IdentifiedCompany = Prisma.CompanyGetPayload<{ select: typeof COMPANY_SELECT }>;
-export type IdentifiedSupplier = Prisma.SupplierGetPayload<{ select: typeof SUPPLIER_SELECT }>;
-export type IdentifiedCustomer = Prisma.CustomerGetPayload<{ select: typeof CUSTOMER_SELECT }>;
+export type IdentifiedCompany = Prisma.CompanyGetPayload<{
+  select: typeof COMPANY_SELECT;
+}>;
+export type IdentifiedSupplier = Prisma.SupplierGetPayload<{
+  select: typeof SUPPLIER_SELECT;
+}>;
+export type IdentifiedCustomer = Prisma.CustomerGetPayload<{
+  select: typeof CUSTOMER_SELECT;
+}>;
 
 @Injectable()
 export class PartyIdentificationService {
@@ -171,7 +181,9 @@ export class PartyIdentificationService {
             deletedAt: null,
             accountNumber: { contains: account },
             ...(branch ? { branchNumber: { contains: branch } } : {}),
-            ...(allowedCompanyIds ? { companyId: { in: allowedCompanyIds } } : {}),
+            ...(allowedCompanyIds
+              ? { companyId: { in: allowedCompanyIds } }
+              : {}),
           },
           select: { companyId: true },
         });
@@ -210,7 +222,10 @@ export class PartyIdentificationService {
     input: IdentificationInput,
   ): Promise<IdentificationResult<IdentifiedSupplier>> {
     const candidates: IdentificationCandidate<IdentifiedSupplier>[] = [];
-    const scope: Prisma.SupplierWhereInput = { organizationId, deletedAt: null };
+    const scope: Prisma.SupplierWhereInput = {
+      organizationId,
+      deletedAt: null,
+    };
 
     // 1. CNPJ ou CPF exato.
     const issuerDocument = onlyDigits(input.issuerDocument);
@@ -234,11 +249,19 @@ export class PartyIdentificationService {
     // 2. Chave PIX e 3. conta bancária — ambas em supplier_bank_identifiers, a tabela que
     // o módulo de Fornecedores criou para reconhecimento.
     const identifierValues = [
-      input.pixKey ? { value: normalizeIdentifier(input.pixKey), kind: 'PIX_KEY' as const } : null,
-      input.bankAccount?.account
-        ? { value: normalizeIdentifier(input.bankAccount.account), kind: 'BANK_ACCOUNT' as const }
+      input.pixKey
+        ? { value: normalizeIdentifier(input.pixKey), kind: 'PIX_KEY' as const }
         : null,
-    ].filter((entry): entry is { value: string; kind: 'PIX_KEY' | 'BANK_ACCOUNT' } => entry !== null);
+      input.bankAccount?.account
+        ? {
+            value: normalizeIdentifier(input.bankAccount.account),
+            kind: 'BANK_ACCOUNT' as const,
+          }
+        : null,
+    ].filter(
+      (entry): entry is { value: string; kind: 'PIX_KEY' | 'BANK_ACCOUNT' } =>
+        entry !== null,
+    );
 
     for (const identifier of identifierValues) {
       const found = await this.prisma.supplierBankIdentifier.findFirst({
@@ -256,7 +279,9 @@ export class PartyIdentificationService {
         candidates.push({
           entity: found.supplier,
           confidence:
-            identifier.kind === 'PIX_KEY' ? CONFIDENCE.PIX_KEY : CONFIDENCE.BANK_ACCOUNT,
+            identifier.kind === 'PIX_KEY'
+              ? CONFIDENCE.PIX_KEY
+              : CONFIDENCE.BANK_ACCOUNT,
           matchedBy: identifier.kind,
           matchedValue: identifier.value,
         });
@@ -268,7 +293,11 @@ export class PartyIdentificationService {
     // 4. Identificador confirmado: qualquer valor do documento que já foi confirmado antes
     // para um fornecedor (número de cliente na concessionária, código do convênio).
     if (input.text) {
-      const learned = await this.matchLearnedText(organizationId, companyId, input.text);
+      const learned = await this.matchLearnedText(
+        organizationId,
+        companyId,
+        input.text,
+      );
       if (learned) candidates.push(learned);
     }
 
@@ -404,10 +433,14 @@ export class PartyIdentificationService {
         });
 
         for (const supplier of similar) {
-          const score = similarity(normalized, normalizeText(supplier.legalName ?? supplier.tradeName ?? ''));
+          const score = similarity(
+            normalized,
+            normalizeText(supplier.legalName ?? supplier.tradeName ?? ''),
+          );
           candidates.push({
             entity: supplier,
-            confidence: Math.round(CONFIDENCE.TEXT_SIMILARITY * score * 100) / 100,
+            confidence:
+              Math.round(CONFIDENCE.TEXT_SIMILARITY * score * 100) / 100,
             matchedBy: 'TEXT_SIMILARITY',
             matchedValue: name,
           });
@@ -425,11 +458,15 @@ export class PartyIdentificationService {
     organizationId: string,
     input: IdentificationInput,
   ): Promise<IdentificationResult<IdentifiedCustomer>> {
-    const scope: Prisma.CustomerWhereInput = { organizationId, deletedAt: null };
+    const scope: Prisma.CustomerWhereInput = {
+      organizationId,
+      deletedAt: null,
+    };
     const candidates: IdentificationCandidate<IdentifiedCustomer>[] = [];
 
     // Em documento de receita, quem paga é o cliente: o destinatário.
-    const document = onlyDigits(input.recipientDocument) ?? onlyDigits(input.issuerDocument);
+    const document =
+      onlyDigits(input.recipientDocument) ?? onlyDigits(input.issuerDocument);
     if (document) {
       const customer = await this.prisma.customer.findFirst({
         where: { ...scope, normalizedDocumentNumber: document },
@@ -455,7 +492,11 @@ export class PartyIdentificationService {
 
     if (identifierValue) {
       const found = await this.prisma.customerBankIdentifier.findFirst({
-        where: { normalizedValue: identifierValue, status: RecordStatus.ACTIVE, customer: scope },
+        where: {
+          normalizedValue: identifierValue,
+          status: RecordStatus.ACTIVE,
+          customer: scope,
+        },
         include: { customer: { select: CUSTOMER_SELECT } },
         orderBy: [{ confirmedCount: 'desc' }, { priority: 'asc' }],
       });
@@ -609,7 +650,7 @@ function onlyDigits(value: string | null | undefined): string | null {
 export function normalizeText(value: string): string {
   return value
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/[^\w\s@.-]/g, ' ')
     .replace(/\s+/g, ' ')
@@ -631,7 +672,8 @@ export function extractDocumentsFromText(text: string): string[] {
   for (const match of text.match(/\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}/g) ?? []) {
     found.add(match.replace(/\D/g, ''));
   }
-  for (const match of text.match(/(?<!\d)\d{3}\.\d{3}\.\d{3}-\d{2}(?!\d)/g) ?? []) {
+  for (const match of text.match(/(?<!\d)\d{3}\.\d{3}\.\d{3}-\d{2}(?!\d)/g) ??
+    []) {
     found.add(match.replace(/\D/g, ''));
   }
 

@@ -102,7 +102,8 @@ function findNode(node: unknown, names: string[], depth = 0): unknown {
 function textOf(node: unknown): string | null {
   if (node === null || node === undefined) return null;
   if (typeof node === 'string') return node.trim() || null;
-  if (typeof node === 'number' || typeof node === 'boolean') return String(node);
+  if (typeof node === 'number' || typeof node === 'boolean')
+    return String(node);
   if (Array.isArray(node)) return node.length > 0 ? textOf(node[0]) : null;
 
   const record = node as Record<string, unknown>;
@@ -152,7 +153,8 @@ function readParty(node: unknown): FiscalXmlParty {
 function detectKind(rootName: string, text: string): FiscalDocumentKind {
   const root = rootName.toLowerCase();
   if (root.includes('cte') || text.includes('infCte')) return 'CTE';
-  if (root.includes('nfse') || /<(Rps|InfNfse|CompNfse|ListaNfse)/i.test(text)) return 'NFSE';
+  if (root.includes('nfse') || /<(Rps|InfNfse|CompNfse|ListaNfse)/i.test(text))
+    return 'NFSE';
   if (root.includes('nfe') || text.includes('infNFe')) return 'NFE';
   return 'UNKNOWN';
 }
@@ -191,7 +193,9 @@ export function parseFiscalXml(buffer: Buffer): FiscalXmlResult {
 
   const text = buffer.toString('utf8');
 
-  const validation = XMLValidator.validate(text, { allowBooleanAttributes: true });
+  const validation = XMLValidator.validate(text, {
+    allowBooleanAttributes: true,
+  });
   if (validation !== true) {
     errors.push(
       `O XML enviado não está bem formado: ${validation.err.msg} (linha ${validation.err.line}).`,
@@ -223,7 +227,9 @@ export function parseFiscalXml(buffer: Buffer): FiscalXmlResult {
   const namespaceMatch = /xmlns="([^"]+)"/.exec(text);
 
   // A chave de acesso pode estar em `<chNFe>` ou no atributo `Id` de `<infNFe>`.
-  const accessKeyFromField = onlyDigits(findText(root, ['chNFe', 'chCTe', 'ChaveAcesso', 'CodigoVerificacao']));
+  const accessKeyFromField = onlyDigits(
+    findText(root, ['chNFe', 'chCTe', 'ChaveAcesso', 'CodigoVerificacao']),
+  );
   const accessKeyFromId = onlyDigits(
     /Id="[A-Za-z]*(\d{44})"/.exec(text)?.[1] ?? null,
   );
@@ -236,8 +242,18 @@ export function parseFiscalXml(buffer: Buffer): FiscalXmlResult {
     );
   }
 
-  const issuerNode = findNode(root, ['emit', 'Prestador', 'PrestadorServico', 'rem']);
-  const recipientNode = findNode(root, ['dest', 'Tomador', 'TomadorServico', 'Destinatario']);
+  const issuerNode = findNode(root, [
+    'emit',
+    'Prestador',
+    'PrestadorServico',
+    'rem',
+  ]);
+  const recipientNode = findNode(root, [
+    'dest',
+    'Tomador',
+    'TomadorServico',
+    'Destinatario',
+  ]);
 
   const issuer = issuerNode ? readParty(issuerNode) : emptyParty();
   const recipient = recipientNode ? readParty(recipientNode) : emptyParty();
@@ -246,9 +262,20 @@ export function parseFiscalXml(buffer: Buffer): FiscalXmlResult {
     warnings.push('O XML não traz o documento do emitente.');
   }
 
-  const totalNode = findNode(root, ['ICMSTot', 'total', 'Valores', 'valores', 'vPrest']);
+  const totalNode = findNode(root, [
+    'ICMSTot',
+    'total',
+    'Valores',
+    'valores',
+    'vPrest',
+  ]);
   const totalAmount =
-    findAmount(totalNode, ['vNF', 'vTPrest', 'ValorLiquidoNfse', 'ValorServicos']) ??
+    findAmount(totalNode, [
+      'vNF',
+      'vTPrest',
+      'ValorLiquidoNfse',
+      'ValorServicos',
+    ]) ??
     findAmount(root, ['vNF', 'vTPrest', 'ValorLiquidoNfse', 'ValorTotal']);
 
   const withholdings: Record<string, number> = {};
@@ -261,7 +288,8 @@ export function parseFiscalXml(buffer: Buffer): FiscalXmlResult {
     ['CSLL', ['vRetCSLL', 'ValorCsll']],
   ];
   for (const [label, names] of withholdingFields) {
-    const value = findAmount(totalNode ?? root, names) ?? findAmount(root, names);
+    const value =
+      findAmount(totalNode ?? root, names) ?? findAmount(root, names);
     if (value !== null && value > 0) withholdings[label] = value;
   }
 
@@ -285,7 +313,13 @@ export function parseFiscalXml(buffer: Buffer): FiscalXmlResult {
     rootName,
     namespace: namespaceMatch?.[1] ?? null,
     accessKey,
-    documentNumber: findText(root, ['nNF', 'nCT', 'Numero', 'NumeroNfse', 'numero']),
+    documentNumber: findText(root, [
+      'nNF',
+      'nCT',
+      'Numero',
+      'NumeroNfse',
+      'numero',
+    ]),
     documentSeries: findText(root, ['serie', 'Serie']),
     issueDate: findDate(root, ['dhEmi', 'dEmi', 'DataEmissao', 'dhSaiEnt']),
     competenceDate: findDate(root, ['Competencia', 'dCompet']),
@@ -294,13 +328,23 @@ export function parseFiscalXml(buffer: Buffer): FiscalXmlResult {
     totalAmount,
     productsAmount: findAmount(totalNode ?? root, ['vProd']),
     serviceAmount: findAmount(totalNode ?? root, ['vServ', 'ValorServicos']),
-    discountAmount: findAmount(totalNode ?? root, ['vDesc', 'ValorDesconto', 'DescontoIncondicionado']),
+    discountAmount: findAmount(totalNode ?? root, [
+      'vDesc',
+      'ValorDesconto',
+      'DescontoIncondicionado',
+    ]),
     freightAmount: findAmount(totalNode ?? root, ['vFrete']),
-    netAmount: findAmount(totalNode ?? root, ['ValorLiquidoNfse', 'vLiq']) ?? totalAmount,
+    netAmount:
+      findAmount(totalNode ?? root, ['ValorLiquidoNfse', 'vLiq']) ??
+      totalAmount,
     withholdings,
     taxes,
     items,
-    additionalInformation: findText(root, ['infCpl', 'Discriminacao', 'OutrasInformacoes']),
+    additionalInformation: findText(root, [
+      'infCpl',
+      'Discriminacao',
+      'OutrasInformacoes',
+    ]),
     hasSignature: /<Signature[\s>]/i.test(text),
     errors,
     warnings,
@@ -311,10 +355,10 @@ function readItems(root: unknown): FiscalXmlItem[] {
   const detached = findNode(root, ['det', 'Itens', 'ListaItens']);
   if (detached === undefined) return [];
 
-  const entries = Array.isArray(detached) ? detached : [detached];
+  const entries: unknown[] = Array.isArray(detached) ? detached : [detached];
 
   return entries
-    .map((entry) => {
+    .map((entry: unknown) => {
       const product = findNode(entry, ['prod', 'Item', 'Servico']) ?? entry;
       return {
         description: findText(product, ['xProd', 'Descricao', 'descricao']),

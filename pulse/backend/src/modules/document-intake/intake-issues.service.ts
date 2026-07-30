@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   IntakeIssueSeverity,
   IntakeIssueStatus,
@@ -46,14 +50,16 @@ const DEFAULT_SEVERITY: Record<IntakeIssueType, IntakeIssueSeverity> = {
 
 /** Descrição padrão de cada pendência, em português e já pronta para exibição. */
 const DEFAULT_DESCRIPTION: Record<IntakeIssueType, string> = {
-  COMPANY_NOT_IDENTIFIED: 'A empresa não foi identificada. Selecione a empresa de destino.',
+  COMPANY_NOT_IDENTIFIED:
+    'A empresa não foi identificada. Selecione a empresa de destino.',
   SUPPLIER_NOT_IDENTIFIED: 'O fornecedor não foi localizado no cadastro.',
   CUSTOMER_NOT_IDENTIFIED: 'O cliente não foi localizado no cadastro.',
   UNREADABLE_DOCUMENT: 'Não foi possível extrair informações deste documento.',
   AMOUNT_NOT_IDENTIFIED: 'O valor do documento não foi identificado.',
   DUE_DATE_NOT_IDENTIFIED: 'O vencimento não foi identificado.',
   DUPLICATE_DOCUMENT: 'Foi identificada uma possível duplicidade.',
-  INVALID_CODE: 'O código de barras ou a linha digitável apresenta divergência.',
+  INVALID_CODE:
+    'O código de barras ou a linha digitável apresenta divergência.',
   AMOUNT_DIVERGENCE: 'Os valores informados não fecham.',
   DUE_DATE_DIVERGENCE: 'O vencimento lido difere do informado.',
   HOLDER_DIVERGENCE: 'O titular do documento difere do favorecido cadastrado.',
@@ -124,7 +130,9 @@ export class IntakeIssuesService {
 
     const severity =
       input.severity ??
-      this.severityFor(input.issueType, { documentDirection: document.documentDirection });
+      this.severityFor(input.issueType, {
+        documentDirection: document.documentDirection,
+      });
 
     const existing = await this.prisma.intakeDocumentIssue.findFirst({
       where: {
@@ -210,7 +218,12 @@ export class IntakeIssuesService {
   async update(
     documentId: string,
     issueId: string,
-    data: { severity?: IntakeIssueSeverity; description?: string; assignedUserId?: string | null; status?: IntakeIssueStatus },
+    data: {
+      severity?: IntakeIssueSeverity;
+      description?: string;
+      assignedUserId?: string | null;
+      status?: IntakeIssueStatus;
+    },
   ) {
     const issue = await this.findOneOrThrow(documentId, issueId);
 
@@ -286,7 +299,9 @@ export class IntakeIssuesService {
   private async findOneOrThrow(documentId: string, issueId: string) {
     const issue = await this.prisma.intakeDocumentIssue.findFirst({
       where: { id: issueId, documentId },
-      include: { document: { select: { organizationId: true, companyId: true } } },
+      include: {
+        document: { select: { organizationId: true, companyId: true } },
+      },
     });
 
     if (!issue) throw new NotFoundException('Pendência não encontrada.');

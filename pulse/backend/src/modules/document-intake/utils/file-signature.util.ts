@@ -43,8 +43,18 @@ const SIGNATURES: {
   offset?: number;
   dangerous?: boolean;
 }[] = [
-  { kind: 'pdf', mimeType: 'application/pdf', extensions: ['pdf'], bytes: [0x25, 0x50, 0x44, 0x46] }, // %PDF
-  { kind: 'jpg', mimeType: 'image/jpeg', extensions: ['jpg', 'jpeg'], bytes: [0xff, 0xd8, 0xff] },
+  {
+    kind: 'pdf',
+    mimeType: 'application/pdf',
+    extensions: ['pdf'],
+    bytes: [0x25, 0x50, 0x44, 0x46],
+  }, // %PDF
+  {
+    kind: 'jpg',
+    mimeType: 'image/jpeg',
+    extensions: ['jpg', 'jpeg'],
+    bytes: [0xff, 0xd8, 0xff],
+  },
   {
     kind: 'png',
     mimeType: 'image/png',
@@ -59,10 +69,34 @@ const SIGNATURES: {
     bytes: [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1],
   },
   // Executáveis: reconhecidos para poder recusar com uma mensagem honesta.
-  { kind: 'executable', mimeType: 'application/x-msdownload', extensions: ['exe', 'dll'], bytes: [0x4d, 0x5a], dangerous: true }, // MZ
-  { kind: 'executable', mimeType: 'application/x-elf', extensions: ['elf', 'so'], bytes: [0x7f, 0x45, 0x4c, 0x46], dangerous: true }, // \x7fELF
-  { kind: 'executable', mimeType: 'application/x-mach-binary', extensions: ['macho'], bytes: [0xcf, 0xfa, 0xed, 0xfe], dangerous: true },
-  { kind: 'script', mimeType: 'text/x-shellscript', extensions: ['sh'], bytes: [0x23, 0x21], dangerous: true }, // #!
+  {
+    kind: 'executable',
+    mimeType: 'application/x-msdownload',
+    extensions: ['exe', 'dll'],
+    bytes: [0x4d, 0x5a],
+    dangerous: true,
+  }, // MZ
+  {
+    kind: 'executable',
+    mimeType: 'application/x-elf',
+    extensions: ['elf', 'so'],
+    bytes: [0x7f, 0x45, 0x4c, 0x46],
+    dangerous: true,
+  }, // \x7fELF
+  {
+    kind: 'executable',
+    mimeType: 'application/x-mach-binary',
+    extensions: ['macho'],
+    bytes: [0xcf, 0xfa, 0xed, 0xfe],
+    dangerous: true,
+  },
+  {
+    kind: 'script',
+    mimeType: 'text/x-shellscript',
+    extensions: ['sh'],
+    bytes: [0x23, 0x21],
+    dangerous: true,
+  }, // #!
 ];
 
 /** ZIP e derivados (XLSX, DOCX, JAR…) compartilham a mesma assinatura `PK\x03\x04`. */
@@ -78,8 +112,13 @@ function startsWith(buffer: Buffer, bytes: number[], offset = 0): boolean {
  * a pasta `xl/`. Procuramos essas marcas no cabeçalho do zip, sem descomprimir nada.
  */
 function looksLikeXlsx(buffer: Buffer): boolean {
-  const head = buffer.subarray(0, Math.min(buffer.length, 8192)).toString('latin1');
-  return head.includes('[Content_Types].xml') && (head.includes('xl/') || head.includes('workbook'));
+  const head = buffer
+    .subarray(0, Math.min(buffer.length, 8192))
+    .toString('latin1');
+  return (
+    head.includes('[Content_Types].xml') &&
+    (head.includes('xl/') || head.includes('workbook'))
+  );
 }
 
 /**
@@ -87,7 +126,9 @@ function looksLikeXlsx(buffer: Buffer): boolean {
  * documento que abre direto na primeira tag, ignorando BOM e espaços iniciais.
  */
 function looksLikeXml(buffer: Buffer): boolean {
-  const head = stripBom(buffer.subarray(0, Math.min(buffer.length, 1024)).toString('utf8')).trimStart();
+  const head = stripBom(
+    buffer.subarray(0, Math.min(buffer.length, 1024)).toString('utf8'),
+  ).trimStart();
   return head.startsWith('<?xml') || /^<[A-Za-z_]/.test(head);
 }
 
@@ -108,7 +149,8 @@ function looksLikeText(buffer: Buffer): boolean {
   for (const byte of sample) {
     // Byte nulo não aparece em texto; é o sinal mais confiável de binário.
     if (byte === 0) return false;
-    const isPrintable = byte >= 0x20 || byte === 0x09 || byte === 0x0a || byte === 0x0d;
+    const isPrintable =
+      byte >= 0x20 || byte === 0x09 || byte === 0x0a || byte === 0x0d;
     if (!isPrintable) suspicious += 1;
   }
 
@@ -118,7 +160,12 @@ function looksLikeText(buffer: Buffer): boolean {
 /** Identifica o conteúdo do arquivo. Nunca lança: quem decide o que fazer é o chamador. */
 export function detectFileSignature(buffer: Buffer): FileSignature {
   if (buffer.length === 0) {
-    return { kind: 'empty', mimeType: null, extensions: [], isDangerous: false };
+    return {
+      kind: 'empty',
+      mimeType: null,
+      extensions: [],
+      isDangerous: false,
+    };
   }
 
   for (const signature of SIGNATURES) {
@@ -136,24 +183,45 @@ export function detectFileSignature(buffer: Buffer): FileSignature {
     return looksLikeXlsx(buffer)
       ? {
           kind: 'xlsx',
-          mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          mimeType:
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
           extensions: ['xlsx'],
           isDangerous: false,
         }
       : // ZIP genérico é tratado como perigoso nesta etapa: o prompt exige regras de
         // segurança próprias antes de aceitar arquivos compactados (seção 9).
-        { kind: 'zip', mimeType: 'application/zip', extensions: ['zip'], isDangerous: true };
+        {
+          kind: 'zip',
+          mimeType: 'application/zip',
+          extensions: ['zip'],
+          isDangerous: true,
+        };
   }
 
   if (looksLikeXml(buffer)) {
-    return { kind: 'xml', mimeType: 'application/xml', extensions: ['xml'], isDangerous: false };
+    return {
+      kind: 'xml',
+      mimeType: 'application/xml',
+      extensions: ['xml'],
+      isDangerous: false,
+    };
   }
 
   if (looksLikeText(buffer)) {
-    return { kind: 'csv', mimeType: 'text/csv', extensions: ['csv', 'txt'], isDangerous: false };
+    return {
+      kind: 'csv',
+      mimeType: 'text/csv',
+      extensions: ['csv', 'txt'],
+      isDangerous: false,
+    };
   }
 
-  return { kind: 'unknown', mimeType: null, extensions: [], isDangerous: false };
+  return {
+    kind: 'unknown',
+    mimeType: null,
+    extensions: [],
+    isDangerous: false,
+  };
 }
 
 /** Extensão declarada no nome do arquivo, em minúsculas e sem o ponto. */
@@ -169,7 +237,10 @@ export function extensionOf(fileName: string): string {
  * conjunto seguro. Um nome como `../../etc/passwd` vira `etc_passwd`.
  */
 export function normalizeFileName(fileName: string): string {
-  const withoutPath = fileName.split(/[/\\]/).filter((part) => part !== '..' && part !== '.').join('_');
+  const withoutPath = fileName
+    .split(/[/\\]/)
+    .filter((part) => part !== '..' && part !== '.')
+    .join('_');
 
   const cleaned = withoutPath
     // eslint-disable-next-line no-control-regex -- caracteres de controle são exatamente o que precisa sair
@@ -186,8 +257,12 @@ export function normalizeFileName(fileName: string): string {
 
 /** PDF protegido por senha traz um dicionário `/Encrypt` no trailer. */
 export function isEncryptedPdf(buffer: Buffer): boolean {
-  const tail = buffer.subarray(Math.max(0, buffer.length - 4096)).toString('latin1');
-  const head = buffer.subarray(0, Math.min(buffer.length, 4096)).toString('latin1');
+  const tail = buffer
+    .subarray(Math.max(0, buffer.length - 4096))
+    .toString('latin1');
+  const head = buffer
+    .subarray(0, Math.min(buffer.length, 4096))
+    .toString('latin1');
   return /\/Encrypt\b/.test(tail) || /\/Encrypt\b/.test(head);
 }
 
@@ -196,7 +271,9 @@ export function isEncryptedPdf(buffer: Buffer): boolean {
  * justamente essa marca — é o teste mais direto de arquivo truncado.
  */
 export function isTruncatedPdf(buffer: Buffer): boolean {
-  const tail = buffer.subarray(Math.max(0, buffer.length - 2048)).toString('latin1');
+  const tail = buffer
+    .subarray(Math.max(0, buffer.length - 2048))
+    .toString('latin1');
   return !tail.includes('%%EOF');
 }
 
