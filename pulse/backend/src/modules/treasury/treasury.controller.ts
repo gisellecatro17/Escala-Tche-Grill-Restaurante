@@ -9,7 +9,10 @@ import {
   assertCompanyPermission,
   assertOrganizationPermission,
 } from '../../common/utils/access-control.util';
-import { UpdateTreasurySettingsDto } from './dto/treasury-settings.dto';
+import {
+  TreasuryStatusHistoryQueryDto,
+  UpdateTreasurySettingsDto,
+} from './dto/treasury-settings.dto';
 import { TreasuryService } from './treasury.service';
 
 /** Visão geral, parâmetros e favorecidos da tesouraria. */
@@ -62,6 +65,25 @@ export class TreasuryController {
   ) {
     assertCompanyPermission(actor, companyId, 'treasury.manage_settings');
     return this.treasury.updateSettings(organizationId, companyId, dto, actor);
+  }
+
+  @Get('status-history')
+  @ApiOperation({
+    summary:
+      'Histórico paginado das mudanças de situação das contas financeiras da organização.',
+  })
+  findStatusHistory(
+    @Query('organizationId') organizationId: string,
+    @Query() query: TreasuryStatusHistoryQueryDto,
+    @CurrentUser() actor: RequestUser,
+  ) {
+    assertOrganizationPermission(actor, organizationId, 'treasury.view');
+    return this.treasury.findStatusHistory(organizationId, {
+      companyId: query.companyId,
+      financialAccountId: query.financialAccountId,
+      page: query.page,
+      perPage: query.perPage,
+    });
   }
 
   @Get('beneficiaries')

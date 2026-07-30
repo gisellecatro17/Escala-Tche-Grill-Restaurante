@@ -8,6 +8,7 @@ import {
 } from '@prisma/client';
 
 import { PrismaService } from '../../prisma/prisma.service';
+import { paginate } from '../../common/dto/pagination-query.dto';
 import type { RequestUser } from '../../common/types/authenticated-request';
 import { hasPermissionAnywhere } from '../../common/utils/access-control.util';
 import {
@@ -310,6 +311,74 @@ export class TreasuryService {
       // Saldo movimentado não existe nesta etapa: só há saldo de implantação.
       note: 'Os saldos bancário, conciliado e disponível serão calculados quando o módulo financeiro registrar movimentações.',
     };
+  }
+
+  // ── Histórico de situação das contas ──────────────────────────────────────
+
+  /**
+   * Histórico paginado das mudanças de situação das contas da organização.
+   *
+   * A visão geral traz apenas as dez últimas; esta rota existe para a tela de histórico,
+   * onde o interesse é auditar o passado inteiro de uma conta ou de todas elas.
+   */
+  async findStatusHistory(
+    organizationId: string,
+    filters: {
+      companyId?: string;
+      financialAccountId?: string;
+      page: number;
+      perPage: number;
+    },
+  ) {
+    const where: Prisma.FinancialAccountStatusHistoryWhereInput = {
+      financialAccount: {
+        organizationId,
+        deletedAt: null,
+        ...(filters.companyId ? { companyId: filters.companyId } : {}),
+      },
+      ...(filters.financialAccountId
+        ? { financialAccountId: filters.financialAccountId }
+        : {}),
+    };
+
+    const [rows, total] = await Promise.all([
+      this.prisma.financialAccountStatusHistory.findMany({
+        where,
+        orderBy: { changedAt: 'desc' },
+        skip: (filters.page - 1) * filters.perPage,
+        take: filters.perPage,
+        include: {
+          financialAccount: {
+            select: { id: true, name: true, displayName: true },
+          },
+        },
+      }),
+      this.prisma.financialAccountStatusHistory.count({ where }),
+    ]);
+
+    // `changedBy` guarda só o id (não é relação no schema), então o nome de quem mudou
+    // vem em uma consulta à parte — uma para a página inteira, não uma por linha.
+    const actorIds = [
+      ...new Set(
+        rows.map((row) => row.changedBy).filter((id): id is string => !!id),
+      ),
+    ];
+    const actors = actorIds.length
+      ? await this.prisma.user.findMany({
+          where: { id: { in: actorIds } },
+          select: { id: true, name: true, email: true },
+        })
+      : [];
+    const actorById = new Map(actors.map((user) => [user.id, user]));
+
+    const items = rows.map((row) => ({
+      ...row,
+      changedByUser: row.changedBy
+        ? (actorById.get(row.changedBy) ?? null)
+        : null,
+    }));
+
+    return paginate(items, total, filters.page, filters.perPage);
   }
 
   // ── Favorecidos bancários (seção 45) ──────────────────────────────────────

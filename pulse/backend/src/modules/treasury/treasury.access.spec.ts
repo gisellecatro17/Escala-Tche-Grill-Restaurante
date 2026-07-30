@@ -367,5 +367,45 @@ describe('Tesouraria — isolamento entre empresas e organizações', () => {
       );
       expect(treasury.findOverview).not.toHaveBeenCalled();
     });
+
+    it('recusa o histórico de situação de outra organização', () => {
+      const treasury = { findStatusHistory: jest.fn().mockResolvedValue({}) };
+      const controller = new TreasuryController(treasury as any);
+      const actor = buildUser({
+        organizationId: 'org-1',
+        permissions: ['treasury.view'],
+      });
+
+      expect(() =>
+        controller.findStatusHistory(
+          'org-2',
+          { page: 1, perPage: 25 } as any,
+          actor,
+        ),
+      ).toThrow(ForbiddenException);
+      expect(treasury.findStatusHistory).not.toHaveBeenCalled();
+    });
+
+    it('repassa a empresa e a paginação ao histórico da própria organização', () => {
+      const treasury = { findStatusHistory: jest.fn().mockResolvedValue({}) };
+      const controller = new TreasuryController(treasury as any);
+      const actor = buildUser({
+        organizationId: 'org-1',
+        permissions: ['treasury.view'],
+      });
+
+      void controller.findStatusHistory(
+        'org-1',
+        { companyId: 'company-1', page: 2, perPage: 10 },
+        actor,
+      );
+
+      expect(treasury.findStatusHistory).toHaveBeenCalledWith('org-1', {
+        companyId: 'company-1',
+        financialAccountId: undefined,
+        page: 2,
+        perPage: 10,
+      });
+    });
   });
 });

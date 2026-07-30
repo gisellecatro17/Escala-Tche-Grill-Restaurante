@@ -286,6 +286,117 @@ centros de custo e centros de resultado. O motivo é prático: renomear uma cont
 reversível e local, mas mover uma conta muda a composição de todos os relatórios
 históricos que a agregam.
 
+## Tesouraria
+
+### Uma tabela para conta bancária, caixa e carteira
+
+`financial_accounts` guarda conta corrente, conta de pagamento, conta digital, caixa,
+fundo fixo e carteira digital no mesmo lugar, diferenciados por `account_type`. A
+alternativa — uma tabela por tipo — obrigaria todo módulo financeiro futuro a consultar
+cinco tabelas para responder "de onde saiu esse dinheiro?", e cada nova forma de guardar
+dinheiro exigiria uma migration nova. O custo é que campos bancários (agência, conta,
+instituição) são opcionais e validados conforme o tipo, em `utils/account-identity.util.ts`
+(`isBankAccount`); o front-end esconde as etapas correspondentes do wizard pelo mesmo
+critério.
+
+### Segurança decidida no DTO, não na tela
+
+Duas categorias de dado simplesmente não têm campo de entrada:
+
+- **Número completo do cartão, CVV e senha** — `CreateCorporateCardDto` só aceita
+  `lastFourDigits`, validado como exatamente quatro numerais. O que não é aceito na
+  entrada não pode ser gravado por engano em uma refatoração futura, nem vazar por um
+  `PATCH` esquecido.
+- **Credencial de integração bancária** — `credentials_reference` é um ponteiro para o
+  cofre (`vault://…`). O service recusa valores que se pareçam com segredo (bloco PEM de
+  chave privada, blob base64 longo, JSON contendo `client_secret`/`password`/`token`), e
+  `findIntegrations` remove o campo da resposta, devolvendo apenas
+  `hasCredentials: boolean`. Uma referência não é secreta, mas também não precisa
+  trafegar.
+
+### Mascaramento no back-end, reaproveitando o de fornecedores
+
+`utils/treasury-mask.util.ts` usa as mesmas funções que o módulo de fornecedores
+(`maskAccountFragment`, `maskPixKeyValue`) e acrescenta `maskBalances`, que troca todo
+campo monetário da conta pelo marcador `••••••••`. O mascaramento acontece antes de a
+resposta ser montada, então o valor protegido não existe no JSON, no tráfego nem no cache
+do navegador. O front-end reconhece o marcador e o exibe como está, em vez de tentar
+formatá-lo como número.
+
+### Saldo de implantação: correção que preserva o anterior
+
+Corrigir o saldo inicial não sobrescreve o registro: o anterior passa a
+`SUPERSEDED` e um novo é criado. Saldo de implantação é a base de toda conferência futura
+com o extrato — se alguém o corrigir, a pergunta "qual era o valor antes, e quem mudou?"
+tem de ter resposta. É o mesmo motivo de `financial_account_status_history` guardar
+motivo, autor e data de cada mudança de situação.
+
+### `CLOSED` é terminal
+
+A tabela de transições em `financial-accounts.service.ts` (`STATUS_TRANSITIONS`) mapeia
+`CLOSED → []`. Uma conta encerrada no banco não volta a existir porque alguém clicou em
+"ativar"; se a empresa reabrir a conta, isso é uma conta nova, com nova data de abertura
+e novo saldo de implantação. Reaproveitar o registro antigo misturaria dois períodos
+distintos no mesmo histórico.
+
+### Duplicidade por identificador normalizado
+
+`1234-5` e `12345` são a mesma conta. A comparação usa
+`normalized_account_identifier` (`instituição:agência:conta`, apenas dígitos) em vez dos
+campos formatados, e o mesmo vale para `normalized_key` das chaves PIX. Comparar o texto
+digitado deixaria a mesma conta entrar duas vezes só por diferença de pontuação — e duas
+versões da mesma conta é exatamente o problema que o cadastro existe para evitar.
+
+### DDI da chave PIX decidido pelo comprimento, não pelo prefixo
+
+`utils/pix-key.util.ts` acrescenta o DDI `55` a telefones considerando o **tamanho** do
+número (10 ou 11 dígitos = nacional; 12 ou 13 = já tem DDI). Decidir pelo prefixo
+quebraria: `55` também é DDD válido (Rio Grande do Sul), então `55999998888` é "DDD 55 +
+celular", não um número já internacionalizado.
+
+### Conta de terceiro: comparar documentos, não confiar na flag
+
+`assertThirdPartyAllowed` não aceita `isThirdParty: false` como prova de que a conta é da
+própria empresa: compara o documento do titular com o da empresa. Um payload pode mentir;
+um CNPJ diferente, não. Quando a conta é de terceiro, exige justificativa e o parâmetro
+`allow_third_party_accounts` habilitado na empresa.
+
+### Favorecidos: visão de leitura, não cadastro novo
+
+`GET /treasury/beneficiaries` lê `supplier_bank_accounts` e `supplier_pix_keys` e
+apresenta o resultado consolidado. Criar uma tabela `beneficiaries` própria produziria
+duas versões da mesma conta bancária, que divergiriam na primeira correção feita em
+apenas um dos lados. A tela correspondente é explicitamente somente leitura e aponta para
+o cadastro do fornecedor.
+
+### Exigências das formas de pagamento como piso, não como padrão
+
+`PAYMENT_METHOD_REQUIREMENTS` define o mínimo de cada tipo — PIX exige favorecido,
+boleto exige linha digitável, transferência/TED/DOC exigem favorecido e dados bancários,
+cartão exige conta financeira — e é aplicado por cima do que o usuário enviou: desmarcar
+na tela não desliga a exigência. Se a exigência fosse apenas um valor inicial, um
+cadastro descuidado permitiria lançar uma transferência sem dados bancários, e o erro só
+apareceria no momento do pagamento.
+
+### Nomes de model divergindo do nome da tabela
+
+`PaymentMethodCatalog` mapeia para a tabela `payment_methods`, e `FinancialNatureCatalog`
+para `financial_natures`. O sufixo existe porque `enum PaymentMethod` e
+`enum FinancialNature` já eram usados por fornecedores e clientes: um model com o mesmo
+nome faria o Prisma resolver campos como `defaultPaymentMethod PaymentMethod?` como
+relação em vez de enum. Renomear os enums quebraria código aprovado; renomear as tabelas
+quebraria migrations. O sufixo no model é a mudança de menor alcance.
+
+### Estrutura de integração pronta, conexão nenhuma
+
+`financial_account_integrations`, `reconciliation_mode`, `settlement_days` e as taxas das
+formas de recebimento existem no schema, mas nenhuma conexão bancária é feita nesta
+etapa: `POST .../integrations/:id/test` valida o cadastro, não o acesso ao banco. Os
+saldos bancário, conciliado e disponível também não são calculados — só existe saldo de
+implantação, e apresentá-lo como saldo atual seria informação errada, não informação
+incompleta.
+
+
 ## Autenticação
 
 - Login, sessão, recuperação de senha e confirmação de e-mail são delegados ao **Supabase

@@ -29,6 +29,11 @@ Este repositório está sendo desenvolvido **módulo por módulo**. Já foram en
    custo, centros de resultado, projetos, unidades de negócio, naturezas financeiras,
    tags, rateios e regras de classificação automática, com árvores de profundidade
    ilimitada, importação/exportação e versionamento. Ver seção dedicada abaixo.
+6. **Tesouraria e Cadastros Bancários** — contas bancárias, contas de pagamento, caixas,
+   fundos fixos, carteiras digitais, cartões corporativos, chaves PIX da empresa, formas
+   de pagamento e de recebimento, favorecidos bancários, parâmetros de tesouraria, saldo
+   de implantação e a estrutura preparada para as futuras integrações bancárias. Ver
+   seção dedicada abaixo.
 
 Os demais módulos financeiros (contas a pagar/receber, importação OFX, conciliação,
 inteligência financeira) serão adicionados em etapas futuras, mediante aprovação.
@@ -42,8 +47,7 @@ inteligência financeira) serão adicionados em etapas futuras, mediante aprova�
   (`organizationMemberships`).
 - **Módulos do menu**: Visão Geral, Cadastros, Financeiro, Inteligência Financeira e
   Configurações. Nesta etapa, o **Dashboard** (Visão Geral) e todo o bloco **Cadastros**
-  exceto contas bancárias, formas de pagamento e adquirentes estão navegáveis; os demais
-  itens aparecem no menu como "Em breve".
+  estão navegáveis; os demais itens aparecem no menu como "Em breve".
 
 ## Tecnologias
 
@@ -79,6 +83,7 @@ pulse/
 │   │   ├── companies/          Cadastro de Empresas: listagem, ações, wizard em etapas, diálogos
 │   │   ├── suppliers/          Cadastro de Fornecedores: listagem, ações, wizard em 10 etapas, seleção rápida de categoria/centro de custo
 │   │   ├── customers/          Cadastro de Clientes: listagem, ações (com conversão de prospect), wizard em 10 etapas
+│   │   ├── treasury/            Wizard de 8 etapas da conta financeira, formulário de cartão e campo de formulário compartilhado
 │   │   └── financial-structure/ Árvore reutilizável (expandir/recolher/mover), diálogos de nó e página padrão dos cadastros estruturais
 │   ├── lib/
 │   │   ├── supabase/          Clientes Supabase (browser, server, proxy)
@@ -92,7 +97,7 @@ pulse/
 ├── backend/                  NestJS
 │   ├── prisma/
 │   │   ├── schema.prisma      Modelo de dados
-│   │   ├── migrations/        Fundação + Empresas + Fornecedores + Clientes + Estrutura Financeira (incremental)
+│   │   ├── migrations/        Fundação + Empresas + Fornecedores + Clientes + Estrutura Financeira + Tesouraria (incremental)
 │   │   └── seed.ts             Perfis, permissões e organização/empresa de demonstração
 │   └── src/
 │       ├── common/             Decorators, guards, filtros, interceptor de resposta padrão, controle de acesso
@@ -106,6 +111,7 @@ pulse/
 │       │   ├── companies/       Cadastro de Empresas completo (ver seção dedicada abaixo)
 │       │   ├── suppliers/       Cadastro de Fornecedores completo (ver seção dedicada abaixo)
 │       │   ├── customers/       Cadastro de Clientes completo (ver seção dedicada abaixo)
+│       │   ├── treasury/        Contas financeiras, saldos, limites, chaves PIX, responsáveis, integrações, cartões, formas de pagamento/recebimento e parâmetros
 │       │   ├── financial-structure/ Plano de contas, centros de resultado, projetos, unidades, naturezas, tags, rateios, regras, importação/exportação e versionamento
 │       │   ├── taxonomy/        Categorias (com subcategorias) e centros de custo — em árvore, com cadastro rápido reaproveitado por Fornecedores e Clientes
 │       │   ├── financial-institutions/  Catálogo de bancos (seed + busca)
@@ -510,6 +516,124 @@ relata**: nada é corrigido automaticamente, porque a correção depende de deci
 usuário.
 
 
+## Tesouraria e Cadastros Bancários
+
+Onde o dinheiro entra e sai. Este módulo cadastra as **contas financeiras** (contas
+bancárias, caixas, fundos fixos e carteiras digitais), os **cartões corporativos**, as
+**chaves PIX da empresa** e as **formas de pagamento e recebimento**. Ele não movimenta
+nada: toda movimentação futura — contas a pagar, contas a receber, conciliação, fluxo de
+caixa — vai apontar para uma conta deste cadastro.
+
+```
+Conta financeira ─┬─ saldo de implantação (histórico, nunca sobrescrito)
+                  ├─ limites bancários (cheque especial, capital de giro…)
+                  ├─ chaves PIX da empresa
+                  ├─ responsáveis, com 11 permissões por conta
+                  └─ integrações bancárias (estrutura pronta, sem conexão real)
+
+Cartão corporativo ─── portadores, limites individuais, ciclo de fatura
+Forma de pagamento ─── o que o lançamento vai exigir (chave PIX, código de barras…)
+Forma de recebimento ─ prazo de liquidação e taxas, para o valor líquido
+Favorecidos ────────── visão de leitura sobre as contas já cadastradas nos fornecedores
+```
+
+Rotas do front-end: `/cadastros/tesouraria` (visão geral com pendências e alertas),
+`/cadastros/tesouraria/parametros`, `/cadastros/tesouraria/historico`,
+`/cadastros/contas-financeiras` (lista, `nova`, `[id]`, `[id]/editar`),
+`/cadastros/cartoes` (lista, `novo`, `[id]`, `[id]/editar`), `/cadastros/chaves-pix`,
+`/cadastros/formas-de-pagamento`, `/cadastros/formas-de-recebimento` e
+`/cadastros/favorecidos-bancarios`.
+
+A inclusão de conta usa um **wizard de 8 etapas** (identificação, dados bancários,
+configuração financeira, saldos e limites, chaves PIX, responsáveis, integrações e
+revisão), que pode ser salvo como rascunho em qualquer ponto. As etapas bancárias
+desaparecem para caixa, fundo fixo e carteira digital — não faz sentido pedir agência
+para um caixa. A tela de visualização traz seis abas espelhando o wizard.
+
+Principais endpoints da API (todos no Swagger):
+
+| Rota | Descrição |
+| --- | --- |
+| `GET /treasury/overview` | Consolidado: contagens, pendências e últimas alterações de situação |
+| `GET/PATCH /treasury/settings` | Parâmetros de tesouraria da empresa (criados com os padrões na primeira consulta) |
+| `GET /treasury/status-history` | Histórico paginado das mudanças de situação das contas |
+| `GET /treasury/beneficiaries` | Favorecidos bancários — **lê** fornecedores, não duplica cadastro |
+| `GET/POST /financial-accounts` · `PATCH/DELETE /:id` | Contas financeiras |
+| `POST /financial-accounts/drafts` | Salva rascunho de conta incompleta |
+| `GET /financial-accounts/:id/usage` \| `/activation-pendencies` \| `/audit` | Vínculos, o que falta para ativar e trilha de auditoria |
+| `POST /financial-accounts/:id/activate` \| `/block` \| `/unblock` \| `/suspend` \| `/deactivate` \| `/close` | Ciclo de vida, com motivo obrigatório e transições validadas |
+| `GET/POST /financial-accounts/:id/opening-balance` | Saldo de implantação — a correção **supera** o registro anterior em vez de sobrescrevê-lo |
+| `GET/POST /financial-accounts/:id/limits` · `PATCH .../limits/:limitId` | Limites bancários |
+| `GET/POST /financial-accounts/:id/users` · `PATCH`/`DELETE .../users/:userId` | Responsáveis e suas 11 permissões por conta |
+| `GET/POST /financial-accounts/:id/integrations` | Integrações bancárias (a referência da credencial nunca é devolvida) |
+| `POST .../integrations/:id/test` \| `/activate` \| `/disconnect` | Ciclo da integração |
+| `GET/POST/PATCH/DELETE /company-pix-keys` · `POST .../:id/activate` \| `/deactivate` | Chaves PIX da empresa |
+| `GET/POST /corporate-cards` · `PATCH/DELETE /:id` | Cartões corporativos |
+| `GET /corporate-cards/alerts` | Vencendo, vencidos, sem responsável e com conta pagadora inativa |
+| `POST /corporate-cards/:id/block` \| `/unblock` \| `/deactivate` | Ciclo de vida do cartão, com motivo |
+| `GET/POST /corporate-cards/:id/users` | Portadores e limites individuais |
+| `GET/POST/PATCH/DELETE /payment-methods` · `POST .../:id/activate` \| `/deactivate` | Formas de pagamento |
+| `GET/POST/PATCH/DELETE /receipt-methods` · `POST .../:id/activate` \| `/deactivate` | Formas de recebimento |
+
+Permissões granulares (49 no total):
+`treasury.{view,manage,view_dashboard,manage_settings,view_sensitive_data,allow_third_party_account,approve_bank_data_change,export,view_audit}`,
+`financial_account.{view,create,update,activate,block,unblock,suspend,deactivate,close,delete,view_balance,view_bank_data,manage_initial_balance,manage_limits,manage_users,manage_integration,manage_pix,view_audit}`,
+`card.{view,create,update,block,unblock,deactivate,delete,manage_limits,manage_users,view_sensitive_data}`,
+`payment_method.*` e `receipt_method.*`.
+
+### O que o sistema nunca armazena
+
+Decisões tomadas no **DTO**, não só na tela: o que não é aceito na entrada não pode ser
+gravado por engano depois.
+
+- **Cartões** — número completo, código de segurança e senha **não têm campo**. Só os
+  quatro últimos dígitos, validados como exatamente quatro numerais, e exibidos como
+  `**** **** **** 1234`.
+- **Credenciais de integração** — `credentials_reference` é um **ponteiro** para o cofre
+  (ex.: `vault://pulse/company/<id>/bb`), nunca a credencial. O back-end recusa valores
+  que se pareçam com segredo (chave privada PEM, blob base64 longo, JSON com
+  `client_secret`/`password`/`token`) e a rota de leitura devolve apenas
+  `hasCredentials: true|false`.
+
+### Mascaramento por permissão
+
+O mascaramento acontece no **back-end**, antes de a resposta existir — o valor protegido
+não trafega, não entra no cache do navegador e não aparece no DevTools. Sem
+`financial_account.view_bank_data` a agência vira `****-1` e a conta `******-6`; a chave
+PIX vira `gi*****@empresa.com`. Sem `financial_account.view_balance` todo campo monetário
+da conta vira `••••••••`. Acessos a dados sensíveis são registrados na auditoria.
+
+### Ciclo de vida da conta (`FinancialAccountStatus`)
+
+`DRAFT` → `PENDING_VALIDATION` → `ACTIVE` → `BLOCKED`/`SUSPENDED`/`INACTIVE` → `CONCLUÍDO`
+em `CLOSED`. As transições são explícitas: `CLOSED` é **terminal** (nenhuma transição
+sai dele), ativar exige que as pendências estejam resolvidas, e toda mudança grava
+motivo, autor e data em `financial_account_status_history`. Nada é excluído em cascata:
+excluir uma conta só é possível quando ela não tem nenhum vínculo, e movimentos
+financeiros **nunca** são apagados junto.
+
+### Duplicidade e integridade
+
+- A mesma conta bancária não entra duas vezes: a comparação usa um identificador
+  normalizado (`instituição:agência:conta`, apenas dígitos), então `1234-5` e `12345`
+  são reconhecidos como a mesma conta.
+- Chaves PIX são normalizadas antes de gravar — telefone recebe DDI pelo **comprimento**
+  do número, não pelo prefixo (`55` também é DDD do Rio Grande do Sul).
+- Cartões duplicam-se por final + instituição + validade.
+- Conta de terceiro exige justificativa e o parâmetro da empresa habilitado; a
+  verificação compara os **documentos**, não confia no campo `isThirdParty` do payload.
+
+### O que ainda não existe neste módulo
+
+Contas a pagar e a receber, agendamento e envio de pagamentos ao banco, importação OFX,
+conciliação bancária, emissão de boleto, cobrança PIX, gateway, Open Finance, baixa
+financeira, fluxo de caixa e Inteligência Financeira. A estrutura está preparada para
+todos eles — `financial_account_integrations`, `reconciliation_mode`, prazos de
+liquidação e taxas já existem — mas nenhuma conexão real é feita nesta etapa. Os saldos
+bancário, conciliado e disponível também não são calculados: só existe saldo de
+implantação, e somá-lo como se fosse saldo atual seria enganoso.
+
+
 ## Banco de dados e migrations
 
 O schema fica em `backend/prisma/schema.prisma`. Tabelas principais:
@@ -531,9 +655,18 @@ na mesma hierarquia), `cost_centers`, `result_centers`, `projects`, `business_un
 `classification_rule_conditions`, `classification_rule_actions`, `allocation_rules`,
 `allocation_rule_items`, `financial_hierarchy_versions`, `financial_hierarchy_history`,
 `financial_structure_imports`, `financial_structure_import_rows`,
+`financial_accounts`, `financial_account_opening_balances`,
+`financial_account_limits`, `financial_account_users`,
+`financial_account_integrations`, `financial_account_status_history`,
+`company_pix_keys`, `corporate_cards`, `corporate_card_users`, `payment_methods`,
+`receipt_methods`, `treasury_settings`,
 `financial_institutions`, `attachments` (anexos genéricos), `users`, `roles`,
 `permissions`, `role_permissions`, `user_organization_roles`, `user_company_roles` e
 `audit_logs`.
+
+> As migrations são sempre **incrementais**. A migration da tesouraria
+> (`20260730120000_treasury_module`) só adiciona: nenhum `DROP`, nenhuma tabela
+> renomeada, nenhuma rota existente alterada.
 
 ```bash
 cd backend
@@ -559,9 +692,55 @@ npm test        # testes unitários: isolamento multiempresa/organização, perm
                  # (ativar/inativar/arquivar sem excluir nada), ativação exclusiva de
                  # versão do plano, geração automática de código, leitura de XLSX/CSV/JSON,
                  # importação em 7 etapas com simulação, exportação nos quatro formatos,
-                 # duplicação entre empresas e diagnóstico de inconsistências
+                 # duplicação entre empresas, diagnóstico de inconsistências,
+                 # transições de situação da conta financeira (com CLOSED terminal),
+                 # duplicidade por identificador normalizado, recusa de conta de
+                 # terceiro sem justificativa, saldo de implantação superado em vez de
+                 # sobrescrito, recusa de credencial bruta em credentials_reference,
+                 # normalização de chave PIX (inclusive DDI por comprimento), exigências
+                 # mínimas por tipo de forma de pagamento e isolamento das rotas da
+                 # tesouraria
 npm run test:e2e
 ```
+
+### Testar manualmente a Tesouraria
+
+1. Suba backend e frontend, faça login e selecione a empresa "Tchê Grill".
+2. Acesse **Cadastros → Tesouraria**. A visão geral traz a contagem de contas, cartões,
+   chaves e formas, o painel de pendências e as últimas mudanças de situação. O seed de
+   demonstração já cria 3 contas, 1 cartão, 1 chave PIX e 5 formas de cada tipo.
+3. **Incluir nova conta** → escolha "Caixa" no tipo e confirme que as etapas de dados
+   bancários desaparecem. Volte para "Conta corrente" e elas reaparecem.
+4. Preencha só o nome e clique em **Salvar rascunho**. A conta aparece na lista como
+   `Rascunho`.
+5. Abra a conta e tente **Ativar**: as pendências que faltam são listadas em vez de a
+   ativação passar silenciosamente.
+6. Tente cadastrar uma segunda conta com a mesma agência e conta da primeira, mudando a
+   formatação (`1234-5` em vez de `12345`). O cadastro é recusado como duplicado.
+7. Na aba **Saldos e limites**, lance o saldo de implantação. Lance outro em seguida: o
+   primeiro fica como `Superado` — o histórico não é sobrescrito.
+8. Na aba **Integrações**, tente colar uma credencial de verdade no campo de referência
+   (um JSON com `client_secret`, por exemplo). O back-end recusa: o campo é ponteiro
+   para o cofre, não lugar de segredo.
+9. Em **Chaves PIX**, cadastre uma chave de telefone como `(51) 99999-8888` e confira que
+   ela é gravada normalizada com DDI. Tente cadastrá-la de novo em outro formato: é
+   recusada.
+10. Em **Cartões corporativos**, repare que não existe campo para número completo, CVV ou
+    senha. Cadastre com final `4587` e validade próxima; o cartão aparece no painel de
+    alertas.
+11. Em **Formas de pagamento**, crie uma forma do tipo PIX com "Exige favorecido"
+    desmarcado. Salve e reabra: a exigência volta marcada — as exigências mínimas do tipo
+    são aplicadas como piso pelo back-end (PIX exige favorecido, boleto exige linha
+    digitável, transferência exige dados bancários, cartão exige conta financeira).
+12. Em **Favorecidos bancários**, confirme que as contas vêm do fornecedor de
+    demonstração e que a tela não oferece cadastro — para corrigir, edita-se o
+    fornecedor.
+13. Com um usuário sem `financial_account.view_bank_data`, reabra a conta: agência e
+    conta aparecem mascaradas (`****-1`, `******-6`). Sem
+    `financial_account.view_balance`, os valores aparecem como `••••••••`. Confirme na
+    aba Network que o dado completo **não** está na resposta.
+14. Bloqueie a conta informando o motivo e confira o registro em **Tesouraria →
+    Histórico**, com situação anterior, nova, motivo e data.
 
 ### Testar manualmente a Estrutura Financeira
 
@@ -682,5 +861,8 @@ Com o back-end rodando, o Swagger fica disponível em `http://localhost:3333/doc
 ## Próxima etapa recomendada
 
 Módulo **Financeiro (Contas a Pagar e Contas a Receber)**, que passa a consumir todos os
-cadastros já entregues — fornecedores, clientes e as dimensões da estrutura financeira —
-e finalmente ativa o motor de classificação automática, hoje apenas simulável.
+cadastros já entregues — fornecedores, clientes, as dimensões da estrutura financeira e
+agora as contas, cartões e formas de pagamento/recebimento da tesouraria — e finalmente
+ativa o motor de classificação automática, hoje apenas simulável. É também onde os
+saldos bancário, conciliado e disponível deixam de ser apenas saldo de implantação e
+passam a ser calculados.

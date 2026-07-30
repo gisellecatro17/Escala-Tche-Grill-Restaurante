@@ -13,6 +13,8 @@ import {
   Min,
 } from 'class-validator';
 
+import { PaginationQueryDto } from '../../../common/dto/pagination-query.dto';
+
 /**
  * Parâmetros de tesouraria da empresa (seção 47). Todos opcionais: a atualização é
  * parcial, e o registro é criado com os padrões na primeira consulta.
@@ -185,4 +187,19 @@ export class UpdateTreasurySettingsDto {
   @IsInt()
   @Min(0)
   dateToleranceDays?: number;
+}
+
+/** Filtros da tela de histórico de situação das contas financeiras. */
+export class TreasuryStatusHistoryQueryDto extends PaginationQueryDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  companyId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Restringe a uma única conta financeira.',
+  })
+  @IsOptional()
+  @IsUUID()
+  financialAccountId?: string;
 }
