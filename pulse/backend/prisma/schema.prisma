@@ -908,6 +908,10 @@ model Organization {
   receiptMethods      ReceiptMethod[]
   treasurySettings    TreasurySettings[]
 
+  intakeDocuments        IntakeDocument[]
+  intakeBatchImports     IntakeBatchImport[]
+  documentIntakeSettings DocumentIntakeSettings[]
+
   @@map("organizations")
 }
 
@@ -1032,6 +1036,10 @@ model Company {
   paymentMethods      PaymentMethodCatalog[]
   receiptMethods      ReceiptMethod[]
   treasurySettings    TreasurySettings?
+
+  intakeDocuments        IntakeDocument[]
+  intakeBatchImports     IntakeBatchImport[]
+  documentIntakeSettings DocumentIntakeSettings?
 
   @@unique([organizationId, internalCode])
   @@index([organizationId])
@@ -1595,6 +1603,7 @@ model Supplier {
   statusHistory            SupplierStatusHistory[]
   primaryForProjects       Project[]                 @relation("ProjectPrimarySupplier")
   receiptMethodsAsAcquirer ReceiptMethod[]           @relation("ReceiptMethodAcquirer")
+  intakeDocuments          IntakeDocument[]
 
   @@index([organizationId])
   @@index([systemStatus])
@@ -2089,6 +2098,8 @@ model Attachment {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
+  intakeDocumentFiles IntakeDocumentFile[]
+
   @@index([entityType, entityId])
   @@map("attachments")
 }
@@ -2158,6 +2169,7 @@ model Customer {
   statusHistory           CustomerStatusHistory[]
   projects                Project[]                @relation("ProjectCustomer")
   primaryForResultCenters ResultCenter[]           @relation("ResultCenterPrimaryCustomer")
+  intakeDocuments         IntakeDocument[]
 
   @@index([organizationId])
   @@index([systemStatus])
@@ -4338,4 +4350,792 @@ model FinancialAccountStatusHistory {
 
   @@index([financialAccountId])
   @@map("financial_account_status_history")
+}
+
+// ── Entrada de Documentos ───────────────────────────────────────────────────
+
+/// Tipo do documento financeiro recebido (seção 15 do prompt de entrada de documentos).
+/// Extensível: novos tipos entram aqui sem tocar em nenhuma tabela.
+enum IntakeDocumentType {
+  BOLETO
+  INVOICE
+  SERVICE_INVOICE
+  PRODUCT_INVOICE
+  NFSE
+  NFE
+  CTE
+  UTILITY_BILL
+  TAX_GUIDE
+  RECEIPT
+  PAYMENT_RECEIPT
+  CONTRACT
+  PURCHASE_ORDER
+  EXPENSE_REPORT
+  REIMBURSEMENT
+  ADVANCE
+  PAYROLL_DOCUMENT
+  BANK_DOCUMENT
+  BANK_STATEMENT
+  SPREADSHEET
+  XML_DOCUMENT
+  REVENUE_DOCUMENT
+  EXPENSE_DOCUMENT
+  OTHER
+}
+
+/// Um documento é a pagar (despesa), a receber (receita) ou nenhum dos dois (contrato,
+/// extrato). A direção decide se é fornecedor ou cliente que precisa ser identificado.
+enum IntakeDocumentDirection {
+  PAYABLE
+  RECEIVABLE
+  NEUTRAL
+  UNKNOWN
+}
+
+/// Canal por onde o documento entrou (seção 7). Os canais não implementados nesta etapa
+/// existem no enum para que a estrutura esteja pronta, e aparecem como "Não configurado".
+enum IntakeSourceChannel {
+  MANUAL_UPLOAD
+  DRAG_AND_DROP
+  CAMERA_CAPTURE
+  BATCH_IMPORT
+  MANUAL_ENTRY
+  EMAIL
+  API
+  EXTERNAL_INTEGRATION
+  WATCHED_FOLDER
+  MOBILE_APP
+}
+
+/// Etapas do pipeline (seção 17). O documento anda por elas em ordem, mas pode desviar
+/// para ERROR, REJECTED ou DUPLICATE a qualquer momento.
+enum IntakeProcessingStatus {
+  UPLOADED
+  VALIDATING
+  STORED
+  QUEUED
+  EXTRACTING
+  CLASSIFYING
+  MATCHING
+  VALIDATING_DATA
+  PENDING_REVIEW
+  READY_FOR_PROCESSING
+  PROCESSED
+  ERROR
+  REJECTED
+  DUPLICATE
+  ARCHIVED
+}
+
+/// Situação da revisão humana, separada do pipeline técnico: um documento pode estar
+/// tecnicamente pronto (READY_FOR_PROCESSING) e ainda assim ter sido revisado ou não.
+enum IntakeReviewStatus {
+  NOT_REVIEWED
+  IN_REVIEW
+  REVIEWED
+  CHANGES_REQUESTED
+  REJECTED
+}
+
+/// Resultado da detecção de duplicidade (seção 42).
+enum IntakeDuplicateStatus {
+  NOT_CHECKED
+  NO_DUPLICATE
+  POSSIBLE_DUPLICATE
+  HIGH_PROBABILITY
+  EXACT_DUPLICATE
+  CONFIRMED_DUPLICATE
+  DISMISSED
+}
+
+enum IntakePriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+/// Papel do arquivo dentro do documento (seção 57). O ORIGINAL nunca é sobrescrito.
+enum IntakeFileRole {
+  ORIGINAL
+  REPLACEMENT
+  SUPPORTING
+  GENERATED_PREVIEW
+  EXTRACTED_XML
+  OTHER
+}
+
+/// Como o valor de um campo foi obtido (seção 21). Serve para explicar a confiança:
+/// um CNPJ lido de XML é mais confiável que o mesmo CNPJ vindo de OCR.
+enum IntakeExtractionMethod {
+  XML_PARSE
+  PDF_TEXT
+  OCR
+  BARCODE
+  DIGITABLE_LINE
+  SPREADSHEET_PARSE
+  FILE_NAME
+  MANUAL_ENTRY
+  RULE_ENGINE
+  REGISTRY_MATCH
+  MANUAL_CORRECTION
+}
+
+enum IntakeFieldValidationStatus {
+  NOT_VALIDATED
+  VALID
+  INVALID
+  DIVERGENT
+  MANUALLY_CONFIRMED
+}
+
+/// Etapas executáveis da fila (seção 59). Cada job faz uma etapa e enfileira a seguinte.
+enum IntakeJobType {
+  VALIDATE_FILE
+  EXTRACT_DATA
+  CLASSIFY_DOCUMENT
+  IDENTIFY_PARTIES
+  VALIDATE_DATA
+  DETECT_DUPLICATES
+  SUGGEST_CLASSIFICATION
+  FULL_PIPELINE
+}
+
+enum IntakeJobStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+  DEAD_LETTER
+}
+
+/// Tipos de pendência (seção 44).
+enum IntakeIssueType {
+  COMPANY_NOT_IDENTIFIED
+  SUPPLIER_NOT_IDENTIFIED
+  CUSTOMER_NOT_IDENTIFIED
+  UNREADABLE_DOCUMENT
+  AMOUNT_NOT_IDENTIFIED
+  DUE_DATE_NOT_IDENTIFIED
+  DUPLICATE_DOCUMENT
+  INVALID_CODE
+  AMOUNT_DIVERGENCE
+  DUE_DATE_DIVERGENCE
+  HOLDER_DIVERGENCE
+  CATEGORY_MISSING
+  COST_CENTER_REQUIRED
+  PROJECT_REQUIRED
+  WITHHOLDING_PENDING
+  PROTECTED_DOCUMENT
+  CORRUPTED_FILE
+  APPROVAL_REQUIRED
+  OTHER
+}
+
+/// Severidade da pendência (seção 45). BLOCKING impede o encaminhamento.
+enum IntakeIssueSeverity {
+  BLOCKING
+  WARNING
+  INFORMATIONAL
+}
+
+enum IntakeIssueStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  DISMISSED
+}
+
+/// Força da suspeita de duplicidade (seção 42).
+enum IntakeDuplicateMatchType {
+  FILE_HASH
+  BARCODE
+  DIGITABLE_LINE
+  ACCESS_KEY
+  DOCUMENT_NUMBER
+  AMOUNT_AND_DUE_DATE
+  BENEFICIARY_AND_AMOUNT
+  FILE_NAME
+  CONTENT_SIMILARITY
+  RELATED_DOCUMENT
+}
+
+enum IntakeDuplicateDecision {
+  PENDING
+  CONFIRMED
+  DISMISSED
+  REPLACED
+  KEEP_BOTH
+  RELATED
+}
+
+/// Relações lógicas entre documentos (seção 62). O arquivo original nunca é fundido.
+enum IntakeRelationType {
+  RELATED
+  SUPPORTS
+  REPLACES
+  INSTALLMENT_OF
+  PAYMENT_RECEIPT_OF
+  INVOICE_OF
+  CONTRACT_OF
+  ADDITIONAL_DOCUMENT_OF
+  OTHER
+}
+
+enum IntakeBatchStatus {
+  DRAFT
+  VALIDATING
+  PROCESSING
+  COMPLETED
+  COMPLETED_WITH_ERRORS
+  FAILED
+  CANCELLED
+}
+
+enum IntakeBatchItemStatus {
+  PENDING
+  VALID
+  INVALID
+  PROCESSING
+  PROCESSED
+  ERROR
+  SKIPPED
+}
+
+enum IntakeAssignmentStatus {
+  ASSIGNED
+  IN_PROGRESS
+  COMPLETED
+  REASSIGNED
+  CANCELLED
+}
+
+/// Motivos de rejeição (seção 46).
+enum IntakeRejectionReason {
+  INVALID_DOCUMENT
+  UNREADABLE_DOCUMENT
+  DUPLICATE_DOCUMENT
+  WRONG_COMPANY
+  CANCELLED_DOCUMENT
+  AMOUNT_DIVERGENCE
+  UNKNOWN_SUPPLIER
+  NOT_FINANCIAL
+  MALICIOUS_FILE
+  OTHER
+}
+
+/// Documento recebido pela porta de entrada do Pulse (seção 56).
+///
+/// Um registro aqui **não é** uma obrigação financeira: é um documento que chegou e está
+/// percorrendo o fluxo de validação, extração, identificação e revisão. A conta a pagar
+/// ou a receber correspondente será criada pelo módulo financeiro, a partir dos
+/// documentos que chegarem a `READY_FOR_PROCESSING`.
+model IntakeDocument {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+
+  /// Nulo enquanto a empresa não foi identificada — o documento fica na fila
+  /// "Empresa não identificada" e não pode ser encaminhado (seção 3).
+  companyId String? @map("company_id") @db.Uuid
+
+  /// Documento pai, quando este registro nasceu da divisão de uma fatura em parcelas
+  /// (seção 40). O arquivo original continua sendo o do pai.
+  parentDocumentId String? @map("parent_document_id") @db.Uuid
+
+  supplierId            String? @map("supplier_id") @db.Uuid
+  supplierCompanyLinkId String? @map("supplier_company_link_id") @db.Uuid
+  customerId            String? @map("customer_id") @db.Uuid
+  customerCompanyLinkId String? @map("customer_company_link_id") @db.Uuid
+  contractId            String? @map("contract_id") @db.Uuid
+
+  financialAccountId String? @map("financial_account_id") @db.Uuid
+  paymentMethodId    String? @map("payment_method_id") @db.Uuid
+  receiptMethodId    String? @map("receipt_method_id") @db.Uuid
+
+  categoryId        String? @map("category_id") @db.Uuid
+  subcategoryId     String? @map("subcategory_id") @db.Uuid
+  accountPlanId     String? @map("account_plan_id") @db.Uuid
+  costCenterId      String? @map("cost_center_id") @db.Uuid
+  resultCenterId    String? @map("result_center_id") @db.Uuid
+  projectId         String? @map("project_id") @db.Uuid
+  businessUnitId    String? @map("business_unit_id") @db.Uuid
+  financialNatureId String? @map("financial_nature_id") @db.Uuid
+
+  documentType    IntakeDocumentType      @default(OTHER) @map("document_type")
+  documentDirection IntakeDocumentDirection @default(UNKNOWN) @map("document_direction")
+  sourceChannel   IntakeSourceChannel     @default(MANUAL_UPLOAD) @map("source_channel")
+
+  originalFileName String? @map("original_file_name")
+  displayName      String? @map("display_name")
+  /// Caminho no bucket **privado**. Nunca é URL pública: o acesso sai por URL assinada.
+  storagePath      String? @map("storage_path")
+  mimeType         String? @map("mime_type")
+  fileExtension    String? @map("file_extension")
+  fileSize         Int?    @map("file_size")
+  /// SHA-256 do conteúdo. É o critério mais forte de duplicidade: arquivo idêntico.
+  fileHash         String? @map("file_hash")
+  pageCount        Int?    @map("page_count")
+  language         String?
+
+  documentNumber String?   @map("document_number")
+  documentSeries String?   @map("document_series")
+  accessKey      String?   @map("access_key")
+  issueDate      DateTime? @map("issue_date")
+  competenceDate DateTime? @map("competence_date")
+  dueDate        DateTime? @map("due_date")
+  paymentDate    DateTime? @map("payment_date")
+
+  grossAmount      Decimal? @map("gross_amount") @db.Decimal(18, 2)
+  discountAmount   Decimal? @map("discount_amount") @db.Decimal(18, 2)
+  interestAmount   Decimal? @map("interest_amount") @db.Decimal(18, 2)
+  penaltyAmount    Decimal? @map("penalty_amount") @db.Decimal(18, 2)
+  withholdingAmount Decimal? @map("withholding_amount") @db.Decimal(18, 2)
+  netAmount        Decimal? @map("net_amount") @db.Decimal(18, 2)
+  currencyCode     String   @default("BRL") @map("currency_code") @db.VarChar(3)
+
+  barcode                String? @map("barcode")
+  /// Só dígitos, para comparação: `1234.5` e `12345` precisam colidir na duplicidade.
+  normalizedBarcode      String? @map("normalized_barcode")
+  digitableLine          String? @map("digitable_line")
+  normalizedDigitableLine String? @map("normalized_digitable_line")
+  pixKey                 String? @map("pix_key")
+
+  /// Documento do emissor lido do arquivo, antes de qualquer vínculo — guardado para
+  /// que a identificação possa ser reexecutada sem reler o documento.
+  issuerDocument String? @map("issuer_document")
+  issuerName     String? @map("issuer_name")
+  /// Documento do destinatário/tomador/pagador: é por aqui que a empresa é identificada.
+  recipientDocument String? @map("recipient_document")
+  recipientName     String? @map("recipient_name")
+
+  description String?
+  notes       String?
+
+  priority         IntakePriority         @default(NORMAL)
+  processingStatus IntakeProcessingStatus @default(UPLOADED) @map("processing_status")
+  reviewStatus     IntakeReviewStatus     @default(NOT_REVIEWED) @map("review_status")
+  duplicateStatus  IntakeDuplicateStatus  @default(NOT_CHECKED) @map("duplicate_status")
+  /// Confiança consolidada da extração, de 0 a 100. Governa o que a automação pode fazer
+  /// sozinha (seção 32).
+  confidence       Decimal?               @db.Decimal(5, 2)
+
+  companyConfidence  Decimal? @map("company_confidence") @db.Decimal(5, 2)
+  supplierConfidence Decimal? @map("supplier_confidence") @db.Decimal(5, 2)
+  customerConfidence Decimal? @map("customer_confidence") @db.Decimal(5, 2)
+  typeConfidence     Decimal? @map("type_confidence") @db.Decimal(5, 2)
+
+  /// Texto extraído do documento, usado pela classificação e pela busca. Fica aqui para
+  /// que reclassificar não exija reprocessar o arquivo.
+  extractedText String? @map("extracted_text")
+  extractionMethod IntakeExtractionMethod? @map("extraction_method")
+
+  assignedUserId String? @map("assigned_user_id") @db.Uuid
+  assignedTeamId String? @map("assigned_team_id") @db.Uuid
+  reviewDueAt    DateTime? @map("review_due_at")
+
+  rejectionReason IntakeRejectionReason? @map("rejection_reason")
+  rejectionNotes  String?                @map("rejection_notes")
+
+  batchImportId String? @map("batch_import_id") @db.Uuid
+
+  receivedAt  DateTime  @default(now()) @map("received_at")
+  processedAt DateTime? @map("processed_at")
+  forwardedAt DateTime? @map("forwarded_at")
+  rejectedAt  DateTime? @map("rejected_at")
+  archivedAt  DateTime? @map("archived_at")
+
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company      Company?     @relation(fields: [companyId], references: [id])
+  /// Sem cascade: excluir o pai não pode apagar as parcelas derivadas em silêncio.
+  parentDocument IntakeDocument?  @relation("IntakeDocumentInstallments", fields: [parentDocumentId], references: [id])
+  installments   IntakeDocument[] @relation("IntakeDocumentInstallments")
+  supplier     Supplier?     @relation(fields: [supplierId], references: [id])
+  customer     Customer?     @relation(fields: [customerId], references: [id])
+  batchImport  IntakeBatchImport? @relation(fields: [batchImportId], references: [id])
+
+  files          IntakeDocumentFile[]
+  extractedFields IntakeDocumentExtractedField[]
+  processingJobs IntakeDocumentProcessingJob[]
+  issues         IntakeDocumentIssue[]
+  duplicateMatches IntakeDocumentDuplicateMatch[] @relation("IntakeDuplicateSource")
+  matchedAgainst   IntakeDocumentDuplicateMatch[] @relation("IntakeDuplicateTarget")
+  outgoingRelations IntakeDocumentRelation[] @relation("IntakeRelationSource")
+  incomingRelations IntakeDocumentRelation[] @relation("IntakeRelationTarget")
+  assignments    IntakeDocumentAssignment[]
+  statusHistory  IntakeDocumentStatusHistory[]
+  batchItems     IntakeBatchImportItem[]
+
+  @@index([organizationId, companyId])
+  @@index([companyId, processingStatus])
+  @@index([fileHash])
+  @@index([normalizedBarcode])
+  @@index([normalizedDigitableLine])
+  @@index([accessKey])
+  @@index([supplierId])
+  @@index([customerId])
+  @@index([dueDate])
+  @@index([assignedUserId])
+  @@index([parentDocumentId])
+  @@map("intake_documents")
+}
+
+/// Arquivos do documento e suas versões (seção 57). O arquivo `ORIGINAL` nunca é
+/// sobrescrito: substituir cria uma nova versão e marca a anterior como não corrente.
+model IntakeDocumentFile {
+  id         String  @id @default(uuid()) @db.Uuid
+  documentId String  @map("document_id") @db.Uuid
+  /// Vínculo com a tabela genérica de anexos já existente — o módulo não recria
+  /// armazenamento próprio.
+  attachmentId String? @map("attachment_id") @db.Uuid
+
+  versionNumber Int            @default(1) @map("version_number")
+  fileRole      IntakeFileRole @default(ORIGINAL) @map("file_role")
+  isOriginal    Boolean        @default(true) @map("is_original")
+  isCurrent     Boolean        @default(true) @map("is_current")
+
+  fileName    String? @map("file_name")
+  storagePath String  @map("storage_path")
+  mimeType    String? @map("mime_type")
+  fileSize    Int?    @map("file_size")
+  fileHash    String? @map("file_hash")
+  pageCount   Int?    @map("page_count")
+
+  createdBy String?  @map("created_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+
+  document   IntakeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  attachment Attachment?    @relation(fields: [attachmentId], references: [id])
+
+  @@unique([documentId, versionNumber, fileRole])
+  @@index([documentId])
+  @@index([fileHash])
+  @@map("intake_document_files")
+}
+
+/// Um campo extraído, com procedência (seção 58).
+///
+/// Guardar valor original **e** normalizado separadamente é o que permite mostrar ao
+/// usuário o que estava escrito no documento e ao mesmo tempo comparar com o cadastro.
+model IntakeDocumentExtractedField {
+  id         String @id @default(uuid()) @db.Uuid
+  documentId String @map("document_id") @db.Uuid
+
+  fieldName       String  @map("field_name")
+  originalValue   String? @map("original_value")
+  normalizedValue String? @map("normalized_value")
+  dataType        String  @default("string") @map("data_type")
+
+  sourceMethod     IntakeExtractionMethod      @map("source_method")
+  confidence       Decimal?                    @db.Decimal(5, 2)
+  validationStatus IntakeFieldValidationStatus  @default(NOT_VALIDATED) @map("validation_status")
+
+  isManuallyChanged Boolean   @default(false) @map("is_manually_changed")
+  changedBy         String?   @map("changed_by") @db.Uuid
+  changedAt         DateTime? @map("changed_at")
+
+  /// Coordenadas do campo no documento, quando o provedor as informa — permite destacar
+  /// o trecho na imagem durante a revisão.
+  boundingBox Json? @map("bounding_box")
+  pageNumber  Int?  @map("page_number")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  document IntakeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, fieldName])
+  @@index([documentId])
+  @@map("intake_document_extracted_fields")
+}
+
+/// Job da fila de processamento (seção 59).
+///
+/// A fila é a própria tabela: um worker busca jobs `PENDING` com `available_at` vencido,
+/// executa e enfileira a etapa seguinte. Assim retry, backoff, idempotência e
+/// dead-letter ficam auditáveis no banco, sem exigir Redis na infraestrutura.
+model IntakeDocumentProcessingJob {
+  id         String @id @default(uuid()) @db.Uuid
+  documentId String @map("document_id") @db.Uuid
+
+  jobType   IntakeJobType @map("job_type")
+  queueName String        @default("document-intake") @map("queue_name")
+  provider  String?
+
+  attemptNumber   Int @default(0) @map("attempt_number")
+  maximumAttempts Int @default(3) @map("maximum_attempts")
+  priority        Int @default(100)
+
+  status IntakeJobStatus @default(PENDING)
+
+  /// Chave de idempotência: o mesmo job lógico não roda duas vezes por descuido.
+  idempotencyKey String? @map("idempotency_key")
+  /// Quando o job pode ser pego pelo worker. O backoff apenas empurra esta data.
+  availableAt DateTime  @default(now()) @map("available_at")
+  startedAt   DateTime? @map("started_at")
+  completedAt DateTime? @map("completed_at")
+
+  errorCode    String? @map("error_code")
+  errorMessage String? @map("error_message")
+  worker       String?
+
+  processingMetadata Json? @map("processing_metadata")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  document IntakeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([idempotencyKey])
+  @@index([status, availableAt])
+  @@index([documentId])
+  @@map("intake_document_processing_jobs")
+}
+
+/// Pendência do documento (seção 60). Pendência `BLOCKING` aberta impede encaminhamento.
+model IntakeDocumentIssue {
+  id         String @id @default(uuid()) @db.Uuid
+  documentId String @map("document_id") @db.Uuid
+
+  issueType IntakeIssueType     @map("issue_type")
+  severity  IntakeIssueSeverity @default(WARNING)
+  fieldName String?             @map("field_name")
+  description String
+
+  status         IntakeIssueStatus @default(OPEN)
+  assignedUserId String?           @map("assigned_user_id") @db.Uuid
+
+  resolution String?
+  resolvedBy String?   @map("resolved_by") @db.Uuid
+  resolvedAt DateTime? @map("resolved_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  document IntakeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId, status])
+  @@map("intake_document_issues")
+}
+
+/// Suspeita de duplicidade entre dois documentos (seção 61).
+///
+/// A decisão de "não é duplicado" exige justificativa quando a semelhança é alta
+/// (seção 25) — por isso `decisionReason` existe e é obrigatório na regra de negócio.
+model IntakeDocumentDuplicateMatch {
+  id         String @id @default(uuid()) @db.Uuid
+  documentId String @map("document_id") @db.Uuid
+
+  matchedDocumentId String? @map("matched_document_id") @db.Uuid
+  /// Preparado para apontar para lançamentos futuros (contas a pagar/receber), não só
+  /// para outro documento de entrada.
+  matchedEntityType String? @map("matched_entity_type")
+  matchedEntityId   String? @map("matched_entity_id") @db.Uuid
+
+  matchType       IntakeDuplicateMatchType @map("match_type")
+  similarityScore Decimal                  @map("similarity_score") @db.Decimal(5, 2)
+  /// Quais campos coincidiram, para a tela comparativa.
+  matchingFields  Json?                    @map("matching_fields")
+
+  status   IntakeDuplicateStatus   @default(POSSIBLE_DUPLICATE)
+  decision IntakeDuplicateDecision @default(PENDING)
+  decisionReason String?           @map("decision_reason")
+  decidedBy      String?           @map("decided_by") @db.Uuid
+  decidedAt      DateTime?         @map("decided_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  document        IntakeDocument  @relation("IntakeDuplicateSource", fields: [documentId], references: [id], onDelete: Cascade)
+  matchedDocument IntakeDocument? @relation("IntakeDuplicateTarget", fields: [matchedDocumentId], references: [id])
+
+  @@index([documentId])
+  @@index([matchedDocumentId])
+  @@map("intake_document_duplicate_matches")
+}
+
+/// Relação lógica entre documentos (seção 62). Nota fiscal + boleto, fatura +
+/// comprovante, contrato + aditivo. Os arquivos nunca são fundidos fisicamente.
+model IntakeDocumentRelation {
+  id               String @id @default(uuid()) @db.Uuid
+  sourceDocumentId String @map("source_document_id") @db.Uuid
+  targetDocumentId String @map("target_document_id") @db.Uuid
+
+  relationType IntakeRelationType @default(RELATED) @map("relation_type")
+  notes        String?
+
+  createdBy String?  @map("created_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+
+  sourceDocument IntakeDocument @relation("IntakeRelationSource", fields: [sourceDocumentId], references: [id], onDelete: Cascade)
+  targetDocument IntakeDocument @relation("IntakeRelationTarget", fields: [targetDocumentId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceDocumentId, targetDocumentId, relationType])
+  @@index([sourceDocumentId])
+  @@index([targetDocumentId])
+  @@map("intake_document_relations")
+}
+
+/// Importação em lote (seção 63).
+model IntakeBatchImport {
+  id             String  @id @default(uuid()) @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  companyId      String? @map("company_id") @db.Uuid
+
+  sourceChannel IntakeSourceChannel @default(BATCH_IMPORT) @map("source_channel")
+  batchName     String?             @map("batch_name")
+
+  totalFiles     Int @default(0) @map("total_files")
+  validFiles     Int @default(0) @map("valid_files")
+  invalidFiles   Int @default(0) @map("invalid_files")
+  processedFiles Int @default(0) @map("processed_files")
+  errorFiles     Int @default(0) @map("error_files")
+
+  status IntakeBatchStatus @default(DRAFT)
+
+  startedBy   String?   @map("started_by") @db.Uuid
+  startedAt   DateTime? @map("started_at")
+  completedAt DateTime? @map("completed_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company      Company?     @relation(fields: [companyId], references: [id])
+
+  items     IntakeBatchImportItem[]
+  documents IntakeDocument[]
+
+  @@index([organizationId, companyId])
+  @@map("intake_batch_imports")
+}
+
+model IntakeBatchImportItem {
+  id            String  @id @default(uuid()) @db.Uuid
+  batchImportId String  @map("batch_import_id") @db.Uuid
+  documentId    String? @map("document_id") @db.Uuid
+
+  originalFileName String                @map("original_file_name")
+  fileSize         Int?                  @map("file_size")
+  status           IntakeBatchItemStatus @default(PENDING)
+  errorCode        String?               @map("error_code")
+  errorMessage     String?               @map("error_message")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  batchImport IntakeBatchImport @relation(fields: [batchImportId], references: [id], onDelete: Cascade)
+  document    IntakeDocument?   @relation(fields: [documentId], references: [id])
+
+  @@index([batchImportId])
+  @@map("intake_batch_import_items")
+}
+
+/// Atribuição do documento a um responsável (seção 64). O histórico fica: reatribuir
+/// fecha a atribuição anterior em vez de sobrescrevê-la.
+model IntakeDocumentAssignment {
+  id         String @id @default(uuid()) @db.Uuid
+  documentId String @map("document_id") @db.Uuid
+
+  assignedUserId String? @map("assigned_user_id") @db.Uuid
+  assignedTeamId String? @map("assigned_team_id") @db.Uuid
+
+  dueAt  DateTime? @map("due_at")
+  reason String?
+
+  assignedBy  String?   @map("assigned_by") @db.Uuid
+  startedAt   DateTime? @map("started_at")
+  completedAt DateTime? @map("completed_at")
+
+  status IntakeAssignmentStatus @default(ASSIGNED)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  document IntakeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+  @@index([assignedUserId])
+  @@map("intake_document_assignments")
+}
+
+/// Histórico de mudanças de situação (seção 65), técnica e de revisão.
+model IntakeDocumentStatusHistory {
+  id         String @id @default(uuid()) @db.Uuid
+  documentId String @map("document_id") @db.Uuid
+
+  previousProcessingStatus IntakeProcessingStatus? @map("previous_processing_status")
+  newProcessingStatus      IntakeProcessingStatus? @map("new_processing_status")
+  previousReviewStatus     IntakeReviewStatus?     @map("previous_review_status")
+  newReviewStatus          IntakeReviewStatus?     @map("new_review_status")
+
+  reason    String?
+  changedBy String?  @map("changed_by") @db.Uuid
+  changedAt DateTime @default(now()) @map("changed_at")
+
+  document IntakeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+  @@map("intake_document_status_history")
+}
+
+/// Parâmetros do módulo por empresa (seção 66).
+///
+/// O padrão é conservador: revisão humana obrigatória e encaminhamento automático
+/// desligado, como o próprio prompt recomenda.
+model DocumentIntakeSettings {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  companyId      String @unique @map("company_id") @db.Uuid
+
+  maximumFileSize      Int      @default(20971520) @map("maximum_file_size")
+  maximumFilesPerUpload Int     @default(20) @map("maximum_files_per_upload")
+  allowedExtensions    String[] @default(["pdf", "jpg", "jpeg", "png", "xml", "xlsx", "xls", "csv"]) @map("allowed_extensions")
+
+  ocrEnabled                Boolean @default(true) @map("ocr_enabled")
+  barcodeReadingEnabled     Boolean @default(true) @map("barcode_reading_enabled")
+  duplicateValidationEnabled Boolean @default(true) @map("duplicate_validation_enabled")
+
+  minimumConfidence Decimal @default(75) @map("minimum_confidence") @db.Decimal(5, 2)
+  highConfidenceThreshold Decimal @default(95) @map("high_confidence_threshold") @db.Decimal(5, 2)
+
+  mandatoryReview        Boolean @default(true) @map("mandatory_review")
+  autoForwardHighConfidence Boolean @default(false) @map("auto_forward_high_confidence")
+
+  quickSupplierCreationEnabled Boolean @default(true) @map("quick_supplier_creation_enabled")
+  quickCustomerCreationEnabled Boolean @default(true) @map("quick_customer_creation_enabled")
+
+  requireCategory   Boolean @default(false) @map("require_category")
+  requireCostCenter Boolean @default(false) @map("require_cost_center")
+  requireProject    Boolean @default(false) @map("require_project")
+
+  blockDuplicates     Boolean @default(true) @map("block_duplicates")
+  blockInvalidBarcode Boolean @default(true) @map("block_invalid_barcode")
+
+  reviewDeadlineHours Int @default(24) @map("review_deadline_hours")
+  retentionDays       Int @default(1825) @map("retention_days")
+
+  allowFileReplacement Boolean @default(true) @map("allow_file_replacement")
+  allowDraftDeletion   Boolean @default(true) @map("allow_draft_deletion")
+
+  defaultAssignedUserId String? @map("default_assigned_user_id") @db.Uuid
+  defaultAssignedTeamId String? @map("default_assigned_team_id") @db.Uuid
+
+  notificationsEnabled Boolean @default(true) @map("notifications_enabled")
+
+  createdBy String?  @map("created_by") @db.Uuid
+  updatedBy String?  @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company      Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@map("document_intake_settings")
 }
