@@ -2780,6 +2780,7 @@ model Project {
   responsibleUserId String? @map("responsible_user_id") @db.Uuid
 
   startDate DateTime? @map("start_date") @db.Date
+  /// Data **prevista** de término (o `actual_end_date` guarda a real).
   endDate   DateTime? @map("end_date") @db.Date
 
   status   ProjectStatus   @default(PLANNING)

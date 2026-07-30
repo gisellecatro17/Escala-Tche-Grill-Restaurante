@@ -4,7 +4,13 @@ import {
   OmitType,
   PartialType,
 } from '@nestjs/swagger';
-import { AccountKind, AccountPlanType, RecordStatus } from '@prisma/client';
+import {
+  AccountKind,
+  AccountPlanKind,
+  AccountPlanType,
+  RecordStatus,
+  StructureStatus,
+} from '@prisma/client';
 import {
   IsBoolean,
   IsEnum,
@@ -15,6 +21,7 @@ import {
   IsUUID,
   MaxLength,
   Min,
+  ValidateIf,
 } from 'class-validator';
 
 /** Conta do plano de contas (seção "Plano de Contas" do prompt de estrutura financeira). */
@@ -36,17 +43,43 @@ export class CreateAccountPlanDto {
   @IsUUID()
   parentAccountId?: string;
 
-  @ApiProperty({ example: '1.1.01' })
+  @ApiPropertyOptional({
+    example: '1.1.01',
+    description:
+      'Obrigatório quando `autoGenerateCode` é falso. Deve iniciar pelo código da conta superior.',
+  })
+  @ValidateIf((dto: CreateAccountPlanDto) => dto.autoGenerateCode !== true)
   @IsString()
-  @IsNotEmpty({ message: 'Informe o código da conta.' })
+  @IsNotEmpty({
+    message:
+      'Informe o código da conta ou habilite a geração automática de código.',
+  })
   @MaxLength(50)
-  code: string;
+  code?: string;
+
+  @ApiPropertyOptional({
+    default: false,
+    description:
+      'Quando verdadeiro, o back-end gera o próximo código disponível a partir da conta superior (seção 13).',
+  })
+  @IsOptional()
+  @IsBoolean()
+  autoGenerateCode?: boolean;
 
   @ApiProperty({ example: 'Caixa' })
   @IsString()
   @IsNotEmpty({ message: 'Informe a descrição da conta.' })
   @MaxLength(255)
   name: string;
+
+  @ApiPropertyOptional({
+    example: 'Caixa',
+    description: 'Nome curto usado em relatórios e listas compactas.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  shortName?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -71,6 +104,29 @@ export class CreateAccountPlanDto {
   @IsEnum(AccountKind)
   accountKind?: AccountKind;
 
+  @ApiPropertyOptional({
+    enum: AccountPlanKind,
+    default: AccountPlanKind.MANAGEMENT,
+    description:
+      'Finalidade do plano: gerencial, financeiro, contábil ou híbrido.',
+  })
+  @IsOptional()
+  @IsEnum(AccountPlanKind)
+  planType?: AccountPlanKind;
+
+  @ApiPropertyOptional({ description: 'Versão do plano de contas.' })
+  @IsOptional()
+  @IsUUID()
+  versionId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Agrupamento livre para apresentação em relatórios.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  accountGroup?: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsUUID()
@@ -83,6 +139,36 @@ export class CreateAccountPlanDto {
   @IsOptional()
   @IsBoolean()
   acceptsEntries?: boolean;
+
+  @ApiPropertyOptional({ default: true })
+  @IsOptional()
+  @IsBoolean()
+  allowsAllocations?: boolean;
+
+  @ApiPropertyOptional({ default: true })
+  @IsOptional()
+  @IsBoolean()
+  allowsBudget?: boolean;
+
+  @ApiPropertyOptional({ default: true })
+  @IsOptional()
+  @IsBoolean()
+  showInCashFlow?: boolean;
+
+  @ApiPropertyOptional({ default: true })
+  @IsOptional()
+  @IsBoolean()
+  showInIncomeStatement?: boolean;
+
+  @ApiPropertyOptional({ default: false })
+  @IsOptional()
+  @IsBoolean()
+  showInManagementBalance?: boolean;
+
+  @ApiPropertyOptional({ default: true })
+  @IsOptional()
+  @IsBoolean()
+  showInReports?: boolean;
 
   @ApiPropertyOptional({ example: '#2563EB' })
   @IsOptional()
@@ -111,8 +197,22 @@ export class CreateAccountPlanDto {
   @IsOptional()
   @IsEnum(RecordStatus)
   status?: RecordStatus;
+
+  @ApiPropertyOptional({
+    enum: StructureStatus,
+    default: StructureStatus.ACTIVE,
+    description:
+      'Ciclo de vida da estrutura: rascunho, ativo, inativo ou arquivado.',
+  })
+  @IsOptional()
+  @IsEnum(StructureStatus)
+  structureStatus?: StructureStatus;
 }
 
 export class UpdateAccountPlanDto extends PartialType(
-  OmitType(CreateAccountPlanDto, ['organizationId', 'companyId'] as const),
+  OmitType(CreateAccountPlanDto, [
+    'organizationId',
+    'companyId',
+    'autoGenerateCode',
+  ] as const),
 ) {}

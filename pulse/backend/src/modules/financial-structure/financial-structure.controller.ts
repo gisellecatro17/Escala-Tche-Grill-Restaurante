@@ -30,6 +30,7 @@ import {
 } from './dto/import-export.dto';
 import { CreateHierarchyVersionDto } from './dto/common.dto';
 import { HierarchyVersionsService } from './hierarchy-versions.service';
+import { StructureDiagnosticsService } from './structure-diagnostics.service';
 import { StructureImportService } from './structure-import.service';
 
 /**
@@ -43,7 +44,26 @@ export class FinancialStructureController {
   constructor(
     private readonly imports: StructureImportService,
     private readonly versions: HierarchyVersionsService,
+    private readonly diagnostics: StructureDiagnosticsService,
   ) {}
+
+  @Get('diagnostics')
+  @ApiOperation({
+    summary:
+      'Executa o diagnóstico de inconsistências da estrutura financeira. Apenas relata — nada é corrigido automaticamente.',
+  })
+  runDiagnostics(
+    @Query('organizationId') organizationId: string,
+    @Query('companyId') companyId: string | undefined,
+    @CurrentUser() actor: RequestUser,
+  ) {
+    assertOrganizationPermission(
+      actor,
+      organizationId,
+      'financial_structure.view',
+    );
+    return this.diagnostics.run(organizationId, companyId);
+  }
 
   // ── Importação ─────────────────────────────────────────────────────────────
 

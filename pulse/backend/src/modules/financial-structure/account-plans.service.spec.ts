@@ -42,7 +42,6 @@ function buildService(prismaOverrides: Record<string, unknown> = {}) {
         ...data,
       })),
       update: jest.fn().mockImplementation(({ data }: any) => ({
-        id: 'acc-1',
         ...EXISTING_ACCOUNT,
         ...data,
       })),
@@ -241,6 +240,90 @@ describe('AccountPlansService', () => {
 
     await expect(service.remove('acc-1', actor)).rejects.toThrow(
       /padrão do sistema/i,
+    );
+  });
+
+  it('gera automaticamente o próximo código a partir da conta superior', async () => {
+    const parent = { ...EXISTING_ACCOUNT, code: '5.02', level: 1 };
+    const { service, prisma } = buildService({
+      financialAccountPlan: {
+        findFirst: jest.fn().mockResolvedValue(parent),
+        // Irmãos já existentes sob 5.02.
+        findMany: jest
+          .fn()
+          .mockResolvedValue([{ code: '5.02.001' }, { code: '5.02.002' }]),
+        create: jest
+          .fn()
+          .mockImplementation(({ data }: any) => ({ id: 'acc-new', ...data })),
+        update: jest.fn(),
+      },
+    });
+
+    await service.create(
+      {
+        organizationId: 'org-1',
+        parentAccountId: 'acc-1',
+        name: 'Energia elétrica',
+        autoGenerateCode: true,
+      },
+      actor,
+    );
+
+    expect(prisma.financialAccountPlan.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ code: '5.02.003' }),
+      }),
+    );
+  });
+
+  it('recusa um código incoerente com a conta superior', async () => {
+    const parent = { ...EXISTING_ACCOUNT, code: '5.02' };
+    const { service } = buildService({
+      financialAccountPlan: {
+        findFirst: jest.fn().mockResolvedValue(parent),
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn(),
+        update: jest.fn(),
+      },
+    });
+
+    await expect(
+      service.create(
+        {
+          organizationId: 'org-1',
+          parentAccountId: 'acc-1',
+          code: '9.99.001',
+          name: 'Fora da árvore',
+        },
+        actor,
+      ),
+    ).rejects.toThrow(/não é coerente com a conta superior/i);
+  });
+
+  it('grava o código normalizado para garantir unicidade real', async () => {
+    const { service, prisma } = buildService({
+      financialAccountPlan: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest
+          .fn()
+          .mockImplementation(({ data }: any) => ({ id: 'acc-new', ...data })),
+        update: jest.fn(),
+      },
+    });
+
+    await service.create(
+      { organizationId: 'org-1', code: '05.02.001', name: 'Conta' },
+      actor,
+    );
+
+    expect(prisma.financialAccountPlan.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          code: '05.02.001',
+          normalizedCode: '5.2.1',
+        }),
+      }),
     );
   });
 

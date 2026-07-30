@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 
+import { AccountPlanVersionsController } from './account-plan-versions.controller';
+import { AccountPlanVersionsService } from './account-plan-versions.service';
 import { AccountPlansController } from './account-plans.controller';
 import { AccountPlansService } from './account-plans.service';
 import { AllocationRulesController } from './allocation-rules.controller';
@@ -18,6 +20,7 @@ import { ProjectsController } from './projects.controller';
 import { ProjectsService } from './projects.service';
 import { ResultCentersController } from './result-centers.controller';
 import { ResultCentersService } from './result-centers.service';
+import { StructureDiagnosticsService } from './structure-diagnostics.service';
 import { StructureImportService } from './structure-import.service';
 
 /**
@@ -29,6 +32,7 @@ import { StructureImportService } from './structure-import.service';
 @Module({
   controllers: [
     AccountPlansController,
+    AccountPlanVersionsController,
     ResultCentersController,
     ProjectsController,
     BusinessUnitsController,
@@ -40,6 +44,8 @@ import { StructureImportService } from './structure-import.service';
   ],
   providers: [
     AccountPlansService,
+    AccountPlanVersionsService,
+    StructureDiagnosticsService,
     ResultCentersService,
     ProjectsService,
     BusinessUnitsService,
@@ -52,6 +58,8 @@ import { StructureImportService } from './structure-import.service';
   ],
   exports: [
     AccountPlansService,
+    AccountPlanVersionsService,
+    StructureDiagnosticsService,
     ResultCentersService,
     ProjectsService,
     BusinessUnitsService,

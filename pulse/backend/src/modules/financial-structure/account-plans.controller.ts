@@ -65,6 +65,25 @@ export class AccountPlansController {
     );
   }
 
+  @Get('next-code')
+  @ApiOperation({
+    summary:
+      'Prévia do próximo código disponível para a conta superior informada (seção 13).',
+  })
+  nextCode(
+    @Query('organizationId') organizationId: string,
+    @Query('companyId') companyId: string | undefined,
+    @Query('parentAccountId') parentAccountId: string | undefined,
+    @CurrentUser() actor: RequestUser,
+  ) {
+    assertOrganizationPermission(actor, organizationId, 'account_plan.view');
+    return this.accountPlans.previewNextCode(
+      organizationId,
+      companyId,
+      parentAccountId,
+    );
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Detalha uma conta do plano de contas.' })
   async findOne(@Param('id') id: string, @CurrentUser() actor: RequestUser) {

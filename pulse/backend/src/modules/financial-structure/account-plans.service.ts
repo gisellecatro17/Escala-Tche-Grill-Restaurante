@@ -26,6 +26,11 @@ import {
 } from './dto/common.dto';
 import { HierarchyVersionsService } from './hierarchy-versions.service';
 import {
+  assertCodeMatchesParent,
+  generateNextCode,
+  normalizeCode,
+} from './utils/code-generation.util';
+import {
   assertNoCycle,
   buildTree,
   collectSubtreeIds,
@@ -113,6 +118,72 @@ export class AccountPlansService {
     return account;
   }
 
+  /**
+   * Prévia do próximo código, para o formulário exibir o valor antes de salvar. Usa
+   * exatamente a mesma função da criação, então a prévia nunca divergirá do resultado.
+   */
+  async previewNextCode(
+    organizationId: string,
+    companyId?: string,
+    parentAccountId?: string,
+  ) {
+    const parent = await this.resolveParent(parentAccountId, organizationId);
+
+    const code = await this.resolveCode(
+      { organizationId, companyId, parentAccountId, autoGenerateCode: true },
+      parent,
+    );
+
+    return {
+      code,
+      level: parent ? parent.level + 1 : 0,
+      parentCode: parent?.code ?? null,
+    };
+  }
+
+  /**
+   * Resolve o código da conta: gera automaticamente o próximo disponível quando
+   * `autoGenerateCode` está ligado, ou valida a coerência do código informado com a conta
+   * superior (seção 13). Sempre no back-end, onde a unicidade também é validada.
+   */
+  private async resolveCode(
+    dto: Pick<
+      CreateAccountPlanDto,
+      | 'organizationId'
+      | 'companyId'
+      | 'parentAccountId'
+      | 'code'
+      | 'autoGenerateCode'
+    >,
+    parent: FinancialAccountPlan | null,
+  ): Promise<string> {
+    if (!dto.autoGenerateCode) {
+      const informed = dto.code!.trim();
+      assertCodeMatchesParent(informed, parent?.code ?? null);
+      return informed;
+    }
+
+    // A profundidade vem do próprio pai: é o que define a quantidade de dígitos do
+    // segmento, independentemente do caminho materializado.
+    const level = parent ? parent.level + 1 : 0;
+
+    const siblings = await this.prisma.financialAccountPlan.findMany({
+      where: {
+        organizationId: dto.organizationId,
+        companyId: dto.companyId ?? null,
+        parentAccountId: dto.parentAccountId ?? null,
+        deletedAt: null,
+      },
+      select: { code: true },
+    });
+
+    return generateNextCode(
+      parent?.code ?? null,
+      siblings.map((sibling) => sibling.code),
+      level,
+    );
+  }
+
   async create(dto: CreateAccountPlanDto, actor: RequestUser) {
     const parent = await this.resolveParent(
       dto.parentAccountId,
@@ -125,6 +196,7 @@ export class AccountPlansService {
     );
 
     const accountKind = dto.accountKind ?? AccountKind.ANALYTICAL;
+    const code = await this.resolveCode(dto, parent);
 
     try {
       const account = await this.prisma.$transaction(async (tx) => {
@@ -133,22 +205,34 @@ export class AccountPlansService {
             organizationId: dto.organizationId,
             companyId: dto.companyId ?? null,
             parentAccountId: dto.parentAccountId ?? null,
-            code: dto.code.trim(),
+            code,
+            normalizedCode: normalizeCode(code),
             name: dto.name.trim(),
+            shortName: dto.shortName,
             description: dto.description,
             accountType: dto.accountType,
             accountKind,
+            planType: dto.planType,
+            versionId: dto.versionId,
+            accountGroup: dto.accountGroup,
             financialNatureId: dto.financialNatureId,
             // Contas sintéticas nunca aceitam lançamentos, independentemente do payload.
             acceptsEntries:
               accountKind === AccountKind.SYNTHETIC
                 ? false
                 : (dto.acceptsEntries ?? true),
+            allowsAllocations: dto.allowsAllocations,
+            allowsBudget: dto.allowsBudget,
+            showInCashFlow: dto.showInCashFlow,
+            showInIncomeStatement: dto.showInIncomeStatement,
+            showInManagementBalance: dto.showInManagementBalance,
+            showInReports: dto.showInReports,
             color: dto.color,
             icon: dto.icon,
             sortOrder: dto.sortOrder ?? 0,
             notes: dto.notes,
             status: dto.status,
+            structureStatus: dto.structureStatus,
             level,
             path,
             createdBy: actor.id,
@@ -187,19 +271,36 @@ export class AccountPlansService {
     const current = await this.findOne(id);
 
     const nextKind = dto.accountKind ?? current.accountKind;
+    const nextCode = dto.code?.trim();
+
+    if (nextCode) {
+      assertCodeMatchesParent(nextCode, current.parentAccount?.code ?? null);
+    }
+
     const data: Prisma.FinancialAccountPlanUpdateInput = {
-      code: dto.code?.trim(),
+      code: nextCode,
+      normalizedCode: nextCode ? normalizeCode(nextCode) : undefined,
       name: dto.name?.trim(),
+      shortName: dto.shortName,
       description: dto.description,
       accountType: dto.accountType,
       accountKind: dto.accountKind,
+      planType: dto.planType,
+      accountGroup: dto.accountGroup,
       acceptsEntries:
         nextKind === AccountKind.SYNTHETIC ? false : dto.acceptsEntries,
+      allowsAllocations: dto.allowsAllocations,
+      allowsBudget: dto.allowsBudget,
+      showInCashFlow: dto.showInCashFlow,
+      showInIncomeStatement: dto.showInIncomeStatement,
+      showInManagementBalance: dto.showInManagementBalance,
+      showInReports: dto.showInReports,
       color: dto.color,
       icon: dto.icon,
       sortOrder: dto.sortOrder,
       notes: dto.notes,
       status: dto.status,
+      structureStatus: dto.structureStatus,
       updatedBy: actor.id,
       ...(dto.financialNatureId !== undefined
         ? {
