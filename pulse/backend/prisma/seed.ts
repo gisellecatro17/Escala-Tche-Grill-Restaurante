@@ -1148,6 +1148,40 @@ const PERMISSIONS: PermissionSeed[] = [
     description: 'Configurar os parâmetros da entrada de documentos',
   },
 
+  // Financeiro — Autorizações
+  {
+    slug: 'approvals.view',
+    module: 'financeiro',
+    description: 'Visualizar a fila e os fluxos de autorização',
+  },
+  {
+    slug: 'approvals.approve',
+    module: 'financeiro',
+    description:
+      'Aprovar etapas de autorização (autoriza a despesa, não o pagamento)',
+  },
+  {
+    slug: 'approvals.reject',
+    module: 'financeiro',
+    description: 'Reprovar solicitações de autorização',
+  },
+  {
+    slug: 'approvals.delegate',
+    module: 'financeiro',
+    description: 'Delegar aprovações a outra pessoa',
+  },
+  {
+    slug: 'approvals.manage',
+    module: 'financeiro',
+    description:
+      'Configurar fluxos, alçadas e parâmetros; cancelar e reiniciar solicitações',
+  },
+  {
+    slug: 'approvals.audit',
+    module: 'financeiro',
+    description: 'Consultar o histórico completo das autorizações',
+  },
+
   // Financeiro — Processamento de documentos
   {
     slug: 'document_processing.view',
@@ -1399,6 +1433,10 @@ const DOCUMENT_INTAKE_OPERATOR_SLUGS = DOCUMENT_INTAKE_SLUGS.filter(
     ].includes(slug),
 );
 
+const APPROVAL_SLUGS = PERMISSIONS.filter((p) =>
+  p.slug.startsWith('approvals.'),
+).map((p) => p.slug);
+
 const DOCUMENT_PROCESSING_SLUGS = PERMISSIONS.filter((p) =>
   p.slug.startsWith('document_processing.'),
 ).map((p) => p.slug);
@@ -1456,6 +1494,7 @@ const ROLES: {
       ...COMPANY_OPERATIONAL_SLUGS,
       ...DOCUMENT_INTAKE_SLUGS,
       ...DOCUMENT_PROCESSING_SLUGS,
+      ...APPROVAL_SLUGS,
       'financial.view',
       'financial.documents',
       'financial.process',
@@ -1525,6 +1564,7 @@ const ROLES: {
       'receipt_method.view',
       ...DOCUMENT_INTAKE_OPERATOR_SLUGS,
       ...DOCUMENT_PROCESSING_OPERATOR_SLUGS,
+      'approvals.view',
       'financial.view',
       'financial.documents',
       'financial.process',
@@ -1546,6 +1586,10 @@ const ROLES: {
       'document_intake.view',
       'document_processing.view',
       'document_processing.approve',
+      'approvals.view',
+      'approvals.approve',
+      'approvals.reject',
+      'approvals.delegate',
       'payables.view',
       'receivables.view',
       'bi.view',
@@ -1560,6 +1604,7 @@ const ROLES: {
       'financial.view',
       'document_intake.view',
       'document_processing.view',
+      'approvals.view',
       ...BI_SLUGS,
     ],
   },
@@ -1574,6 +1619,8 @@ const ROLES: {
       'document_intake.view',
       'document_intake.download',
       'document_processing.view',
+      'approvals.view',
+      'approvals.audit',
       ...BI_SLUGS,
     ],
   },
@@ -2117,6 +2164,7 @@ async function main() {
     carnesCategory.id,
     churrasqueiraCostCenter.id,
   );
+  await seedDemoApprovals(organization.id, company.id);
 
   console.log('Seed concluído com sucesso.');
   console.log(
@@ -3116,6 +3164,240 @@ async function seedDemoDocumentProcessing(
 
   console.log(
     `Processamento de demonstração criado: 1 lançamento a pagar em aberto (${entry.documentNumber}) e 1 documento ainda na fila.`,
+  );
+}
+
+
+/**
+ * Fluxos, alçadas e uma solicitação de demonstração (seções 5, 6 e 11).
+ *
+ * As alçadas do exemplo da seção 5 viram etapas de um único fluxo: "até R$ 1.000 →
+ * Supervisor", "R$ 1.000,01 a R$ 10.000 → Gerente", "acima de R$ 10.000 → Diretor" e
+ * "acima de R$ 100.000 → Diretor + Sócio".
+ *
+ * A solicitação criada aqui é de aprovação de despesa. Nenhum pagamento é autorizado.
+ */
+async function seedDemoApprovals(organizationId: string, companyId: string) {
+  console.log('Aplicando seed de autorizações de demonstração...');
+
+  await prisma.approvalSettings.upsert({
+    where: { companyId },
+    update: {},
+    create: {
+      organizationId,
+      companyId,
+      mandatoryAboveAmount: 1000,
+    },
+  });
+
+  const roles = await prisma.role.findMany({
+    where: {
+      slug: { in: ['financial_operator', 'financial', 'approver', 'company_admin'] },
+    },
+    select: { id: true, slug: true },
+  });
+
+  const roleId = (slug: string) =>
+    roles.find((role) => role.slug === slug)?.id ?? null;
+
+  const supervisor = roleId('financial_operator');
+  const gerente = roleId('financial');
+  const diretor = roleId('approver');
+  const socio = roleId('company_admin');
+
+  if (!supervisor || !gerente || !diretor || !socio) return;
+
+  const flow = await prisma.approvalFlow.upsert({
+    where: { id: '00000000-0000-0000-0000-000000003001' },
+    update: {},
+    create: {
+      id: '00000000-0000-0000-0000-000000003001',
+      organizationId,
+      companyId,
+      name: 'Alçadas financeiras',
+      description:
+        'Fluxo padrão da empresa. Cada etapa vale para uma faixa de valor.',
+      priority: 100,
+      isDefault: true,
+      defaultDeadlineHours: 48,
+      notificationChannels: ['EMAIL', 'PUSH'],
+      steps: {
+        create: [
+          {
+            stepOrder: 1,
+            name: 'Supervisor',
+            approverType: 'ROLE',
+            approverRoleId: supervisor,
+            maximumAmount: 1000,
+          },
+          {
+            stepOrder: 2,
+            name: 'Gerente',
+            approverType: 'ROLE',
+            approverRoleId: gerente,
+            minimumAmount: 1000.01,
+            maximumAmount: 10_000,
+          },
+          {
+            stepOrder: 3,
+            name: 'Diretor',
+            approverType: 'ROLE',
+            approverRoleId: diretor,
+            minimumAmount: 10_000.01,
+          },
+          {
+            stepOrder: 4,
+            name: 'Diretor + Sócio',
+            approverType: 'ROLE',
+            approverRoleId: socio,
+            requiredApprovals: 2,
+            minimumAmount: 100_000.01,
+          },
+        ],
+      },
+    },
+    include: { steps: { orderBy: { stepOrder: 'asc' } } },
+  });
+
+  // Fluxo específico do exemplo da seção 6, com prioridade maior que a do padrão.
+  await prisma.approvalFlow.upsert({
+    where: { id: '00000000-0000-0000-0000-000000003002' },
+    update: {},
+    create: {
+      id: '00000000-0000-0000-0000-000000003002',
+      organizationId,
+      companyId,
+      name: 'Compra de alimentos',
+      description: 'Supervisor → Gerente → Financeiro.',
+      priority: 10,
+      categoryId: '00000000-0000-0000-0000-000000000101',
+      defaultDeadlineHours: 24,
+      notificationChannels: ['EMAIL'],
+      steps: {
+        create: [
+          {
+            stepOrder: 1,
+            name: 'Supervisor',
+            approverType: 'ROLE',
+            approverRoleId: supervisor,
+          },
+          {
+            stepOrder: 2,
+            name: 'Gerente',
+            approverType: 'ROLE',
+            approverRoleId: gerente,
+          },
+          {
+            stepOrder: 3,
+            name: 'Financeiro',
+            approverType: 'ANY_WITH_PERMISSION',
+          },
+        ],
+      },
+    },
+  });
+
+  // Lançamento de demonstração aguardando autorização.
+  const entry = await prisma.financialEntry.upsert({
+    where: { id: '00000000-0000-0000-0000-000000002002' },
+    update: {},
+    create: {
+      id: '00000000-0000-0000-0000-000000002002',
+      organizationId,
+      companyId,
+      direction: 'PAYABLE',
+      origin: 'MANUAL',
+      status: 'PENDING_APPROVAL',
+      documentNumber: 'ORC-2026-118',
+      description: 'Reforma da churrasqueira — parcela única',
+      issueDate: new Date(Date.UTC(2026, 6, 28)),
+      competenceDate: new Date(Date.UTC(2026, 6, 1)),
+      grossAmount: 12_500,
+      netAmount: 12_500,
+      requiresApproval: true,
+      installments: {
+        create: {
+          installmentNumber: 1,
+          totalInstallments: 1,
+          dueDate: new Date(Date.UTC(2026, 8, 15)),
+          grossAmount: 12_500,
+          netAmount: 12_500,
+        },
+      },
+    },
+  });
+
+  const alreadyRequested = await prisma.approvalRequest.findFirst({
+    where: { entryId: entry.id },
+    select: { id: true },
+  });
+
+  if (alreadyRequested) return;
+
+  const startedAt = new Date(Date.UTC(2026, 6, 28, 14, 0));
+
+  // R$ 12.500 alcança a etapa do Diretor; supervisor e gerente ficam dispensados pela
+  // faixa, e o registro mostra que a alçada existia e não se aplicava.
+  await prisma.approvalRequest.create({
+    data: {
+      id: '00000000-0000-0000-0000-000000003101',
+      organizationId,
+      companyId,
+      entryId: entry.id,
+      flowId: flow.id,
+      status: 'IN_PROGRESS',
+      priority: 'HIGH',
+      amount: 12_500,
+      currentStepOrder: 3,
+      startedAt,
+      dueAt: new Date(Date.UTC(2026, 6, 30, 14, 0)),
+      steps: {
+        create: [
+          {
+            stepOrder: 1,
+            name: 'Supervisor',
+            approverType: 'ROLE',
+            approverRoleId: supervisor,
+            status: 'SKIPPED',
+          },
+          {
+            stepOrder: 2,
+            name: 'Gerente',
+            approverType: 'ROLE',
+            approverRoleId: gerente,
+            status: 'SKIPPED',
+          },
+          {
+            stepOrder: 3,
+            name: 'Diretor',
+            approverType: 'ROLE',
+            approverRoleId: diretor,
+            status: 'IN_PROGRESS',
+            startedAt,
+            dueAt: new Date(Date.UTC(2026, 6, 30, 14, 0)),
+          },
+          {
+            stepOrder: 4,
+            name: 'Diretor + Sócio',
+            approverType: 'ROLE',
+            approverRoleId: socio,
+            requiredApprovals: 2,
+            status: 'SKIPPED',
+          },
+        ],
+      },
+      history: {
+        create: {
+          action: 'CREATED',
+          newStatus: 'IN_PROGRESS',
+          reason: 'Fluxo "Alçadas financeiras" aplicado.',
+        },
+      },
+    },
+  });
+
+  console.log(
+    'Autorizações de demonstração criadas: 2 fluxos (alçadas e compra de alimentos) e 1 solicitação aguardando o Diretor.',
   );
 }
 

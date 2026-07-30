@@ -841,6 +841,102 @@ liquidação/baixa, conciliação bancária, emissão de boleto e de nota fiscal
 recorrências geradas automaticamente e integração bancária real.
 
 
+## Autorizações
+
+Entre "A Processar" e "Contas a Pagar". Define **quem** pode aprovar, **até quanto**, em
+**que ordem** e o que precisa acontecer antes de um lançamento virar dívida.
+
+```
+Entrada de Documentos → A Processar → Autorizações → Contas a Pagar
+```
+
+Rotas do front-end: `/financeiro/autorizacoes` (painel), `.../fila` (tela principal),
+`.../[id]` (solicitação, ações e comentários), `.../fluxos` (fluxos e alçadas),
+`.../delegacoes` e `.../parametros`.
+
+### A alçada mora na etapa do fluxo
+
+Não existe uma tabela separada de alçadas. O exemplo clássico —
+
+| Faixa | Aprovador |
+| --- | --- |
+| até R$ 1.000 | Supervisor |
+| R$ 1.000,01 a R$ 10.000 | Gerente |
+| acima de R$ 10.000 | Diretor |
+| acima de R$ 100.000 | Diretor + Sócio |
+
+— é **um** fluxo com quatro etapas, cada uma com a sua faixa de valor. Duas fontes de
+verdade sobre quem aprova o quê é como um sistema de aprovação começa a ser contornado.
+
+Etapas fora da faixa não somem: ficam registradas como **dispensadas pela alçada**, para
+que o histórico mostre que a regra existia e não se aplicava àquele valor.
+
+### Como o fluxo é escolhido
+
+Um fluxo casa quando **todos** os critérios preenchidos batem — empresa, categoria, centro
+de custo, projeto, unidade, natureza, contrato, fornecedor, tipo de documento, forma de
+pagamento, faixa de valor e urgência mínima. Critério nulo significa "qualquer", então um
+fluxo sem critérios é o padrão da empresa.
+
+O desempate tem duas camadas: primeiro a prioridade configurada, depois a
+**especificidade** — o fluxo que exige mais coisas vence o genérico. Sem a segunda camada,
+dois fluxos empatados seriam decididos pela ordem de inserção no banco, o que é o mesmo que
+decidir por sorteio.
+
+### Editar um fluxo não mexe no que já está em andamento
+
+As etapas da solicitação são **cópias** feitas no momento da abertura. Quem aprovou aprovou
+sob as regras que valiam. Alterar o fluxo depois muda as próximas solicitações, não as
+antigas.
+
+### Dupla aprovação guarda as duas assinaturas
+
+Uma etapa com `requiredApprovals = 2` exige duas pessoas **diferentes**. Cada assinatura vai
+para `approval_step_approvals`: guardar apenas `decidedBy` perderia quem foi o segundo — e é
+exatamente o segundo que a governança quer poder auditar.
+
+### Delegar não concede permissão
+
+Quem recebe a delegação já precisa ter `approvals.approve` na empresa. A delegação apenas
+permite agir **no lugar de** outra pessoa, e toda aprovação dada assim fica marcada com
+`on_behalf_of`. Ninguém aprova por delegação mais do que quem delegou poderia: valem o teto
+de quem delegou e o teto da própria delegação, o menor dos dois. Delegação em cadeia é
+recusada — ela esconderia quem realmente decidiu.
+
+### Quatro perguntas antes de aceitar uma decisão
+
+1. Tem a permissão de aprovar nesta empresa?
+2. É o aprovador designado — diretamente, pelo perfil, ou por delegação vigente?
+3. Não está aprovando o que ela mesma criou?
+4. O valor cabe no limite individual do vínculo com a empresa?
+
+A primeira resposta negativa é a que vira mensagem na tela.
+
+### Nada chega a Contas a Pagar sem concluir o fluxo
+
+O gate mora em `FinancialEntriesService.open`: um lançamento com solicitação viva **não pode
+ser aberto**. É o momento exato em que o título viraria obrigação, e é lá que a governança
+tem de estar.
+
+### Expirar não é reprovar
+
+Uma solicitação que passa do prazo vira `EXPIRED`: sai da fila ativa, mas o lançamento não é
+negado. Alguém precisa reiniciar o fluxo conscientemente. Reiniciar encerra a solicitação
+atual e abre outra — a anterior permanece, com tudo o que registrou.
+
+### Notificações: estrutura, não envio
+
+Os canais (e-mail, push, WhatsApp, Teams, Slack) são declarados no fluxo e nos parâmetros da
+empresa, mas **nenhum envio real acontece nesta etapa**. Os três últimos aparecem na tela
+marcados como futuros.
+
+### O que ainda não existe neste módulo
+
+Contas a pagar, agendamento bancário, pagamentos, conciliação bancária, fluxo de caixa e
+inteligência financeira. Aprovar aqui significa "esta despesa está autorizada a virar
+obrigação" — nunca "pode pagar".
+
+
 ## Banco de dados e migrations
 
 O schema fica em `backend/prisma/schema.prisma`. Tabelas principais:
@@ -875,14 +971,18 @@ na mesma hierarquia), `cost_centers`, `result_centers`, `projects`, `business_un
 `financial_entries`, `financial_entry_installments`,
 `financial_entry_allocations`, `financial_entry_withholdings`,
 `financial_entry_status_history`, `document_processing_settings`,
+`approval_flows`, `approval_flow_steps`, `approval_requests`,
+`approval_request_steps`, `approval_step_approvals`, `approval_comments`,
+`approval_delegations`, `approval_history`, `approval_settings`,
 `financial_institutions`, `attachments` (anexos genéricos), `users`, `roles`,
 `permissions`, `role_permissions`, `user_organization_roles`, `user_company_roles` e
 `audit_logs`.
 
 > As migrations são sempre **incrementais**. A da tesouraria
 > (`20260730120000_treasury_module`), a da entrada de documentos
-> (`20260730180000_document_intake_module`) e a do processamento
-> (`20260730200000_document_processing_module`) só adicionam: nenhum `DROP`, nenhum
+> (`20260730180000_document_intake_module`), a do processamento
+> (`20260730200000_document_processing_module`) e a das autorizações
+> (`20260730220000_approvals_module`) só adicionam: nenhum `DROP`, nenhum
 > `ALTER COLUMN`, nenhuma tabela renomeada, nenhuma rota existente alterada.
 
 ```bash
@@ -929,6 +1029,36 @@ npm test        # testes unitários: isolamento multiempresa/organização, perm
                  # entrada de documentos
 npm run test:e2e
 ```
+
+### Testar manualmente as Autorizações
+
+1. Acesse **Financeiro → Autorizações**. O seed cria dois fluxos e uma solicitação de
+   R$ 12.500 aguardando o Diretor.
+2. Abra a solicitação. Repare que Supervisor e Gerente aparecem como **dispensados pela
+   alçada** — R$ 12.500 passa da faixa deles — e que a etapa 4 (Diretor + Sócio, dupla
+   aprovação) também está fora da faixa.
+3. Com um usuário sem `approvals.approve`, os botões de decisão não aparecem; chamar a rota
+   direto devolve 403.
+4. Com um usuário que tem a permissão mas não o perfil da etapa, aprovar é recusado com
+   "Seu perfil não é o exigido por esta etapa".
+5. Defina um limite de aprovação no vínculo do usuário com a empresa (Cadastros → Empresas →
+   Usuários) menor que R$ 12.500 e tente aprovar: o limite individual é respeitado.
+6. Crie um fluxo em **Fluxos e alçadas** com uma etapa de duas assinaturas. Processe um
+   documento que caia nesse fluxo, aprove com um usuário e confira que a etapa continua em
+   andamento (1/2). Aprove com o mesmo usuário de novo: é recusado — a dupla aprovação exige
+   duas pessoas.
+7. Em **Delegações**, delegue as aprovações de alguém para outra pessoa no período de hoje.
+   A pessoa que recebeu passa a poder decidir, e a aprovação fica marcada como feita por
+   delegação. Tente delegar para quem não tem permissão de aprovar: é recusado.
+8. Tente criar uma delegação em cadeia (A→B enquanto B→C, no mesmo período): é recusada.
+9. Selecione várias solicitações na fila e use **Aprovar em lote**. O resumo mostra a
+   quantidade e o total antes de confirmar, e o resultado lista exatamente quais não
+   passaram e por quê.
+10. Aprove todas as etapas obrigatórias de um lançamento e vá até ele em **Contas a pagar**.
+    Antes de a aprovação concluir, o botão **Abrir título** é recusado com "Este lançamento
+    está em autorização".
+11. Reprove uma solicitação com motivo. Depois use **Reiniciar fluxo**: a anterior fica no
+    histórico como cancelada e uma nova tentativa é aberta.
 
 ### Testar manualmente o Processamento de Documentos
 
@@ -1139,8 +1269,8 @@ Com o back-end rodando, o Swagger fica disponível em `http://localhost:3333/doc
 
 ## Próxima etapa recomendada
 
-Módulo de **Pagamentos e Recebimentos**, que pega os títulos em aberto e cuida do resto do
-ciclo: autorização, agendamento, remessa bancária, liquidação e baixa. É ele que introduz
-as situações que este módulo deliberadamente não tem — nenhum título aqui pode ser marcado
-como pago — e onde os saldos bancário, conciliado e disponível deixam de ser apenas saldo
-de implantação e passam a ser calculados.
+Módulo de **Contas a Pagar**, que recebe os títulos já autorizados e cuida do resto do
+ciclo: agendamento, remessa bancária, liquidação e baixa. É ele que introduz as situações
+que os módulos atuais deliberadamente não têm — nenhum título pode hoje ser marcado como
+pago — e onde os saldos bancário, conciliado e disponível deixam de ser apenas saldo de
+implantação e passam a ser calculados.

@@ -551,6 +551,83 @@ histórico — parece mais flexível, mas faz o relatório de ontem discordar do
 ninguém perceba. Cancelar com motivo e processar de novo deixa os dois fatos visíveis.
 
 
+## Autorizações
+
+### A alçada mora na etapa do fluxo
+
+O pedido descrevia faixas ("até R$ 1.000 → Supervisor; acima de R$ 100.000 → Diretor +
+Sócio") e o desenho óbvio seria uma tabela de alçadas separada. Não existe. Cada etapa do
+fluxo carrega `minimumAmount` / `maximumAmount`, e a faixa é a alçada.
+
+A tabela separada criaria duas fontes de verdade sobre quem aprova o quê: o fluxo diria uma
+coisa, a alçada outra, e alguém teria de escrever a regra de desempate. Com a faixa na
+etapa, "quatro alçadas" é um fluxo com quatro etapas de faixas diferentes — as que não se
+aplicam ao valor entram na solicitação como `SKIPPED`, visíveis, em vez de sumirem. Quem
+audita vê que a etapa existia e por que não foi exigida.
+
+Como o cadastro é por empresa, a exigência de alçadas "totalmente configuráveis por empresa"
+sai de graça.
+
+### As etapas da solicitação são cópias, não referências
+
+`approval_request_steps` copia a etapa do fluxo no momento da abertura. Referenciar
+`approval_flow_steps` economizaria a duplicação, mas editar um fluxo reescreveria o passado:
+uma solicitação aberta sob a regra antiga passaria a exibir a regra nova, e o histórico de
+aprovação deixaria de explicar a decisão que foi tomada.
+
+O preço é que mudanças de fluxo só valem para o que abrir depois. É o preço certo.
+
+### Duas assinaturas precisam de duas linhas
+
+`approval_step_approvals` existe por causa da dupla aprovação. Guardar só `decidedBy` na
+etapa registraria quem fechou — e o que a governança quer auditar é justamente o segundo
+assinante, aquele cuja concordância era o ponto do controle. A tabela extra é o que impede
+a dupla aprovação de virar aprovação simples com carimbo duplo.
+
+### Delegar não concede permissão
+
+Uma delegação nunca amplia acesso. Quem recebe já precisa ter `approvals.approve` na
+empresa; a delegação só permite agir **no lugar de** outra pessoa, e o teto efetivo é
+`min(limite de quem delegou, teto da delegação)` — nunca o maior dos dois.
+
+Delegação em cadeia é recusada. A → B → C parece conveniência de férias sobrepostas, mas o
+histórico resultante não responde quem decidiu de fato, que é a única pergunta que o
+registro precisa responder.
+
+### Quatro perguntas antes de aceitar uma decisão
+
+Na ordem: a pessoa é aprovadora daquela etapa (direto, por papel ou por delegação vigente)?
+o valor cabe no limite individual dela? não é ela quem criou o lançamento? a etapa está
+realmente em andamento? Falhar em qualquer uma recusa a decisão. Verificar tudo no mesmo
+lugar evita a variante clássica do defeito: uma rota nova que esquece uma das checagens.
+
+### O portão fica em `FinancialEntriesService.open`
+
+O critério era "nenhum documento aprovado segue para Contas a Pagar sem concluir todas as
+etapas obrigatórias". A verificação poderia ficar no módulo de autorizações, mas abrir o
+título é o instante exato em que ele vira obrigação — e é esse instante que precisa ser
+defendido, não a tela que o antecede.
+
+Por isso a seta entre os módulos aponta em um sentido só: processamento importa
+autorizações, autorizações lê `FinancialEntry` direto pelo Prisma. Importação mútua seria
+dependência circular, e o NestJS resolveria com `forwardRef` — que funciona e esconde o
+problema.
+
+### Expirar não é reprovar
+
+Uma solicitação vencida vira `EXPIRED`, não `REJECTED`. Reprovar é uma decisão de alguém;
+expirar é a ausência dela. Tratar as duas como a mesma coisa produziria o relatório em que
+"o Diretor reprovou 40 pedidos" quando o Diretor estava de férias. Expirada sai da fila e
+exige reiniciar o fluxo — o que é, de novo, um ato registrado.
+
+### Notificações: estrutura, sem envio
+
+Os canais (e-mail, push, WhatsApp, Teams, Slack) ficam declarados em `approval_settings` e
+nada é enviado. O pedido pedia só a estrutura, e um envio parcial — e-mail funcionando,
+resto silencioso — treinaria o usuário a não confiar na notificação, que é pior do que não
+ter nenhuma.
+
+
 ## Autenticação
 
 - Login, sessão, recuperação de senha e confirmação de e-mail são delegados ao **Supabase
