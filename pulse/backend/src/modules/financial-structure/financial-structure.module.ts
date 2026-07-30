@@ -21,6 +21,7 @@ import { ProjectsService } from './projects.service';
 import { ResultCentersController } from './result-centers.controller';
 import { ResultCentersService } from './result-centers.service';
 import { StructureDiagnosticsService } from './structure-diagnostics.service';
+import { StructureDuplicationService } from './structure-duplication.service';
 import { StructureImportService } from './structure-import.service';
 import { StructureLifecycleService } from './structure-lifecycle.service';
 
@@ -57,6 +58,7 @@ import { StructureLifecycleService } from './structure-lifecycle.service';
     HierarchyVersionsService,
     StructureImportService,
     StructureLifecycleService,
+    StructureDuplicationService,
   ],
   exports: [
     AccountPlansService,
@@ -71,6 +73,7 @@ import { StructureLifecycleService } from './structure-lifecycle.service';
     ClassificationRulesService,
     HierarchyVersionsService,
     StructureLifecycleService,
+    StructureDuplicationService,
   ],
 })
 export class FinancialStructureModule {}
