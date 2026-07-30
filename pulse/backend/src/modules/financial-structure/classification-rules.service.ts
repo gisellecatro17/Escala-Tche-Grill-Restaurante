@@ -9,6 +9,8 @@ import {
   ClassificationRule,
   Prisma,
   RecordStatus,
+  RuleConditionField,
+  RuleConditionOperator,
   TransactionOrigin,
 } from '@prisma/client';
 
@@ -21,6 +23,17 @@ import {
   UpdateClassificationRuleDto,
 } from './dto/classification-rule.dto';
 import { StructureQueryDto } from './dto/common.dto';
+import {
+  RuleActionDto,
+  RuleConditionDto,
+  TestRuleDto,
+} from './dto/rule-condition-action.dto';
+import {
+  detectConflicts,
+  evaluateRule,
+  normalizeForMatching,
+  type EvaluableCondition,
+} from './utils/rule-matching.util';
 
 const RULE_INCLUDE = {
   category: { select: { id: true, name: true } },
@@ -31,6 +44,20 @@ const RULE_INCLUDE = {
   businessUnit: { select: { id: true, name: true } },
   financialNature: { select: { id: true, name: true, kind: true } },
   allocationRule: { select: { id: true, name: true } },
+  conditions: { orderBy: { sortOrder: 'asc' } },
+  actions: {
+    include: {
+      category: { select: { id: true, name: true } },
+      costCenter: { select: { id: true, name: true } },
+      resultCenter: { select: { id: true, name: true } },
+      project: { select: { id: true, name: true } },
+      businessUnit: { select: { id: true, name: true } },
+      accountPlan: { select: { id: true, code: true, name: true } },
+      financialNature: { select: { id: true, name: true, kind: true } },
+      allocationRule: { select: { id: true, name: true } },
+      tag: { select: { id: true, name: true } },
+    },
+  },
 } satisfies Prisma.ClassificationRuleInclude;
 
 @Injectable()
@@ -102,7 +129,14 @@ export class ClassificationRulesService {
         confidenceThreshold: dto.confidenceThreshold ?? 95,
         autoApply: dto.autoApply ?? false,
         status: dto.status,
+        automatic: dto.automatic ?? false,
+        requiresConfirmation: dto.requiresConfirmation ?? true,
+        sourceType: dto.origin,
+        startDate: dto.startDate ? new Date(dto.startDate) : null,
+        endDate: dto.endDate ? new Date(dto.endDate) : null,
         createdBy: actor.id,
+        conditions: { create: this.buildConditions(dto) },
+        actions: { create: this.buildActions(dto) },
       },
       include: RULE_INCLUDE,
     });
@@ -113,10 +147,231 @@ export class ClassificationRulesService {
       action: 'CREATE',
       entity: 'ClassificationRule',
       entityId: rule.id,
-      newValue: { name: rule.name, matchValue: rule.matchValue },
+      newValue: {
+        name: rule.name,
+        conditions: rule.conditions.length,
+        actions: rule.actions.length,
+      },
     });
 
     return rule;
+  }
+
+  /**
+   * Monta as condições da regra. Quando `conditions` não é informado, deriva **uma**
+   * condição dos campos planos (`matchField`/`matchType`/`matchValue`), que continuam
+   * servindo de atalho para o caso simples de critério único. Assim a tabela
+   * `classification_rule_conditions` é sempre a fonte de verdade da avaliação.
+   */
+  private buildConditions(
+    dto: Partial<CreateClassificationRuleDto>,
+  ): Prisma.ClassificationRuleConditionUncheckedCreateWithoutClassificationRuleInput[] {
+    if (dto.conditions?.length) {
+      return dto.conditions.map((condition, index) =>
+        this.mapCondition(condition, index),
+      );
+    }
+
+    if (!dto.matchValue) return [];
+
+    return [
+      {
+        field: this.legacyFieldToConditionField(dto.matchField),
+        operator: this.legacyTypeToOperator(dto.matchType),
+        value: dto.matchValue.trim(),
+        normalizedValue: normalizeForMatching(dto.matchValue),
+        sortOrder: 0,
+      },
+    ];
+  }
+
+  private mapCondition(
+    condition: RuleConditionDto,
+    index: number,
+  ): Prisma.ClassificationRuleConditionUncheckedCreateWithoutClassificationRuleInput {
+    return {
+      field: condition.field,
+      operator: condition.operator,
+      value: condition.value,
+      normalizedValue: normalizeForMatching(condition.value),
+      secondaryValue: condition.secondaryValue,
+      sortOrder: condition.sortOrder ?? index,
+    };
+  }
+
+  /**
+   * Monta as ações. Quando `actions` não é informado, deriva **uma** ação das dimensões
+   * planas do DTO, preservando a API simples já usada pelo front-end.
+   */
+  private buildActions(
+    dto: Partial<CreateClassificationRuleDto>,
+  ): Prisma.ClassificationRuleActionUncheckedCreateWithoutClassificationRuleInput[] {
+    if (dto.actions?.length) {
+      return dto.actions.map((action) => this.mapAction(action));
+    }
+
+    const derived: Prisma.ClassificationRuleActionUncheckedCreateWithoutClassificationRuleInput =
+      {
+        supplierId: dto.supplierId,
+        customerId: dto.customerId,
+        categoryId: dto.categoryId,
+        subcategoryId: dto.subcategoryId,
+        accountPlanId: dto.accountPlanId,
+        costCenterId: dto.costCenterId,
+        resultCenterId: dto.resultCenterId,
+        projectId: dto.projectId,
+        businessUnitId: dto.businessUnitId,
+        financialNatureId: dto.financialNatureId,
+        allocationRuleId: dto.allocationRuleId,
+        defaultDescription: dto.appliedDescription,
+        defaultHistory: dto.appliedHistory,
+      };
+
+    // Sem nenhuma dimensão informada não há ação a registrar.
+    const hasAny = Object.values(derived).some((value) => value != null);
+    return hasAny ? [derived] : [];
+  }
+
+  private mapAction(
+    action: RuleActionDto,
+  ): Prisma.ClassificationRuleActionUncheckedCreateWithoutClassificationRuleInput {
+    return {
+      supplierId: action.supplierId,
+      customerId: action.customerId,
+      categoryId: action.categoryId,
+      subcategoryId: action.subcategoryId,
+      accountPlanId: action.accountPlanId,
+      costCenterId: action.costCenterId,
+      resultCenterId: action.resultCenterId,
+      projectId: action.projectId,
+      businessUnitId: action.businessUnitId,
+      financialNatureId: action.financialNatureId,
+      allocationRuleId: action.allocationRuleId,
+      paymentMethodId: action.paymentMethodId,
+      bankAccountId: action.bankAccountId,
+      tagId: action.tagId,
+      defaultDescription: action.defaultDescription,
+      defaultHistory: action.defaultHistory,
+      responsibleUserId: action.responsibleUserId,
+      requiresApproval: action.requiresApproval ?? false,
+      suggestReconciliation: action.suggestReconciliation ?? false,
+      createFinancialEntry: action.createFinancialEntry ?? false,
+      autoMatch: action.autoMatch ?? false,
+    };
+  }
+
+  private legacyFieldToConditionField(
+    field: ClassificationMatchField | undefined,
+  ): RuleConditionField {
+    switch (field) {
+      case ClassificationMatchField.COUNTERPARTY_NAME:
+        return RuleConditionField.SUPPLIER;
+      case ClassificationMatchField.COUNTERPARTY_DOCUMENT:
+        return RuleConditionField.CNPJ;
+      case ClassificationMatchField.BANK_HISTORY:
+        return RuleConditionField.BANK_HISTORY;
+      case ClassificationMatchField.AMOUNT:
+        return RuleConditionField.AMOUNT;
+      case ClassificationMatchField.DOCUMENT_NUMBER:
+        return RuleConditionField.DOCUMENT_NUMBER;
+      default:
+        return RuleConditionField.DESCRIPTION;
+    }
+  }
+
+  private legacyTypeToOperator(
+    type: ClassificationMatchType | undefined,
+  ): RuleConditionOperator {
+    switch (type) {
+      case ClassificationMatchType.EQUALS:
+        return RuleConditionOperator.EQUALS;
+      case ClassificationMatchType.STARTS_WITH:
+        return RuleConditionOperator.STARTS_WITH;
+      case ClassificationMatchType.ENDS_WITH:
+        return RuleConditionOperator.ENDS_WITH;
+      case ClassificationMatchType.REGEX:
+        return RuleConditionOperator.REGEX;
+      case ClassificationMatchType.DOCUMENT_NUMBER:
+        return RuleConditionOperator.EQUALS;
+      case ClassificationMatchType.AMOUNT_RANGE:
+        return RuleConditionOperator.BETWEEN;
+      default:
+        return RuleConditionOperator.CONTAINS;
+    }
+  }
+
+  /**
+   * Simulador da seção 40: avalia as condições reais de cada regra ativa e devolve a
+   * regra vencedora, as demais candidatas e os conflitos. **Nada é persistido.**
+   */
+  async testRule(dto: TestRuleDto) {
+    const rules = await this.prisma.classificationRule.findMany({
+      where: {
+        companyId: dto.companyId,
+        deletedAt: null,
+        status: RecordStatus.ACTIVE,
+      },
+      include: RULE_INCLUDE,
+      orderBy: [{ priority: 'asc' }, { createdAt: 'asc' }],
+    });
+
+    const matched = rules.filter((rule) =>
+      evaluateRule(rule.conditions as EvaluableCondition[], dto),
+    );
+    const winner = matched[0];
+    const conflicts = detectConflicts(
+      matched.map((rule) => ({
+        id: rule.id,
+        name: rule.name,
+        priority: rule.priority,
+        actions: rule.actions,
+      })),
+    );
+
+    return {
+      matchedCount: matched.length,
+      appliedRule: winner
+        ? {
+            id: winner.id,
+            name: winner.name,
+            priority: winner.priority,
+            confidence: winner.confidenceThreshold,
+            automatic: winner.automatic,
+            requiresConfirmation: winner.requiresConfirmation,
+          }
+        : null,
+      suggestedActions: winner?.actions ?? [],
+      otherMatches: matched.slice(1).map((rule) => ({
+        id: rule.id,
+        name: rule.name,
+        priority: rule.priority,
+      })),
+      conflicts,
+      // Um conflito suspende a automação: não há desempate objetivo (seção 39).
+      automationSuspended: conflicts.length > 0,
+      persisted: false,
+      note: 'Simulação apenas — nenhum lançamento foi criado ou classificado.',
+    };
+  }
+
+  /** Lista conflitos entre as regras ativas da empresa (seção 39). */
+  async findConflicts(companyId: string) {
+    const rules = await this.prisma.classificationRule.findMany({
+      where: { companyId, deletedAt: null, status: RecordStatus.ACTIVE },
+      include: { actions: true },
+      orderBy: { priority: 'asc' },
+    });
+
+    const conflicts = detectConflicts(
+      rules.map((rule) => ({
+        id: rule.id,
+        name: rule.name,
+        priority: rule.priority,
+        actions: rule.actions,
+      })),
+    );
+
+    return { total: conflicts.length, conflicts };
   }
 
   async update(

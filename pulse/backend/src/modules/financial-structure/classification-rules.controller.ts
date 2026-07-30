@@ -21,6 +21,7 @@ import {
   UpdateClassificationRuleDto,
 } from './dto/classification-rule.dto';
 import { StructureQueryDto } from './dto/common.dto';
+import { TestRuleDto } from './dto/rule-condition-action.dto';
 
 /**
  * Regras de classificação automática. Nesta etapa as regras são armazenadas e podem ser
@@ -77,6 +78,44 @@ export class ClassificationRulesController {
   ) {
     assertCompanyPermission(actor, dto.companyId, 'classification_rule.view');
     return this.rules.simulate(dto);
+  }
+
+  @Post('test')
+  @ApiMessage('Teste concluído.')
+  @ApiOperation({
+    summary:
+      'Testa as regras contra um lançamento hipotético, avaliando as condições reais. Nada é persistido.',
+  })
+  testRule(@Body() dto: TestRuleDto, @CurrentUser() actor: RequestUser) {
+    assertCompanyPermission(actor, dto.companyId, 'classification_rule.test');
+    return this.rules.testRule(dto);
+  }
+
+  @Get('conflicts')
+  @ApiOperation({
+    summary:
+      'Lista conflitos entre regras ativas — mesma prioridade aplicando dimensões divergentes.',
+  })
+  findConflicts(
+    @Query('companyId') companyId: string,
+    @CurrentUser() actor: RequestUser,
+  ) {
+    assertCompanyPermission(actor, companyId, 'classification_rule.view');
+    return this.rules.findConflicts(companyId);
+  }
+
+  @Post('validate-conflicts')
+  @ApiMessage('Validação de conflitos concluída.')
+  @ApiOperation({
+    summary:
+      'Revalida os conflitos da empresa. Enquanto houver conflito, a automação fica suspensa.',
+  })
+  validateConflicts(
+    @Body('companyId') companyId: string,
+    @CurrentUser() actor: RequestUser,
+  ) {
+    assertCompanyPermission(actor, companyId, 'classification_rule.manage');
+    return this.rules.findConflicts(companyId);
   }
 
   @Patch(':id')

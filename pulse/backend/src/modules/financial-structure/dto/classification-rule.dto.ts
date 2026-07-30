@@ -10,8 +10,12 @@ import {
   RecordStatus,
   TransactionOrigin,
 } from '@prisma/client';
+import { Type } from 'class-transformer';
 import {
+  ArrayNotEmpty,
+  IsArray,
   IsBoolean,
+  IsDateString,
   IsEnum,
   IsInt,
   IsNotEmpty,
@@ -22,7 +26,10 @@ import {
   Max,
   MaxLength,
   Min,
+  ValidateNested,
 } from 'class-validator';
+
+import { RuleActionDto, RuleConditionDto } from './rule-condition-action.dto';
 
 /**
  * Regra de classificação automática. Nesta etapa a regra é apenas **armazenada e
@@ -182,6 +189,51 @@ export class CreateClassificationRuleDto {
   @IsOptional()
   @IsBoolean()
   autoApply?: boolean;
+
+  @ApiProperty({
+    type: [RuleConditionDto],
+    description:
+      'Condições da regra. Todas precisam casar. Uma regra sem condição é recusada — ela se aplicaria a todo lançamento.',
+  })
+  @IsArray()
+  @ArrayNotEmpty({ message: 'Informe ao menos uma condição para a regra.' })
+  @ValidateNested({ each: true })
+  @Type(() => RuleConditionDto)
+  conditions: RuleConditionDto[];
+
+  @ApiProperty({
+    type: [RuleActionDto],
+    description: 'Ações aplicadas quando as condições casam.',
+  })
+  @IsArray()
+  @ArrayNotEmpty({ message: 'Esta regra não possui nenhuma ação configurada.' })
+  @ValidateNested({ each: true })
+  @Type(() => RuleActionDto)
+  actions: RuleActionDto[];
+
+  @ApiPropertyOptional({
+    default: false,
+    description:
+      'Aplica sem confirmação humana. Só terá efeito com o módulo financeiro.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  automatic?: boolean;
+
+  @ApiPropertyOptional({ default: true })
+  @IsOptional()
+  @IsBoolean()
+  requiresConfirmation?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsDateString()
+  startDate?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsDateString()
+  endDate?: string;
 
   @ApiPropertyOptional({ enum: RecordStatus })
   @IsOptional()
