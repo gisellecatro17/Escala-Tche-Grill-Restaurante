@@ -1,4 +1,4 @@
-import { ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
@@ -45,7 +45,14 @@ async function bootstrap() {
   SwaggerModule.setup('docs', app, document);
 
   const port = config.get<number>('PORT') ?? 3333;
-  await app.listen(port);
+
+  // `0.0.0.0` explícito, não o padrão. Em container, escutar só em `localhost` faz o
+  // processo subir sem erro nenhum e recusar toda conexão vinda de fora — o deploy fica
+  // "verde" e o serviço, inalcançável.
+  await app.listen(port, '0.0.0.0');
+
+  Logger.log(`Pulse API escutando na porta ${port}`, 'Bootstrap');
+  Logger.log(`Origens liberadas: ${corsOrigins.join(', ')}`, 'Bootstrap');
 }
 
 void bootstrap();
