@@ -11,10 +11,14 @@ services:
     name: pulse-api
     runtime: node
     plan: free
-    # Regiões do plano gratuito: oregon, ohio, virginia, frankfurt, singapore.
-    # Escolha a mais próxima do seu projeto Supabase — cada consulta ao banco atravessa
-    # essa distância. Supabase no Canadá combina com ohio; em São Paulo, com virginia.
-    region: ohio
+    # O banco está no Supabase de São Paulo, e o plano gratuito do Render não oferece
+    # região na América do Sul — as opções são oregon, ohio, virginia, frankfurt e
+    # singapore. `virginia` é a mais próxima, e o tráfego Brasil–EUA já sai por lá: a rota
+    # real é melhor do que a distância no mapa sugere.
+    #
+    # Cada consulta ao banco atravessa esse caminho. Ao migrar para o plano pago, mover a
+    # API para junto do banco é o ganho de desempenho mais barato que existe.
+    region: virginia
     branch: claude/pulse-saas-foundation-i13m23
     rootDir: pulse/backend
 

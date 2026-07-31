@@ -152,15 +152,17 @@ quando o sistema tiver uso de verdade. Para testar e demonstrar, não atrapalha.
 ### Sobre a região
 
 O plano gratuito oferece Oregon, Ohio, Virginia, Frankfurt e Singapura — não há opção na
-América do Sul. Cada consulta ao banco atravessa a distância entre a API e o Supabase, e o
-`render.yaml` usa **ohio** por padrão.
+América do Sul. Com o banco no Supabase de **São Paulo**, o `render.yaml` usa
+**`virginia`**: é a mais próxima, e o tráfego Brasil–EUA já sai por lá, então a rota real é
+melhor do que a distância no mapa sugere.
 
-| Supabase em | Região do Render que combina |
-| --- | --- |
-| Canadá (`ca-central-1`) | `ohio` — mesma costa, resposta rápida |
-| São Paulo (`sa-east-1`) | `virginia` — o mais próximo disponível |
+Cada consulta ao banco atravessa esse caminho. Na prática isso pesa menos que a
+hibernação do plano gratuito — os ~30 s de despertar são muito maiores que os
+milissegundos de ida e volta.
 
-Para trocar, edite `region:` no `render.yaml`.
+Quando o sistema tiver uso real e migrar para o plano pago, aproximar a API do banco é o
+ganho de desempenho mais barato disponível. Para trocar, basta editar `region:` no
+`render.yaml`.
 
 ---
 
