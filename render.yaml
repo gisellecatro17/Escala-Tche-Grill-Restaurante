@@ -1,0 +1,74 @@
+# Publicação da API do Pulse no Render.
+#
+# O Render lê este arquivo e monta o serviço sozinho — não é preciso preencher raiz,
+# comandos nem plano à mão. Só os segredos ficam de fora, marcados com `sync: false`:
+# eles são pedidos no painel e nunca entram no repositório.
+#
+# Guia completo em pulse/docs/deploy.md.
+
+services:
+  - type: web
+    name: pulse-api
+    runtime: node
+    plan: free
+    # Regiões do plano gratuito: oregon, ohio, virginia, frankfurt, singapore.
+    # Escolha a mais próxima do seu projeto Supabase — cada consulta ao banco atravessa
+    # essa distância. Supabase no Canadá combina com ohio; em São Paulo, com virginia.
+    region: ohio
+    branch: claude/pulse-saas-foundation-i13m23
+    rootDir: pulse/backend
+
+    # Migrations e seed rodam no **build**, não no start.
+    #
+    # No plano gratuito o serviço hiberna após 15 minutos parado e o start roda de novo a
+    # cada despertar. Preparar o banco ali somaria dezenas de segundos a toda primeira
+    # visita depois de uma pausa. No build, isso acontece uma vez por publicação.
+    buildCommand: >-
+      npm install &&
+      npx prisma generate &&
+      npm run build &&
+      npx prisma migrate deploy &&
+      npx prisma db seed
+    startCommand: node dist/src/main.js
+
+    healthCheckPath: /health
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+      # Conexão do dia a dia: o **pooler** do Supabase (porta 6543).
+      - key: DATABASE_URL
+        sync: false
+
+      # Conexão **direta** (porta 5432), usada só por migrate e seed. O pooler corta a
+      # transação longa de uma migration e deixa metade das tabelas criadas.
+      - key: DIRECT_URL
+        sync: false
+
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+
+      # Senha mestra do banco. Vive só aqui, no servidor — nunca no front-end.
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+
+      - key: SUPABASE_STORAGE_BUCKET
+        value: pulse-public
+      - key: SUPABASE_PRIVATE_STORAGE_BUCKET
+        value: pulse-private
+
+      # Endereços autorizados a chamar a API. Ajustar para o da Vercel após o primeiro
+      # deploy dela — sem isso o navegador bloqueia toda chamada.
+      - key: CORS_ORIGINS
+        sync: false
+
+      # Fila de leitura de documentos. Desligada no plano gratuito: ela acorda o serviço
+      # a cada ciclo e consumiria as horas do mês sem ninguém estar usando o sistema.
+      - key: INTAKE_WORKER_ENABLED
+        value: "false"
+
+      - key: CNPJ_LOOKUP_PROVIDER
+        value: brasilapi

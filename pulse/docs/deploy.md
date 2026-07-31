@@ -10,7 +10,7 @@ delas — banco de dados e login — o que reduz o que falta contratar.
 | Banco de dados (PostgreSQL) | Supabase | grátis |
 | Login e senha | Supabase Auth | grátis |
 | Arquivos (extratos, boletos) | Supabase Storage | grátis |
-| API (NestJS) | Railway ou Render | grátis / ~US$ 5 |
+| API (NestJS) | Render (plano gratuito) | grátis |
 | Telas (Next.js) | Vercel | grátis |
 
 ---
@@ -70,60 +70,97 @@ público aqui deixaria o extrato inteiro acessível a quem descobrisse o endere�
 
 ## 3. Preparar o banco
 
-**Você não precisa fazer nada aqui.** O banco se prepara sozinho quando a API sobe pela
-primeira vez — o comando de start do passo 4 cuida disso.
-
-Duas coisas acontecem nesse primeiro boot:
+**Você não precisa fazer nada aqui.** O `render.yaml` na raiz do repositório manda o Render
+criar as tabelas e cadastrar os dados iniciais durante a publicação.
 
 | Comando | O que faz |
 | --- | --- |
 | `prisma migrate deploy` | Cria as ~110 tabelas |
 | `prisma db seed` | Cadastra permissões, perfis e a empresa de demonstração |
 
-Os dois são seguros de repetir. As migrations já aplicadas são puladas, e o seed atualiza
-o que existe em vez de duplicar — por isso podem ficar no start sem causar estrago a cada
-novo deploy.
+Os dois rodam no **build**, não no start. No plano gratuito o serviço hiberna após 15
+minutos parado e o start roda de novo a cada despertar — preparar o banco ali somaria
+dezenas de segundos a toda primeira visita depois de uma pausa.
+
+Ambos são seguros de repetir: migration já aplicada é pulada e o seed atualiza o que
+existe em vez de duplicar.
 
 ### Se preferir rodar na sua máquina
-
-Nada impede, e é útil para conferir antes de publicar:
 
 ```bash
 cd pulse/backend
 npm install
-DATABASE_URL="<a URL da porta 5432>" npx prisma migrate deploy
-DATABASE_URL="<a URL da porta 5432>" npx prisma db seed
+DIRECT_URL="<a URL da porta 5432>" npx prisma migrate deploy
+DIRECT_URL="<a URL da porta 5432>" npx prisma db seed
 ```
-
-Use a conexão **direta** (5432), não a do pooler (6543): o pooler não sustenta as
-transações longas de uma migration e ela falha no meio.
 
 ---
 
-## 4. Publicar a API (Railway)
+## 4. Publicar a API (Render)
 
-1. **New Project › Deploy from GitHub repo** e escolha este repositório
-2. Em **Settings**, defina a raiz do serviço como `pulse/backend`
-3. Comando de build: `npm install && npx prisma generate && npm run build`
-4. Comando de start: `npx prisma migrate deploy && npx prisma db seed && node dist/src/main.js`
-5. Em **Variables**, cadastre:
+O repositório traz um `render.yaml` que descreve o serviço inteiro — raiz, branch,
+comandos, plano e verificação de saúde. O Render lê esse arquivo e monta tudo; você só
+informa os segredos.
+
+1. Em [render.com](https://render.com), entre com a conta do GitHub
+2. **New › Blueprint**
+3. Escolha o repositório **Escala-Tche-Grill-Restaurante**
+4. O Render mostra o serviço `pulse-api` já configurado. Confirme.
+5. Ele pede os valores marcados como secretos. Preencha:
+
+| Variável | O que colar |
+| --- | --- |
+| `DATABASE_URL` | Pooler do Supabase, porta **6543**, com `?pgbouncer=true&connection_limit=1` |
+| `DIRECT_URL` | Conexão direta, porta **5432** |
+| `SUPABASE_URL` | Project URL |
+| `SUPABASE_ANON_KEY` | Chave `anon` |
+| `SUPABASE_SERVICE_ROLE_KEY` | Chave `service_role` |
+| `CORS_ORIGINS` | `http://localhost:3000` por enquanto — ajustado no passo 5 |
+
+6. **Apply** e acompanhe o log
+
+O primeiro deploy leva de 5 a 8 minutos: ele instala tudo, compila e cria as tabelas.
+
+### Conferir
+
+Abra `https://pulse-api.onrender.com/health` (o endereço aparece no painel). A resposta
+esperada:
+
+```json
+{"success":true,"data":{"status":"ok","timestamp":"..."}}
+```
+
+E no log, estas duas linhas:
 
 ```
-NODE_ENV=production
-PORT=3333
-DATABASE_URL=<pooler, porta 6543, com ?pgbouncer=true&connection_limit=1>
-DIRECT_URL=<direta, porta 5432>
-SUPABASE_URL=<Project URL>
-SUPABASE_ANON_KEY=<anon>
-SUPABASE_SERVICE_ROLE_KEY=<service_role>
-SUPABASE_STORAGE_BUCKET=pulse-public
-SUPABASE_PRIVATE_STORAGE_BUCKET=pulse-private
-CORS_ORIGINS=<endereço da Vercel, definido no passo 5>
-INTAKE_WORKER_ENABLED=true
-CNPJ_LOOKUP_PROVIDER=brasilapi
+[Bootstrap] Pulse API escutando na porta ...
+[Bootstrap] Origens liberadas: ...
 ```
 
-Anote o endereço que o Railway gera — algo como `pulse-api.up.railway.app`.
+### O que o plano gratuito custa
+
+| | |
+| --- | --- |
+| **Hibernação** | Após 15 min parado, o serviço dorme. A visita seguinte espera ~30 s para acordar. |
+| **Memória** | 512 MB — suficiente para a API, apertado para processar arquivo grande |
+| **Horas** | 750 por mês, o bastante para um serviço só |
+| **Fila de documentos** | Desligada de propósito: ela consultaria o banco a cada 2 s e manteria o serviço acordado o mês inteiro, gastando as horas sem ninguém usar o sistema |
+
+A hibernação é o único incômodo real, e some ao migrar para o plano pago (US$ 7/mês)
+quando o sistema tiver uso de verdade. Para testar e demonstrar, não atrapalha.
+
+### Sobre a região
+
+O plano gratuito oferece Oregon, Ohio, Virginia, Frankfurt e Singapura — não há opção na
+América do Sul. Cada consulta ao banco atravessa a distância entre a API e o Supabase, e o
+`render.yaml` usa **ohio** por padrão.
+
+| Supabase em | Região do Render que combina |
+| --- | --- |
+| Canadá (`ca-central-1`) | `ohio` — mesma costa, resposta rápida |
+| São Paulo (`sa-east-1`) | `virginia` — o mais próximo disponível |
+
+Para trocar, edite `region:` no `render.yaml`.
 
 ---
 
@@ -170,6 +207,8 @@ DATABASE_URL="<DIRECT_URL>" npx ts-node --transpile-only prisma/link-first-admin
 | Login entra e cai numa tela vazia | O usuário não foi vinculado (passo 6.2) |
 | Migration trava ou dá timeout | Está usando o pooler (6543) em vez da conexão direta (5432) |
 | Upload de extrato falha | O bucket `pulse-private` não existe |
+| Primeira visita do dia demora ~30 s | Normal no plano gratuito: o serviço estava hibernando |
+| Documento enviado não é processado sozinho | `INTAKE_WORKER_ENABLED` está `false` — ligue no plano pago |
 
 ---
 
