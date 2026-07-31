@@ -735,6 +735,89 @@ gravada e não pode ser desfeita porque a geração falhou — e aninhar transa�
 um cliente que não enxerga o que a primeira ainda não confirmou.
 
 
+## Agendamento Bancário
+
+### A programação é um desembolso, com itens
+
+`payment_schedules` é o cabeçalho de **um pagamento**; `payment_schedule_items` são as
+parcelas incluídas. A alternativa — uma programação por parcela — pareceria mais simples e
+produziria, para um título parcelado pago de uma vez, várias linhas de remessa ao mesmo
+fornecedor no mesmo dia. O banco enxergaria vários pagamentos, e a conciliação depois teria
+de reagrupá-los.
+
+`installment_id` é `UNIQUE`: a mesma parcela não entra em duas programações vivas. É a
+única defesa real contra pagar a mesma dívida duas vezes, e ela precisa estar no banco.
+
+### Reprogramado e bloqueado calculados, de novo
+
+Mesma decisão do Contas a Pagar, aplicada de propósito pela mesma razão. Bloqueado convive
+com a etapa da fila (uma programação bloqueada dentro de um lote continua no lote), e
+reprogramado descreve a história da data, não a posição atual. Guardá-los como situação
+faria a liberação ter de adivinhar para onde voltar.
+
+`reschedule_count` responde ao indicador "pagamentos reprogramados" sem criar uma segunda
+fonte de verdade.
+
+### Cancelar a programação apaga os itens
+
+Parece contraintuitivo guardar histórico e apagar linhas. Mas o `UNIQUE` em
+`installment_id` prende a parcela enquanto o item existir: manter os itens "para histórico"
+travaria aquela parcela para sempre. O registro do cancelamento vive em
+`payment_schedule_history`, que é onde ele pertence.
+
+### Um lote é de uma conta
+
+O CNAB é por convênio bancário, e convênio é por conta. Permitir lote misto adiaria a
+descoberta do erro para a geração do arquivo — depois de o lote ter sido conferido e
+aprovado por alguém. A restrição está na criação, na inclusão e no fechamento.
+
+`payment_batch_items` existe além do `batch_id` na programação porque é ali que mora a
+**ordem** dos registros no arquivo e o valor conferido no fechamento; quando o retorno
+bancário existir, cada linha recebe seu código de resposta individualmente. Uma chave
+estrangeira solta não teria onde guardar isso.
+
+### Saldo derivado do que existe, não do que se imagina
+
+Não há movimento bancário no Pulse. O disponível é o saldo de abertura aprovado menos o
+bloqueado; os limites contratados entram à parte, sob um parâmetro da empresa. Calcular um
+"saldo atual" a partir de títulos pagos produziria um número que não bate com nenhum
+extrato — e seria usado como se batesse.
+
+Todo o cálculo vive em um serviço só. Quando a conciliação bancária chegar, ela troca a
+fonte lá dentro e o resto do sistema não muda.
+
+Programação bloqueada não entra no comprometido: dinheiro travado não vai sair, e contá-lo
+faria o sistema recusar programações por causa de um gasto que não acontecerá.
+
+### Saldo insuficiente é alerta, não trava — por padrão
+
+O cheque de saldo devolve diagnóstico em vez de lançar exceção. Quem decide se o déficit
+impede a programação é o parâmetro da empresa. Travar por padrão pareceria mais seguro e
+seria errado: quem sabe que o dinheiro entra na véspera não quer o sistema recusando o
+agendamento.
+
+### A simulação é pura
+
+Recebe as alterações hipotéticas, projeta em memória e devolve. Nenhuma escrita, nem
+temporária. A alternativa comum — gravar um cenário e desfazer depois — é como uma
+simulação vira uma alteração acidental que ninguém percebeu.
+
+Ela não tem entradas de caixa porque o Pulse não tem Contas a Receber. Projetar recebimento
+inexistente daria uma folga que não existe, que é pior do que não projetar.
+
+### Ações em massa isolam cada item
+
+Cada programação é processada sozinha e o resultado diz quais falharam e por quê. Uma
+transação única seria mais consistente e obrigaria quem selecionou trinta títulos a
+descobrir sozinho qual deles travou o lote inteiro.
+
+### O grafo continua acíclico
+
+`payment-scheduling` importa só Prisma e Auditoria. Ele **lê** Contas a Pagar e Tesouraria
+direto pelo Prisma, e nenhum dos dois sabe que o agendamento existe. A seta segue apontando
+em um sentido só, como nos módulos anteriores.
+
+
 ## Autenticação
 
 - Login, sessão, recuperação de senha e confirmação de e-mail são delegados ao **Supabase

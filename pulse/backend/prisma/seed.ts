@@ -1236,6 +1236,50 @@ const PERMISSIONS: PermissionSeed[] = [
     description: 'Consultar o histórico completo dos títulos a pagar',
   },
 
+  // Financeiro — Agendamento bancário
+  {
+    slug: 'payment_schedule.view',
+    module: 'financeiro',
+    description:
+      'Visualizar a fila de pagamentos, os lotes, a simulação e o saldo projetado',
+  },
+  {
+    slug: 'payment_schedule.create',
+    module: 'financeiro',
+    description: 'Programar o pagamento de títulos do contas a pagar',
+  },
+  {
+    slug: 'payment_schedule.edit',
+    module: 'financeiro',
+    description:
+      'Alterar conta, forma, prioridade e responsável; cancelar programação e configurar parâmetros',
+  },
+  {
+    slug: 'payment_schedule.reschedule',
+    module: 'financeiro',
+    description: 'Reprogramar a data de pagamento, com motivo registrado',
+  },
+  {
+    slug: 'payment_schedule.block',
+    module: 'financeiro',
+    description: 'Bloquear programações e tirá-las da fila de pagamento',
+  },
+  {
+    slug: 'payment_schedule.unblock',
+    module: 'financeiro',
+    description: 'Liberar o bloqueio de uma programação',
+  },
+  {
+    slug: 'payment_schedule.batch',
+    module: 'financeiro',
+    description: 'Criar, compor, fechar e cancelar lotes de pagamento',
+  },
+  {
+    slug: 'payment_schedule.audit',
+    module: 'financeiro',
+    description: 'Consultar o histórico completo das programações e dos lotes',
+  },
+
   // Financeiro — Processamento de documentos
   {
     slug: 'document_processing.view',
@@ -1499,6 +1543,25 @@ const ACCOUNTS_PAYABLE_SLUGS = PERMISSIONS.filter((p) =>
   p.slug.startsWith('accounts_payable.'),
 ).map((p) => p.slug);
 
+const PAYMENT_SCHEDULE_SLUGS = PERMISSIONS.filter((p) =>
+  p.slug.startsWith('payment_schedule.'),
+).map((p) => p.slug);
+
+/**
+ * Agendamento liberado para o operador financeiro.
+ *
+ * Fica de fora o que altera compromisso já assumido: reprogramar, liberar bloqueio e
+ * fechar lote. Programar e bloquear ele pode — segurar um pagamento suspeito é a alçada de
+ * quem opera o dia a dia.
+ */
+const PAYMENT_SCHEDULE_OPERATOR_SLUGS = PAYMENT_SCHEDULE_SLUGS.filter((slug) =>
+  [
+    'payment_schedule.view',
+    'payment_schedule.create',
+    'payment_schedule.block',
+  ].includes(slug),
+);
+
 /**
  * Contas a pagar liberado para o operador financeiro.
  *
@@ -1567,6 +1630,7 @@ const ROLES: {
       ...DOCUMENT_PROCESSING_SLUGS,
       ...APPROVAL_SLUGS,
       ...ACCOUNTS_PAYABLE_SLUGS,
+      ...PAYMENT_SCHEDULE_SLUGS,
       'financial.view',
       'financial.documents',
       'financial.process',
@@ -1637,6 +1701,7 @@ const ROLES: {
       ...DOCUMENT_INTAKE_OPERATOR_SLUGS,
       ...DOCUMENT_PROCESSING_OPERATOR_SLUGS,
       ...ACCOUNTS_PAYABLE_OPERATOR_SLUGS,
+      ...PAYMENT_SCHEDULE_OPERATOR_SLUGS,
       'approvals.view',
       'financial.view',
       'financial.documents',
@@ -1696,6 +1761,8 @@ const ROLES: {
       'approvals.audit',
       'accounts_payable.view',
       'accounts_payable.audit',
+      'payment_schedule.view',
+      'payment_schedule.audit',
       ...BI_SLUGS,
     ],
   },
@@ -2241,6 +2308,7 @@ async function main() {
   );
   await seedDemoApprovals(organization.id, company.id);
   await seedDemoAccountsPayable(organization.id, company.id);
+  await seedDemoPaymentScheduling(organization.id, company.id);
 
   console.log('Seed concluído com sucesso.');
   console.log(
@@ -3670,6 +3738,137 @@ async function seedDemoAccountsPayable(organizationId: string, companyId: string
 
   console.log(
     'Contas a pagar de demonstração criado: 1 título parcelado com R$ 7.000 de saldo, 1 bloqueado por pendência e 1 adiantamento de R$ 4.000 disponível.',
+  );
+}
+
+/**
+ * Agendamento bancário de demonstração.
+ *
+ * Programa o título parcelado criado no seed do Contas a Pagar e monta um lote com ele —
+ * o suficiente para a fila, o lote e a simulação terem o que mostrar assim que alguém
+ * abrir o sistema.
+ */
+async function seedDemoPaymentScheduling(organizationId: string, companyId: string) {
+  console.log('Aplicando seed de agendamento bancário de demonstração...');
+
+  await prisma.paymentScheduleSettings.upsert({
+    where: { companyId },
+    update: {},
+    create: {
+      organizationId,
+      companyId,
+      minimumLeadTimeDays: 1,
+      defaultBankPaymentType: 'PIX',
+    },
+  });
+
+  const account = await prisma.financialAccount.findFirst({
+    where: { companyId, deletedAt: null, status: 'ACTIVE' },
+    orderBy: { isPrimary: 'desc' },
+    select: { id: true, financialInstitutionId: true },
+  });
+
+  const installment = await prisma.accountsPayableInstallment.findFirst({
+    where: {
+      payableId: '00000000-0000-0000-0000-000000004001',
+      installmentNumber: 2,
+    },
+    select: { id: true, balanceAmount: true, payableId: true },
+  });
+
+  if (!account || !installment) return;
+
+  const year = new Date().getUTCFullYear();
+  const scheduledDate = new Date(Date.UTC(year, 8, 10));
+
+  const batch = await prisma.paymentBatch.upsert({
+    where: { id: '00000000-0000-0000-0000-000000005001' },
+    update: {},
+    create: {
+      id: '00000000-0000-0000-0000-000000005001',
+      organizationId,
+      companyId,
+      code: `LOTE-${year}-000001`,
+      name: 'Fornecedores — setembro',
+      financialAccountId: account.id,
+      financialInstitutionId: account.financialInstitutionId,
+      bankPaymentType: 'PIX',
+      scheduledDate,
+      status: 'OPEN',
+      itemCount: 1,
+      totalAmount: installment.balanceAmount,
+      history: {
+        create: {
+          action: 'BATCH_CREATED',
+          newValue: `LOTE-${year}-000001`,
+        },
+      },
+    },
+  });
+
+  await prisma.paymentSchedule.upsert({
+    where: { id: '00000000-0000-0000-0000-000000005011' },
+    update: {},
+    create: {
+      id: '00000000-0000-0000-0000-000000005011',
+      organizationId,
+      companyId,
+      code: `AG-${year}-000001`,
+      payableId: installment.payableId,
+      status: 'IN_BATCH',
+      priority: 'HIGH',
+      financialAccountId: account.id,
+      bankPaymentType: 'PIX',
+      scheduledDate,
+      originalDate: scheduledDate,
+      totalAmount: installment.balanceAmount,
+      batchId: batch.id,
+      queuePosition: 1,
+      items: {
+        create: {
+          installmentId: installment.id,
+          amount: installment.balanceAmount,
+          sortOrder: 0,
+        },
+      },
+      history: {
+        create: [
+          {
+            action: 'SCHEDULED',
+            newStatus: 'SCHEDULED',
+            field: 'scheduledDate',
+            newValue: scheduledDate.toISOString().slice(0, 10),
+          },
+          {
+            action: 'ADDED_TO_BATCH',
+            previousStatus: 'SCHEDULED',
+            newStatus: 'IN_BATCH',
+            batchId: batch.id,
+            newValue: batch.code,
+          },
+        ],
+      },
+    },
+  });
+
+  await prisma.paymentBatchItem.upsert({
+    where: {
+      batchId_scheduleId: {
+        batchId: batch.id,
+        scheduleId: '00000000-0000-0000-0000-000000005011',
+      },
+    },
+    update: {},
+    create: {
+      batchId: batch.id,
+      scheduleId: '00000000-0000-0000-0000-000000005011',
+      sequence: 1,
+      amount: installment.balanceAmount,
+    },
+  });
+
+  console.log(
+    'Agendamento de demonstração criado: 1 programação de R$ 5.000 em lote aberto para setembro.',
   );
 }
 

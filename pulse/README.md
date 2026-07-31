@@ -1053,6 +1053,114 @@ bancária, fluxo de caixa e inteligência financeira. As situações `BANK_SCHED
 as escreve — elas são o ponto de encaixe do módulo seguinte.
 
 
+## Agendamento Bancário
+
+Entre o Contas a Pagar e o banco. É aqui que se decide **quando** cada obrigação sai, **de
+que conta** e **em que lote** — e se o caixa aguenta.
+
+```
+Contas a Pagar → Agendamento Bancário → Execução Bancária (não desenvolvida) → Conciliação
+```
+
+Telas em `/financeiro/agendamento`:
+
+| Rota | O que faz |
+| --- | --- |
+| `/financeiro/agendamento` | Painel com os onze indicadores e o saldo projetado por conta |
+| `/financeiro/agendamento/fila` | Fila de pagamentos, com filtros, ações em massa e inclusão de títulos |
+| `/financeiro/agendamento/[id]` | Detalhe: parcelas, posição da conta, ações e histórico |
+| `/financeiro/agendamento/lotes` | Lotes de pagamento |
+| `/financeiro/agendamento/lotes/[id]` | Composição do lote, fechamento e cancelamento |
+| `/financeiro/agendamento/simulacao` | Simulação de cenários de desembolso |
+| `/financeiro/agendamento/parametros` | Parâmetros por empresa |
+
+### Nada aqui executa pagamento
+
+Nenhuma rota gera remessa, chama API de banco ou move dinheiro. Fechar um lote o deixa
+**pronto para envio** — o estado que a Execução Bancária vai consumir quando existir. As
+situações `SENT` e `EXECUTED` existem no enum, são preservadas pelos serviços e nada neste
+módulo as escreve.
+
+### A unidade é o desembolso, não o título
+
+Uma programação pode cobrir várias parcelas do mesmo título ("as parcelas 2 e 3 no dia
+10"), e é isso que vira **uma** linha de remessa. Por isso a programação tem itens: sem
+eles, pagar duas parcelas juntas exigiria duas programações que o banco enxergaria como
+dois pagamentos ao mesmo fornecedor no mesmo dia.
+
+`installment_id` é `UNIQUE` em `payment_schedule_items`: uma parcela não pode estar em duas
+programações vivas. A garantia é do banco, e é ela que impede a mesma dívida de sair duas
+vezes.
+
+### Reprogramado e bloqueado são calculados
+
+Sete das nove situações são gravadas. **Bloqueado** convive com a etapa da fila — uma
+programação bloqueada dentro de um lote continua dentro do lote — e **reprogramado** é um
+fato sobre a história da data, não sobre onde a programação está. Ambos chegam calculados
+em `situation`, exatamente como "vencido" e "bloqueado" no Contas a Pagar.
+
+### Reprogramar exige motivo, e é a única porta
+
+Alterar a data pela edição comum é recusado quando a empresa exige motivo: sem isso, a
+reprogramação teria uma porta dos fundos e o registro que a seção 13 pede não existiria.
+`original_date` guarda a primeira data acordada, e `reschedule_count` responde "pagamentos
+reprogramados" sem precisar de uma situação própria.
+
+### Um lote, uma conta, uma data
+
+O arquivo de remessa é por convênio bancário, e convênio é por conta. Um lote misto só
+descobriria o problema na hora de gerar o arquivo, depois de tudo conferido e aprovado. A
+restrição está no modelo e na inclusão: uma programação de outra conta é recusada com o
+motivo, não silenciosamente ignorada.
+
+Fechar exige lote não vazio, sem programação bloqueada e com a conta ativa.
+
+### De onde vem o saldo
+
+O Pulse ainda não registra movimento bancário. O disponível é o **saldo de abertura
+aprovado** na tesouraria menos o bloqueado; somando os limites contratados ativos chega-se
+ao *poder de gasto*, do qual se desconta o que já está programado.
+
+Inventar um "saldo atual" a partir de títulos pagos daria um número impossível de conferir
+com o extrato — e é o número que alguém levaria para uma reunião. Quando a conciliação
+bancária existir, `AccountBalanceService` passa a ler o saldo real e nada mais no módulo
+muda.
+
+Programação bloqueada **não** compromete caixa: dinheiro travado não vai sair, e contá-lo
+faria o sistema recusar programações por causa de um gasto que não vai acontecer.
+
+### Saldo insuficiente alerta; bloquear é opcional
+
+Por padrão o sistema avisa e deixa a decisão com quem programa — uma empresa que sabe que o
+dinheiro entra na véspera não quer o sistema recusando. `blockOnInsufficientBalance` liga a
+recusa para quem prefere o contrário.
+
+### A simulação não grava nada
+
+Ela recebe as alterações hipotéticas (mover data, trocar conta, tirar da conta), monta a
+projeção em memória e devolve o resultado. É o que permite responder "e se eu empurrar
+estes três pagamentos para o dia 20?" sem alterar dados de verdade e desfazer depois — que
+é como uma simulação vira uma alteração acidental.
+
+A projeção não tem entradas: não existe Contas a Receber nem fluxo de caixa ainda. Ela
+responde "o que já existe em conta cobre o que está programado?".
+
+### Ações em massa processam uma a uma
+
+Cada programação é tratada isoladamente e o resultado diz exatamente quais falharam e por
+quê. Abortar tudo por causa de uma programação bloqueada faria quem selecionou trinta
+títulos ter de descobrir sozinho qual era o problema. O resumo com quantidade e valor é
+sempre exibido antes da confirmação.
+
+### O que ainda não existe neste módulo
+
+Execução bancária, remessa CNAB, PIX automático, recebimento de retornos, conciliação
+bancária, fluxo de caixa e inteligência financeira. As colunas de remessa
+(`remittance_number`, `remittance_file_path`, `sent_at`) e os campos de retorno por item
+(`bank_status_code`, `bank_message`) existem nas tabelas para que o módulo seguinte apenas
+preencha — sem migração nem refatoração.
+
+
 ## Banco de dados e migrations
 
 O schema fica em `backend/prisma/schema.prisma`. Tabelas principais:
@@ -1097,6 +1205,9 @@ na mesma hierarquia), `cost_centers`, `result_centers`, `projects`, `business_un
 `supplier_advances`, `accounts_payable_advance_applications`,
 `accounts_payable_history`, `accounts_payable_comments`, `accounts_payable_tags`,
 `accounts_payable_settings`,
+`payment_schedules`, `payment_schedule_items`, `payment_batches`,
+`payment_batch_items`, `payment_schedule_history`, `payment_schedule_comments`,
+`payment_schedule_settings`,
 `financial_institutions`, `attachments` (anexos genéricos), `users`, `roles`,
 `permissions`, `role_permissions`, `user_organization_roles`, `user_company_roles` e
 `audit_logs`.
@@ -1105,8 +1216,9 @@ na mesma hierarquia), `cost_centers`, `result_centers`, `projects`, `business_un
 > (`20260730120000_treasury_module`), a da entrada de documentos
 > (`20260730180000_document_intake_module`), a do processamento
 > (`20260730200000_document_processing_module`), a das autorizações
-> (`20260730220000_approvals_module`) e a do contas a pagar
-> (`20260731120000_accounts_payable_module`) só adicionam: nenhum `DROP`, nenhum
+> (`20260730220000_approvals_module`), a do contas a pagar
+> (`20260731120000_accounts_payable_module`) e a do agendamento
+> (`20260731160000_payment_scheduling_module`) só adicionam: nenhum `DROP`, nenhum
 > `ALTER COLUMN`, nenhuma tabela renomeada, nenhuma rota existente alterada.
 
 ```bash
@@ -1153,6 +1265,40 @@ npm test        # testes unitários: isolamento multiempresa/organização, perm
                  # entrada de documentos
 npm run test:e2e
 ```
+
+### Testar manualmente o Agendamento Bancário
+
+1. Rode o seed e abra `/financeiro/agendamento`. O painel mostra R$ 5.000 programados para
+   setembro, 1 lote aguardando envio e o saldo projetado de cada conta.
+2. Em **Fila de pagamentos**, `AG-2026-000001` aparece *Em lote*. Use **Programar títulos**
+   para incluir outro título — só os elegíveis aparecem, e um bloqueado no Contas a Pagar
+   nunca aparece.
+3. Programe um título sem informar data: ele nasce *Aguardando programação*.
+4. Tente programar para ontem: é recusado. Ajuste o prazo mínimo nos parâmetros para 5 dias
+   e tente para amanhã: também é recusado, com o número de dias na mensagem.
+5. Abra uma programação e tente mudar a data pela edição: é recusado com a orientação de
+   usar a reprogramação. Reprograme informando motivo — o histórico grava data anterior,
+   nova, autor e IP, e a situação vira *Reprogramado*.
+6. Bloqueie a programação. Ela some da fila de pagamento, não entra em lote e o painel a
+   conta em "Bloqueados". Libere com um usuário que tenha `payment_schedule.unblock` — com
+   um que só tenha `payment_schedule.block`, liberar é recusado.
+7. Selecione várias programações na fila e use **Alterar em massa**. O resumo com
+   quantidade e valor aparece antes de confirmar, e o resultado lista exatamente quais não
+   passaram e por quê.
+8. Em **Lotes**, crie um lote para uma conta e uma data. Inclua programações: as de outra
+   conta são recusadas com o motivo — o arquivo de remessa é por convênio.
+9. Tente fechar um lote vazio: recusado. Inclua uma programação bloqueada e tente fechar:
+   recusado com a contagem.
+10. Feche o lote. As programações passam a *Pronto para envio* — e nada foi enviado a banco
+    nenhum.
+11. Cancele um lote: as programações voltam à fila como *Programado*, sem serem canceladas.
+    O título continua devido.
+12. Em **Simulação**, mova a data de um pagamento e rode. O resultado muda; volte à fila e
+    confira que a data real continua a mesma.
+13. Marque um pagamento como "tirar da simulação" e rode: o déficit some. Nada foi gravado.
+14. Reduza o saldo de abertura da conta na tesouraria e rode a simulação de novo: o painel
+    aponta o déficit e o dia exato em que o caixa fica negativo.
+15. Com um usuário de outra empresa, abra a URL de uma programação ou de um lote: 403.
 
 ### Testar manualmente o Contas a Pagar
 
@@ -1424,8 +1570,8 @@ Com o back-end rodando, o Swagger fica disponível em `http://localhost:3333/doc
 
 ## Próxima etapa recomendada
 
-Módulo de **Agendamento Bancário**, que consome os títulos já programados e os transforma em
-ordem de pagamento no banco. É ele que escreve as situações `BANK_SCHEDULED` e
-`AWAITING_PAYMENT` — hoje presentes no enum e preservadas pelo recálculo, mas que nenhum
-módulo produz — e que introduz remessa CNAB, PIX e o retorno bancário que fecha o ciclo até
-a conciliação.
+Módulo de **Execução Bancária**, que consome os lotes prontos para envio e efetivamente
+conversa com o banco: geração de remessa CNAB, PIX, retorno bancário e a baixa automática
+que fecha o ciclo. É ele que escreve `SENT` e `EXECUTED` — hoje presentes no enum,
+preservadas pelos serviços e produzidas por nenhum módulo — e o primeiro do Pulse a fazer
+uma conexão externa de verdade.

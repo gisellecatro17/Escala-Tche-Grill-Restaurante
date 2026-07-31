@@ -924,6 +924,10 @@ model Organization {
   accountsPayableSettings AccountsPayableSettings[]
   supplierAdvances        SupplierAdvance[]
 
+  paymentSchedules        PaymentSchedule[]
+  paymentBatches          PaymentBatch[]
+  paymentScheduleSettings PaymentScheduleSettings[]
+
   @@map("organizations")
 }
 
@@ -1064,6 +1068,10 @@ model Company {
   accountsPayable         AccountsPayable[]
   accountsPayableSettings AccountsPayableSettings?
   supplierAdvances        SupplierAdvance[]
+
+  paymentSchedules        PaymentSchedule[]
+  paymentBatches          PaymentBatch[]
+  paymentScheduleSettings PaymentScheduleSettings?
 
   @@unique([organizationId, internalCode])
   @@index([organizationId])
@@ -1557,6 +1565,7 @@ model FinancialInstitution {
   financialAccounts FinancialAccount[]
   companyPixKeys    CompanyPixKey[]
   corporateCards    CorporateCard[]
+  paymentBatches    PaymentBatch[]
 
   @@unique([compeCode])
   @@index([ispb])
@@ -3896,6 +3905,8 @@ model FinancialAccount {
   treasuryTaxFor     TreasurySettings[] @relation("TreasuryTaxAccount")
   treasuryPayrollFor TreasurySettings[] @relation("TreasuryPayrollAccount")
   treasuryCashFor    TreasurySettings[] @relation("TreasuryCashAccount")
+
+  paymentBatches PaymentBatch[]
 
   @@unique([companyId, internalCode])
   @@index([organizationId])
@@ -6288,17 +6299,18 @@ model AccountsPayable {
   supplierContract     SupplierContract? @relation(fields: [supplierContractId], references: [id])
   supplier             Supplier?         @relation(fields: [supplierId], references: [id])
 
-  installments    AccountsPayableInstallment[]
-  partialPayments AccountsPayablePartialPayment[]
-  adjustments     AccountsPayableAdjustment[]
-  allocations     AccountsPayableAllocation[]
-  withholdings    AccountsPayableWithholding[]
-  blocks          AccountsPayableBlock[]
-  renegotiations  AccountsPayableRenegotiation[]
-  advanceUses     AccountsPayableAdvanceApplication[]
-  history         AccountsPayableHistory[]
-  comments        AccountsPayableComment[]
-  tags            AccountsPayableTag[]
+  installments     AccountsPayableInstallment[]
+  partialPayments  AccountsPayablePartialPayment[]
+  adjustments      AccountsPayableAdjustment[]
+  allocations      AccountsPayableAllocation[]
+  withholdings     AccountsPayableWithholding[]
+  blocks           AccountsPayableBlock[]
+  renegotiations   AccountsPayableRenegotiation[]
+  advanceUses      AccountsPayableAdvanceApplication[]
+  history          AccountsPayableHistory[]
+  comments         AccountsPayableComment[]
+  tags             AccountsPayableTag[]
+  paymentSchedules PaymentSchedule[]
 
   @@unique([companyId, code])
   @@index([organizationId, companyId, status])
@@ -6354,6 +6366,7 @@ model AccountsPayableInstallment {
   adjustments     AccountsPayableAdjustment[]
   advanceUses     AccountsPayableAdvanceApplication[]
   history         AccountsPayableHistory[]
+  scheduleItem    PaymentScheduleItem?
 
   @@unique([payableId, installmentNumber])
   @@index([payableId])
@@ -6779,4 +6792,440 @@ model AccountsPayableSettings {
   company      Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@map("accounts_payable_settings")
+}
+
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║  AGENDAMENTO BANCÁRIO                                                    ║
+// ║  Entre Contas a Pagar e o banco: quando cada título sai, de que conta,   ║
+// ║  em que lote e se o caixa aguenta. Nada aqui executa pagamento.          ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+
+/// Situação da programação (seção 4).
+///
+/// **Reprogramado** e **Bloqueado** não estão aqui, pela mesma razão que "vencido" e
+/// "bloqueado" não estão no Contas a Pagar: são condições que **convivem** com a etapa da
+/// fila em vez de substituí-la. Uma programação bloqueada dentro de um lote continua
+/// dentro do lote — se o bloqueio virasse situação, liberar precisaria adivinhar para onde
+/// voltar. E "reprogramado" é um fato sobre a história da data, não sobre onde a
+/// programação está agora.
+///
+/// As duas chegam calculadas em `situation`, com as nove situações da seção 4.
+enum PaymentScheduleStatus {
+  /// Título elegível que ainda não tem data definida.
+  PENDING_SCHEDULING
+  /// Data, conta e forma definidas.
+  SCHEDULED
+  /// Dentro de um lote de pagamento.
+  IN_BATCH
+  /// Lote conferido e liberado — o que a execução bancária vai consumir.
+  READY_TO_SEND
+  /// Programação cancelada. O título volta a ficar sem data.
+  CANCELLED
+  /// Enviado ao banco. Escrito pela Execução Bancária, que ainda não existe.
+  SENT
+  /// Confirmado pelo banco. Também do módulo seguinte.
+  EXECUTED
+
+  @@map("payment_schedule_status")
+}
+
+/// Situação do lote.
+enum PaymentBatchStatus {
+  /// Em montagem: aceita incluir e remover programações.
+  OPEN
+  /// Fechado e conferido. A partir daqui o conteúdo não muda.
+  READY_TO_SEND
+  CANCELLED
+  /// Enviado ao banco — uso futuro.
+  SENT
+  /// Confirmado pelo banco — uso futuro.
+  EXECUTED
+
+  @@map("payment_batch_status")
+}
+
+/// Prioridade na fila de pagamento (seção 9).
+///
+/// Enum próprio, e não o do Contas a Pagar: lá são quatro níveis e a prioridade descreve a
+/// urgência da **obrigação**; aqui são cinco e descrevem a ordem na **fila de desembolso**.
+/// Reaproveitar o outro obrigaria a acrescentar `CRITICAL` a títulos que nunca o usam.
+enum PaymentSchedulePriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+  CRITICAL
+
+  @@map("payment_schedule_priority")
+}
+
+/// Tipo de operação bancária (seção 12).
+///
+/// Diferente de `PaymentMethodCatalog`, que é o cadastro comercial da empresa ("Pix
+/// fornecedores", "TED matriz"). Este enum é a operação que o **banco** entende, e é o que
+/// o CNAB e a API do Open Finance vão exigir. Nesta etapa apenas os tipos existem: nenhum
+/// arquivo é gerado e nenhuma API é chamada.
+enum BankPaymentType {
+  PIX
+  TED
+  /// Entre contas da mesma instituição ou do mesmo grupo.
+  INTERNAL_TRANSFER
+  BOLETO
+  DIRECT_DEBIT
+  /// DARF, GPS, GARE, tributos em geral.
+  TAX
+  PAYROLL
+  /// Uso futuro — o cartão corporativo não é liquidado por remessa.
+  CORPORATE_CARD
+
+  @@map("bank_payment_type")
+}
+
+/// Motivo pelo qual a programação está travada.
+enum PaymentScheduleBlockReason {
+  INSUFFICIENT_BALANCE
+  ACCOUNT_UNAVAILABLE
+  PENDING_DOCUMENT
+  MANAGEMENT_DECISION
+  SUPPLIER_DATA_MISSING
+  AUDIT
+  OTHER
+
+  @@map("payment_schedule_block_reason")
+}
+
+/// Ações registradas no histórico (seção 17).
+enum PaymentScheduleHistoryAction {
+  CREATED
+  UPDATED
+  SCHEDULED
+  RESCHEDULED
+  BLOCKED
+  UNBLOCKED
+  CANCELLED
+  ACCOUNT_CHANGED
+  PRIORITY_CHANGED
+  PAYMENT_TYPE_CHANGED
+  RESPONSIBLE_CHANGED
+  ADDED_TO_BATCH
+  REMOVED_FROM_BATCH
+  BATCH_CREATED
+  BATCH_UPDATED
+  BATCH_CANCELLED
+  READY_TO_SEND
+
+  @@map("payment_schedule_history_action")
+}
+
+/// Programação de um pagamento.
+///
+/// A unidade aqui é **um desembolso**, não um título: programa-se "as parcelas 2 e 3 do
+/// título X para o dia 10", e é isso que vira uma linha de remessa. Por isso a programação
+/// tem itens — sem eles, pagar duas parcelas juntas exigiria duas programações que o banco
+/// enxergaria como dois pagamentos ao mesmo fornecedor no mesmo dia.
+///
+/// O valor não é digitado: é a soma dos itens, recalculada a cada alteração.
+model PaymentSchedule {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  companyId      String @map("company_id") @db.Uuid
+
+  /// Código legível, sequencial por empresa e por ano (ex.: `AG-2026-000042`).
+  code String
+
+  /// Título de origem. A programação sempre nasce de uma obrigação existente.
+  payableId String @map("payable_id") @db.Uuid
+
+  status   PaymentScheduleStatus   @default(PENDING_SCHEDULING)
+  priority PaymentSchedulePriority @default(NORMAL)
+
+  /// Conta de origem do dinheiro.
+  financialAccountId String?          @map("financial_account_id") @db.Uuid
+  /// Forma cadastrada na tesouraria, quando houver.
+  paymentMethodId    String?          @map("payment_method_id") @db.Uuid
+  /// Operação que o banco entende.
+  bankPaymentType    BankPaymentType? @map("bank_payment_type")
+
+  /// Data em que o dinheiro deve sair.
+  scheduledDate   DateTime? @map("scheduled_date")
+  /// Primeira data programada. Preservada para que reprogramar não apague o combinado.
+  originalDate    DateTime? @map("original_date")
+  /// Quantas vezes a data já mudou. É o que responde "pagamentos reprogramados" sem
+  /// precisar de uma situação própria para isso.
+  rescheduleCount Int       @default(0) @map("reschedule_count")
+
+  /// Soma dos itens.
+  totalAmount Decimal @default(0) @map("total_amount") @db.Decimal(18, 2)
+
+  responsibleUserId String? @map("responsible_user_id") @db.Uuid
+
+  /// Posição na fila, para a reordenação manual da seção 9. Menor sai primeiro.
+  queuePosition Int @default(0) @map("queue_position")
+
+  batchId String? @map("batch_id") @db.Uuid
+
+  /// Espelho do bloqueio ativo, escrito na mesma transação do bloqueio. A verdade mora nas
+  /// colunas abaixo; a coluna existe para a fila filtrar sem subconsulta.
+  blockedAt     DateTime?                   @map("blocked_at")
+  blockReason   PaymentScheduleBlockReason? @map("block_reason")
+  blockNotes    String?                     @map("block_notes")
+  blockedBy     String?                     @map("blocked_by") @db.Uuid
+  releasedBy    String?                     @map("released_by") @db.Uuid
+  releasedAt    DateTime?                   @map("released_at")
+  releaseReason String?                     @map("release_reason")
+
+  cancellationReason String?   @map("cancellation_reason")
+  cancelledBy        String?   @map("cancelled_by") @db.Uuid
+  cancelledAt        DateTime? @map("cancelled_at")
+
+  notes String?
+
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company      Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  payable      AccountsPayable @relation(fields: [payableId], references: [id], onDelete: Cascade)
+  batch        PaymentBatch?   @relation(fields: [batchId], references: [id])
+
+  items      PaymentScheduleItem[]
+  batchItems PaymentBatchItem[]
+  history    PaymentScheduleHistory[]
+  comments   PaymentScheduleComment[]
+
+  @@unique([companyId, code])
+  @@index([organizationId, companyId, status])
+  @@index([companyId, scheduledDate, status])
+  @@index([financialAccountId, scheduledDate])
+  @@index([payableId])
+  @@index([batchId])
+  @@map("payment_schedules")
+}
+
+/// Parcela incluída na programação.
+///
+/// `installmentId` é único: uma parcela não pode estar em duas programações vivas ao mesmo
+/// tempo. A garantia é do banco, e é ela que impede a mesma dívida de sair duas vezes —
+/// o defeito mais caro que este módulo pode ter.
+model PaymentScheduleItem {
+  id         String @id @default(uuid()) @db.Uuid
+  scheduleId String @map("schedule_id") @db.Uuid
+
+  installmentId String @unique @map("installment_id") @db.Uuid
+
+  /// Valor a pagar desta parcela nesta programação. Copiado do saldo no momento da
+  /// inclusão, e reconferido antes de o lote ser fechado.
+  amount Decimal @db.Decimal(18, 2)
+
+  sortOrder Int     @default(0) @map("sort_order")
+  notes     String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  schedule    PaymentSchedule            @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  installment AccountsPayableInstallment @relation(fields: [installmentId], references: [id], onDelete: Cascade)
+
+  @@index([scheduleId])
+  @@map("payment_schedule_items")
+}
+
+/// Lote de pagamento.
+///
+/// Um lote é sempre de **uma empresa, uma conta e uma data**. Misturar contas num lote só
+/// faria sentido se o arquivo de remessa aceitasse — e não aceita: o CNAB é por convênio,
+/// que é por conta. Deixar a restrição no modelo evita montar um lote que o banco recusa
+/// depois de tudo aprovado.
+model PaymentBatch {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  companyId      String @map("company_id") @db.Uuid
+
+  /// Código legível, sequencial por empresa e por ano (ex.: `LOTE-2026-000007`).
+  code String
+  name String?
+
+  financialAccountId     String           @map("financial_account_id") @db.Uuid
+  financialInstitutionId String?          @map("financial_institution_id") @db.Uuid
+  /// Tipo de operação do lote. Nulo em lote misto, que a remessa futura vai separar.
+  bankPaymentType        BankPaymentType? @map("bank_payment_type")
+
+  scheduledDate DateTime           @map("scheduled_date")
+  status        PaymentBatchStatus @default(OPEN)
+
+  /// Derivados dos itens, recalculados a cada inclusão ou remoção.
+  itemCount   Int     @default(0) @map("item_count")
+  totalAmount Decimal @default(0) @map("total_amount") @db.Decimal(18, 2)
+
+  responsibleUserId String? @map("responsible_user_id") @db.Uuid
+
+  /// Espaço reservado para a remessa, que este módulo **não** gera. Existe para que o
+  /// módulo seguinte não precise alterar a tabela: ele preenche e nada mais muda.
+  remittanceNumber   Int?      @map("remittance_number")
+  remittanceFilePath String?   @map("remittance_file_path")
+  sentAt             DateTime? @map("sent_at")
+  sentBy             String?   @map("sent_by") @db.Uuid
+
+  closedBy String?   @map("closed_by") @db.Uuid
+  closedAt DateTime? @map("closed_at")
+
+  cancellationReason String?   @map("cancellation_reason")
+  cancelledBy        String?   @map("cancelled_by") @db.Uuid
+  cancelledAt        DateTime? @map("cancelled_at")
+
+  notes String?
+
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  organization         Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company              Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  financialAccount     FinancialAccount      @relation(fields: [financialAccountId], references: [id])
+  financialInstitution FinancialInstitution? @relation(fields: [financialInstitutionId], references: [id])
+
+  schedules PaymentSchedule[]
+  items     PaymentBatchItem[]
+  history   PaymentScheduleHistory[]
+
+  @@unique([companyId, code])
+  @@index([organizationId, companyId, status])
+  @@index([companyId, scheduledDate, status])
+  @@index([financialAccountId])
+  @@map("payment_batches")
+}
+
+/// Programação dentro de um lote.
+///
+/// Tabela própria em vez de só o `batch_id` na programação: é aqui que mora a **ordem** dos
+/// registros dentro do arquivo de remessa e o valor conferido no fechamento. Quando a
+/// execução bancária existir, cada linha destas vira um segmento do CNAB e recebe o retorno
+/// individualmente — algo que uma chave estrangeira solta não teria onde guardar.
+model PaymentBatchItem {
+  id      String @id @default(uuid()) @db.Uuid
+  batchId String @map("batch_id") @db.Uuid
+
+  scheduleId String @map("schedule_id") @db.Uuid
+
+  /// Posição no arquivo de remessa.
+  sequence Int
+  /// Valor conferido no fechamento do lote.
+  amount   Decimal @db.Decimal(18, 2)
+
+  /// Retorno do banco por item — preenchido pela execução bancária, que não existe ainda.
+  bankStatusCode String? @map("bank_status_code")
+  bankMessage    String? @map("bank_message")
+
+  notes String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  batch    PaymentBatch    @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  schedule PaymentSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+
+  @@unique([batchId, scheduleId])
+  @@index([batchId])
+  @@index([scheduleId])
+  @@map("payment_batch_items")
+}
+
+/// Histórico da programação e do lote (seção 17).
+///
+/// Uma tabela para os dois porque as ações se entrelaçam: incluir uma programação num lote
+/// é um fato da programação **e** do lote, e separar obrigaria a gravar duas vezes a mesma
+/// coisa — com o risco clássico de as duas discordarem.
+model PaymentScheduleHistory {
+  id         String  @id @default(uuid()) @db.Uuid
+  scheduleId String? @map("schedule_id") @db.Uuid
+  batchId    String? @map("batch_id") @db.Uuid
+
+  action PaymentScheduleHistoryAction
+
+  previousStatus PaymentScheduleStatus? @map("previous_status")
+  newStatus      PaymentScheduleStatus? @map("new_status")
+
+  field         String?
+  previousValue String? @map("previous_value")
+  newValue      String? @map("new_value")
+
+  /// Motivo da reprogramação, do bloqueio ou do cancelamento.
+  reason String?
+
+  actorId   String?  @map("actor_id") @db.Uuid
+  ipAddress String?  @map("ip_address")
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  schedule PaymentSchedule? @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  batch    PaymentBatch?    @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@index([scheduleId, createdAt])
+  @@index([batchId, createdAt])
+  @@map("payment_schedule_history")
+}
+
+/// Comentário na programação.
+model PaymentScheduleComment {
+  id         String @id @default(uuid()) @db.Uuid
+  scheduleId String @map("schedule_id") @db.Uuid
+
+  authorId String @map("author_id") @db.Uuid
+  body     String
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  schedule PaymentSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+
+  @@index([scheduleId])
+  @@map("payment_schedule_comments")
+}
+
+/// Parâmetros do agendamento, por empresa.
+model PaymentScheduleSettings {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  companyId      String @unique @map("company_id") @db.Uuid
+
+  schedulePrefix String @default("AG") @map("schedule_prefix")
+  batchPrefix    String @default("LOTE") @map("batch_prefix")
+
+  /// Bloqueia a programação quando o saldo projetado da conta não cobre o dia.
+  /// Desligado, o sistema apenas alerta — a decisão continua sendo de quem programa.
+  blockOnInsufficientBalance Boolean @default(false) @map("block_on_insufficient_balance")
+
+  /// Considera os limites contratados (cheque especial, capital de giro) como saldo
+  /// disponível na projeção. Desligado, o limite aparece separado e não cobre déficit.
+  considerCreditLimits Boolean @default(true) @map("consider_credit_limits")
+
+  /// Impede programar para uma data já passada.
+  blockRetroactiveDates Boolean @default(true) @map("block_retroactive_dates")
+
+  /// Dias mínimos entre a programação e a data de pagamento, para o banco processar.
+  minimumLeadTimeDays Int @default(0) @map("minimum_lead_time_days")
+
+  /// Exige motivo em toda reprogramação.
+  requireReasonOnReschedule Boolean @default(true) @map("require_reason_on_reschedule")
+
+  /// Conta padrão sugerida quando o título não traz uma.
+  defaultFinancialAccountId String?                 @map("default_financial_account_id") @db.Uuid
+  defaultBankPaymentType    BankPaymentType?        @map("default_bank_payment_type")
+  defaultPriority           PaymentSchedulePriority @default(NORMAL) @map("default_priority")
+
+  createdBy String?  @map("created_by") @db.Uuid
+  updatedBy String?  @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company      Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@map("payment_schedule_settings")
 }
