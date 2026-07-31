@@ -70,20 +70,33 @@ público aqui deixaria o extrato inteiro acessível a quem descobrisse o endere�
 
 ## 3. Preparar o banco
 
-Com o `DIRECT_URL` em mãos, dois comandos criam as tabelas e os dados iniciais:
+**Você não precisa fazer nada aqui.** O banco se prepara sozinho quando a API sobe pela
+primeira vez — o comando de start do passo 4 cuida disso.
+
+Duas coisas acontecem nesse primeiro boot:
+
+| Comando | O que faz |
+| --- | --- |
+| `prisma migrate deploy` | Cria as ~110 tabelas |
+| `prisma db seed` | Cadastra permissões, perfis e a empresa de demonstração |
+
+Os dois são seguros de repetir. As migrations já aplicadas são puladas, e o seed atualiza
+o que existe em vez de duplicar — por isso podem ficar no start sem causar estrago a cada
+novo deploy.
+
+### Se preferir rodar na sua máquina
+
+Nada impede, e é útil para conferir antes de publicar:
 
 ```bash
 cd pulse/backend
 npm install
-
-# Cria as ~110 tabelas
-DATABASE_URL="<sua DIRECT_URL, porta 5432>" npx prisma migrate deploy
-
-# Cria permissões, perfis e a empresa de demonstração
-DATABASE_URL="<sua DIRECT_URL, porta 5432>" npx prisma db seed
+DATABASE_URL="<a URL da porta 5432>" npx prisma migrate deploy
+DATABASE_URL="<a URL da porta 5432>" npx prisma db seed
 ```
 
-O seed é seguro de rodar mais de uma vez: ele atualiza o que existe em vez de duplicar.
+Use a conexão **direta** (5432), não a do pooler (6543): o pooler não sustenta as
+transações longas de uma migration e ela falha no meio.
 
 ---
 
@@ -92,7 +105,7 @@ O seed é seguro de rodar mais de uma vez: ele atualiza o que existe em vez de d
 1. **New Project › Deploy from GitHub repo** e escolha este repositório
 2. Em **Settings**, defina a raiz do serviço como `pulse/backend`
 3. Comando de build: `npm install && npx prisma generate && npm run build`
-4. Comando de start: `npx prisma migrate deploy && node dist/src/main.js`
+4. Comando de start: `npx prisma migrate deploy && npx prisma db seed && node dist/src/main.js`
 5. Em **Variables**, cadastre:
 
 ```
