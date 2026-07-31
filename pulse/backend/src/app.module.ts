@@ -18,6 +18,7 @@ import { TreasuryModule } from './modules/treasury/treasury.module';
 import { DocumentIntakeModule } from './modules/document-intake/document-intake.module';
 import { DocumentProcessingModule } from './modules/document-processing/document-processing.module';
 import { ApprovalsModule } from './modules/approvals/approvals.module';
+import { AccountsPayableModule } from './modules/accounts-payable/accounts-payable.module';
 import { OrganizationsModule } from './modules/organizations/organizations.module';
 import { RolesModule } from './modules/roles/roles.module';
 import { SuppliersModule } from './modules/suppliers/suppliers.module';
@@ -45,6 +46,7 @@ import { SupabaseModule } from './supabase/supabase.module';
     DocumentIntakeModule,
     DocumentProcessingModule,
     ApprovalsModule,
+    AccountsPayableModule,
     TaxonomyModule,
     FinancialInstitutionsModule,
     SuppliersModule,

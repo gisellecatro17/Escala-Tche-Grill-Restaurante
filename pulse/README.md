@@ -937,6 +937,122 @@ inteligência financeira. Aprovar aqui significa "esta despesa está autorizada 
 obrigação" — nunca "pode pagar".
 
 
+## Contas a Pagar
+
+Onde o pré-lançamento aprovado vira obrigação de verdade. O fluxo completo:
+
+```
+Entrada de Documentos → A Processar → Autorizações → Contas a Pagar
+                                                          ↓
+                                          Agendamento Bancário (não desenvolvido)
+```
+
+Telas em `/financeiro/contas-a-pagar`:
+
+| Rota | O que faz |
+| --- | --- |
+| `/financeiro/contas-a-pagar` | Painel com os dezenove indicadores |
+| `/financeiro/contas-a-pagar/titulos` | Tela principal, com filtros e paginação |
+| `/financeiro/contas-a-pagar/[id]` | Detalhe: parcelas, ações, extrato e histórico |
+| `/financeiro/contas-a-pagar/adiantamentos` | Adiantamentos e saldo disponível |
+| `/financeiro/contas-a-pagar/parametros` | Parâmetros por empresa |
+
+`/financeiro/lancamentos-a-pagar` continua existindo e mostra os **pré-lançamentos** — o
+que o processamento produziu e ainda pode ser corrigido. São coisas diferentes de
+propósito, e o menu separa as duas.
+
+### O título é outra coisa que o lançamento
+
+O lançamento é uma proposta: editável, cancelável, ainda uma opinião sobre o que a empresa
+deve. O título é a obrigação — dele sai dinheiro. Por isso valores, classificação, rateio e
+retenções são **copiados** na geração, e não lidos por referência: um título é um fato
+histórico, e corrigir um cadastro hoje não pode reescrever o que a empresa devia ontem.
+
+A conversão é idempotente: `entry_id` é `UNIQUE`, então duas requisições simultâneas não
+geram dois títulos.
+
+### Vencido e bloqueado não são colunas
+
+A seção 4 pede onze situações. Nove são gravadas; **Vencido** e **Bloqueado** chegam
+calculadas pela API, no campo `situation`.
+
+Vencido é uma data que já passou — guardar como situação exigiria um job para virar o
+passado, e entre duas execuções o relatório mentiria. Bloqueado é uma condição que
+**convive** com a etapa de pagamento: um título pago pela metade e bloqueado continua pago
+pela metade; se o bloqueio virasse situação, desbloquear precisaria adivinhar para onde
+voltar.
+
+### O saldo nunca é digitado
+
+Pagamentos, ajustes, retenções e adiantamentos criam suas próprias linhas. O saldo do
+título e das parcelas é sempre o resultado de reler essas linhas e somá-las, dentro da
+mesma transação. É o que impede a classe de defeito mais cara de contas a pagar: dois
+caminhos de código atualizando o mesmo saldo com regras ligeiramente diferentes.
+
+Toda a aritmética acontece em **centavos inteiros**. `0.1 + 0.2` em ponto flutuante dá
+`0.30000000000000004`, e um saldo assim nunca zera.
+
+### Registrar a baixa não é pagar
+
+`POST /accounts-payable/:id/partial-payment` grava que o pagamento aconteceu. Ele não
+manda ordem para banco nenhum — executar é do módulo de Pagamentos, que ainda não existe, e
+quando existir vai gravar exatamente nestas mesmas linhas.
+
+Sem informar a parcela, o valor é distribuído da mais antiga para a mais nova — que é como
+o dinheiro é efetivamente aplicado quando o fornecedor recebe um valor "por conta".
+
+### Ajuste e pagamento se estornam, não se editam
+
+Cada juro, multa, desconto e baixa é uma linha imutável. Errou, estorna: o valor sai do
+saldo e o fato antigo continua legível. É o que faz o extrato do título explicar por que
+saíram R$ 1.083,20 de uma dívida de R$ 1.000,00.
+
+### Renegociar guarda o cronograma anterior
+
+As parcelas em aberto são de fato substituídas, então `previous_schedule` fotografa o
+cronograma inteiro antes de qualquer escrita. Sem essa fotografia, o acordo anterior
+desapareceria. Parcelas já pagas não entram na renegociação — renegociar o que já foi pago
+mudaria o passado.
+
+O back-end recusa um cronograma que não feche: novo total tem de ser
+`saldo + juros + multa − desconto`, ao centavo.
+
+### Bloqueio impede movimento, não só agendamento
+
+Enquanto houver bloqueio ativo, o título não recebe baixa, ajuste, programação nem
+renegociação. A seção 12 pede que ele não siga para agendamento bancário; segurar só ali
+deixaria o título ser alterado no caminho.
+
+Bloquear e liberar são permissões **separadas** de propósito: quem segura um título
+suspeito não é necessariamente quem decide que ele está liberado.
+
+### Delegação de responsabilidade nas alterações sensíveis
+
+Trocar fornecedor, centro de custo, projeto, vencimento ou valor exige justificativa —
+configurável por empresa — e o histórico grava campo, valor anterior, valor novo, autor,
+**IP e dispositivo**, como pede a seção 18.
+
+### Adiantamento vive fora do título
+
+Ele nasce antes: adianta-se ao fornecedor e só depois chega a nota. Prendê-lo a um título
+obrigaria a inventar um título fantasma para recebê-lo. Um adiantamento só abate título da
+mesma empresa e do mesmo fornecedor — senão o acerto de contas de cada um deixaria de
+fechar.
+
+### Juros de mora: prévia, não cobrança automática
+
+`GET /accounts-payable/:id/late-charges` calcula juros e multa pelo atraso com a memória de
+cálculo e **não grava nada**. Um saldo que muda sozinho todo dia é um saldo que ninguém
+consegue conferir com o fornecedor.
+
+### O que ainda não existe neste módulo
+
+Agendamento bancário, remessa CNAB, PIX automático, pagamento automático, conciliação
+bancária, fluxo de caixa e inteligência financeira. As situações `BANK_SCHEDULED` e
+`AWAITING_PAYMENT` existem no enum e são preservadas pelo recálculo, mas nada neste módulo
+as escreve — elas são o ponto de encaixe do módulo seguinte.
+
+
 ## Banco de dados e migrations
 
 O schema fica em `backend/prisma/schema.prisma`. Tabelas principais:
@@ -974,6 +1090,13 @@ na mesma hierarquia), `cost_centers`, `result_centers`, `projects`, `business_un
 `approval_flows`, `approval_flow_steps`, `approval_requests`,
 `approval_request_steps`, `approval_step_approvals`, `approval_comments`,
 `approval_delegations`, `approval_history`, `approval_settings`,
+`accounts_payable`, `accounts_payable_installments`,
+`accounts_payable_partial_payments`, `accounts_payable_adjustments`,
+`accounts_payable_allocations`, `accounts_payable_withholdings`,
+`accounts_payable_blocks`, `accounts_payable_renegotiations`,
+`supplier_advances`, `accounts_payable_advance_applications`,
+`accounts_payable_history`, `accounts_payable_comments`, `accounts_payable_tags`,
+`accounts_payable_settings`,
 `financial_institutions`, `attachments` (anexos genéricos), `users`, `roles`,
 `permissions`, `role_permissions`, `user_organization_roles`, `user_company_roles` e
 `audit_logs`.
@@ -981,8 +1104,9 @@ na mesma hierarquia), `cost_centers`, `result_centers`, `projects`, `business_un
 > As migrations são sempre **incrementais**. A da tesouraria
 > (`20260730120000_treasury_module`), a da entrada de documentos
 > (`20260730180000_document_intake_module`), a do processamento
-> (`20260730200000_document_processing_module`) e a das autorizações
-> (`20260730220000_approvals_module`) só adicionam: nenhum `DROP`, nenhum
+> (`20260730200000_document_processing_module`), a das autorizações
+> (`20260730220000_approvals_module`) e a do contas a pagar
+> (`20260731120000_accounts_payable_module`) só adicionam: nenhum `DROP`, nenhum
 > `ALTER COLUMN`, nenhuma tabela renomeada, nenhuma rota existente alterada.
 
 ```bash
@@ -1029,6 +1153,37 @@ npm test        # testes unitários: isolamento multiempresa/organização, perm
                  # entrada de documentos
 npm run test:e2e
 ```
+
+### Testar manualmente o Contas a Pagar
+
+1. Rode o seed e abra `/financeiro/contas-a-pagar`. O painel mostra R$ 9.450 em aberto,
+   R$ 2.450 bloqueados e o total por fornecedor, categoria e centro de custo.
+2. Vá em **Títulos a pagar**. `CP-2026-000001` está *Pago parcialmente* com saldo de
+   R$ 7.000 — é o exemplo da seção 8: R$ 10.000 com R$ 3.000 baixados.
+3. Abra o título. As duas parcelas aparecem com situação própria: a primeira parcialmente
+   paga (R$ 2.000 de saldo) e a segunda em aberto.
+4. Use **Registrar pagamento** com R$ 2.000 na parcela 1. Ela vira *Pago*, o título continua
+   *Pago parcialmente* e o vencimento do título passa a ser o da parcela 2.
+5. Tente pagar mais que o saldo: é recusado com o valor exato disponível na mensagem.
+6. Estorne o pagamento pelo botão na lista de pagamentos. O saldo volta e o registro antigo
+   continua visível, marcado como estornado.
+7. Em **Lançar ajuste**, aplique juros de R$ 83,20 com base R$ 10.000 e 1%. A memória de
+   cálculo aparece no extrato e o valor líquido sobe.
+8. Abra `CP-2026-000002`. Ele está bloqueado por pendência documental: os botões de
+   pagamento, ajuste e programação somem, e chamar as rotas direto devolve erro.
+9. Libere o bloqueio com um usuário que tenha `accounts_payable.unblock`. Com um usuário que
+   só tem `accounts_payable.block`, liberar é recusado — são permissões separadas.
+10. Use **Renegociar** em `CP-2026-000001` com 3 parcelas e R$ 500 de juros. O resumo mostra
+    o novo total antes de confirmar; depois, o cronograma anterior aparece na seção de
+    renegociações e as parcelas antigas ficam como *Renegociado*, não apagadas.
+11. Tente renegociar com um total que não fecha: é recusado com os dois valores na mensagem.
+12. Em **Adiantamentos**, o ADT-2026-014 tem R$ 4.000 disponíveis. Abata parte dele em um
+    título do mesmo fornecedor e confira que o saldo do adiantamento cai junto.
+13. Altere o vencimento de uma parcela sem justificativa: é recusado. Com justificativa, o
+    histórico registra data anterior, nova, autor, IP e dispositivo.
+14. Cancele um título com pagamento registrado: é recusado até os pagamentos serem
+    estornados. Cancele um sem pagamento e reabra em seguida.
+15. Com um usuário de outra empresa, abra a URL de um título: 403.
 
 ### Testar manualmente as Autorizações
 
@@ -1269,8 +1424,8 @@ Com o back-end rodando, o Swagger fica disponível em `http://localhost:3333/doc
 
 ## Próxima etapa recomendada
 
-Módulo de **Contas a Pagar**, que recebe os títulos já autorizados e cuida do resto do
-ciclo: agendamento, remessa bancária, liquidação e baixa. É ele que introduz as situações
-que os módulos atuais deliberadamente não têm — nenhum título pode hoje ser marcado como
-pago — e onde os saldos bancário, conciliado e disponível deixam de ser apenas saldo de
-implantação e passam a ser calculados.
+Módulo de **Agendamento Bancário**, que consome os títulos já programados e os transforma em
+ordem de pagamento no banco. É ele que escreve as situações `BANK_SCHEDULED` e
+`AWAITING_PAYMENT` — hoje presentes no enum e preservadas pelo recálculo, mas que nenhum
+módulo produz — e que introduz remessa CNAB, PIX e o retorno bancário que fecha o ciclo até
+a conciliação.

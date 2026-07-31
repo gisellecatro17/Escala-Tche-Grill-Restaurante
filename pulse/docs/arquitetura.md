@@ -628,6 +628,113 @@ resto silencioso — treinaria o usuário a não confiar na notificação, que �
 ter nenhuma.
 
 
+## Contas a Pagar
+
+### Título e lançamento são tabelas diferentes
+
+O prompt separa "pré-lançamento" de "conta a pagar" no próprio fluxo, e o schema segue.
+Reaproveitar `financial_entries` como título economizaria uma tabela e custaria a distinção
+que importa: o lançamento é editável e cancelável porque ainda é uma proposta; o título é
+uma obrigação e a partir dele sai dinheiro. Uma tabela só obrigaria cada regra a perguntar
+"em que fase isto está?" antes de decidir se pode mudar.
+
+Os valores e a classificação são copiados, não referenciados — mesma razão do rateio
+materializado do módulo anterior. Um título é um fato histórico.
+
+### Vencido e bloqueado calculados, não gravados
+
+Nove das onze situações da seção 4 são colunas. Vencido não é: guardar exigiria um job para
+transformar o passado em passado, e entre duas execuções o relatório mentiria. Bloqueado
+também não: ele **convive** com a etapa de pagamento — um título pago pela metade e
+bloqueado continua pago pela metade — e virar situação faria o desbloqueio ter que adivinhar
+para onde voltar.
+
+A API devolve `situation` com as onze, calculado na leitura. O que não existe é uma coluna
+que possa discordar dos fatos.
+
+### Um único motor de saldo
+
+`PayableBalanceService.recompute` é o único lugar que escreve valor derivado. Todo movimento
+— baixa, ajuste, retenção, adiantamento, renegociação — grava sua linha e chama o recálculo
+dentro da mesma transação.
+
+A alternativa (cada operação ajustando o saldo que conhece) é mais rápida e é como nasce o
+defeito clássico de contas a pagar: dois caminhos de código com regras ligeiramente
+diferentes, e um saldo que não bate com a soma das próprias parcelas.
+
+Toda a aritmética é feita em centavos inteiros. `0.1 + 0.2` em ponto flutuante dá
+`0.30000000000000004`; um saldo assim nunca zera, e um título que nunca zera nunca sai da
+fila.
+
+### O que é lançado no título é rateado entre as parcelas
+
+Retenções e ajustes sem parcela indicada incidem sobre o título inteiro e precisam reduzir
+cada parcela proporcionalmente. Sem o rateio, o líquido do título discordaria da soma das
+suas parcelas — e é a parcela que se paga.
+
+### Linhas imutáveis com estorno
+
+Pagamentos, ajustes e abatimentos de adiantamento nunca são editados nem apagados: viram
+`REVERSED`. O valor sai da conta e o fato antigo continua legível. Editar seria mais simples
+e apagaria a pergunta que a auditoria faz — "por que este título mudou de valor?".
+
+### Renegociação fotografa o cronograma
+
+`previous_schedule` guarda as parcelas anteriores em JSON antes de qualquer escrita, porque
+as parcelas em aberto são de fato substituídas. Referenciar as antigas em vez de fotografar
+não funcionaria: elas mudam de situação, e o que se quer preservar é o acordo como ele era.
+
+O novo total é validado ao centavo contra `saldo + juros + multa − desconto`. Aceitar um
+cronograma que não fecha transformaria a renegociação num caminho silencioso para alterar
+valor sem registro.
+
+### Bloqueio barra movimento, não só agendamento
+
+A seção 12 pede que o título bloqueado não siga para agendamento bancário. Bloquear apenas
+naquele ponto deixaria o título ser pago, ajustado e renegociado no caminho. O bloqueio é
+verificado na entrada de todo movimento financeiro.
+
+`blocked_at` na tabela do título é espelho de `accounts_payable_blocks`, escrito na mesma
+transação. Existe para a listagem filtrar bloqueados sem subconsulta; a verdade continua na
+tabela de bloqueios, que preserva o histórico depois da liberação.
+
+### Bloquear e liberar são permissões distintas
+
+Quem segura um título suspeito não é necessariamente quem decide que ele está resolvido.
+Uma permissão só transformaria o bloqueio em post-it.
+
+### IP e dispositivo no histórico
+
+A seção 18 pede os dois. Eles são lidos no controlador, por um decorador que devolve o
+usuário acrescido de onde ele estava — em vez de empurrar o objeto de requisição camada
+adentro, o que tornaria todo serviço dependente do Express e impossível de testar sem
+falsificar uma requisição.
+
+### Adiantamento fora do título
+
+Ele nasce antes da nota. Prendê-lo a um título obrigaria a inventar um título fantasma para
+recebê-lo. A relação com os títulos é N:N e mora em
+`accounts_payable_advance_applications` — um campo no título esconderia essa relação e
+"sobrou saldo de adiantamento?" viraria planilha paralela.
+
+### Mora sugerida, nunca aplicada sozinha
+
+A prévia de juros e multa calcula e não grava. Aplicar automaticamente faria o saldo mudar
+todo dia sem ato humano nenhum — e um saldo que muda sozinho é um saldo que ninguém
+consegue conferir com o fornecedor.
+
+### O grafo de módulos continua acíclico
+
+`document-processing → approvals → accounts-payable` e `document-processing →
+accounts-payable`. O contas a pagar importa apenas Prisma e Auditoria: ele não sabe que
+autorizações existem. Importação mútua seria resolvida pelo NestJS com `forwardRef`, que
+funciona e esconde o problema.
+
+A geração do título roda **depois** da transação da aprovação. A decisão de aprovar já está
+gravada e não pode ser desfeita porque a geração falhou — e aninhar transação no Prisma cria
+um cliente que não enxerga o que a primeira ainda não confirmou.
+
+
 ## Autenticação
 
 - Login, sessão, recuperação de senha e confirmação de e-mail são delegados ao **Supabase

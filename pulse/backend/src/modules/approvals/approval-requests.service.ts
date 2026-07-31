@@ -21,6 +21,7 @@ import type { RequestUser } from '../../common/types/authenticated-request';
 import { AuditService } from '../audit/audit.service';
 import { ApprovalFlowResolverService } from './approval-flow-resolver.service';
 import { ApproverResolverService } from './approver-resolver.service';
+import { PayableGenerationService } from '../accounts-payable/payable-generation.service';
 import type {
   ApprovalQueryDto,
   BatchApprovalDto,
@@ -77,6 +78,7 @@ export class ApprovalRequestsService {
     private readonly audit: AuditService,
     private readonly flows: ApprovalFlowResolverService,
     private readonly approvers: ApproverResolverService,
+    private readonly payables: PayableGenerationService,
   ) {}
 
   // ── Parâmetros ────────────────────────────────────────────────────────────
@@ -497,6 +499,8 @@ export class ApprovalRequestsService {
       },
       reason: dto.comment ?? null,
     });
+
+    await this.settleApproved(request.id, actor);
 
     return this.findOne(id);
   }
@@ -1150,6 +1154,39 @@ export class ApprovalRequestsService {
     );
 
     return { request, step, settings };
+  }
+
+  /**
+   * Fecha o ciclo quando a solicitação inteira foi aprovada: abre o lançamento e gera o
+   * título a pagar (critério de aceite 1 do Contas a Pagar).
+   *
+   * Roda **depois** da transação da decisão, e não dentro dela, por duas razões. A decisão
+   * de aprovar já está gravada e não pode ser desfeita porque a geração do título falhou;
+   * e aninhar uma transação dentro de outra no Prisma cria um segundo cliente que não
+   * enxerga o que a primeira ainda não confirmou.
+   */
+  private async settleApproved(requestId: string, actor: RequestUser) {
+    const request = await this.prisma.approvalRequest.findUnique({
+      where: { id: requestId },
+      select: { status: true, entryId: true },
+    });
+
+    if (request?.status !== ApprovalRequestStatus.APPROVED) return;
+
+    await this.prisma.financialEntry.updateMany({
+      where: {
+        id: request.entryId,
+        status: FinancialEntryStatus.PENDING_APPROVAL,
+      },
+      data: {
+        status: FinancialEntryStatus.OPEN,
+        openedAt: new Date(),
+        approvedBy: actor.id,
+        approvedAt: new Date(),
+      },
+    });
+
+    await this.payables.generateFromEntry(request.entryId, actor);
   }
 
   /** Avança para a próxima etapa aplicável, ou conclui a solicitação. */

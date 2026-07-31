@@ -1182,6 +1182,60 @@ const PERMISSIONS: PermissionSeed[] = [
     description: 'Consultar o histórico completo das autorizações',
   },
 
+  // Financeiro — Contas a pagar
+  {
+    slug: 'accounts_payable.view',
+    module: 'financeiro',
+    description: 'Visualizar os títulos a pagar, o painel e o histórico',
+  },
+  {
+    slug: 'accounts_payable.create',
+    module: 'financeiro',
+    description: 'Criar títulos manualmente e registrar adiantamentos',
+  },
+  {
+    slug: 'accounts_payable.edit',
+    module: 'financeiro',
+    description:
+      'Alterar o título e as parcelas, lançar ajustes, programar pagamento e revisar retenções',
+  },
+  {
+    slug: 'accounts_payable.cancel',
+    module: 'financeiro',
+    description: 'Cancelar títulos com motivo',
+  },
+  {
+    slug: 'accounts_payable.reopen',
+    module: 'financeiro',
+    description: 'Reabrir títulos cancelados',
+  },
+  {
+    slug: 'accounts_payable.block',
+    module: 'financeiro',
+    description: 'Bloquear títulos e impedir que sigam para pagamento',
+  },
+  {
+    slug: 'accounts_payable.unblock',
+    module: 'financeiro',
+    description: 'Liberar o bloqueio de um título',
+  },
+  {
+    slug: 'accounts_payable.renegotiate',
+    module: 'financeiro',
+    description: 'Renegociar títulos com um novo cronograma',
+  },
+  {
+    slug: 'accounts_payable.partial_payment',
+    module: 'financeiro',
+    description:
+      'Registrar e estornar baixas, e abater adiantamentos (registra, não executa pagamento)',
+  },
+  {
+    slug: 'accounts_payable.audit',
+    module: 'financeiro',
+    description: 'Consultar o histórico completo dos títulos a pagar',
+  },
+
   // Financeiro — Processamento de documentos
   {
     slug: 'document_processing.view',
@@ -1441,6 +1495,23 @@ const DOCUMENT_PROCESSING_SLUGS = PERMISSIONS.filter((p) =>
   p.slug.startsWith('document_processing.'),
 ).map((p) => p.slug);
 
+const ACCOUNTS_PAYABLE_SLUGS = PERMISSIONS.filter((p) =>
+  p.slug.startsWith('accounts_payable.'),
+).map((p) => p.slug);
+
+/**
+ * Contas a pagar liberado para o operador financeiro.
+ *
+ * Fica de fora o que move dinheiro ou desfaz decisão: baixa, estorno, renegociação,
+ * cancelamento, reabertura e liberação de bloqueio. Bloquear ele pode — segurar um título
+ * suspeito é justamente a alçada de quem opera o dia a dia.
+ */
+const ACCOUNTS_PAYABLE_OPERATOR_SLUGS = ACCOUNTS_PAYABLE_SLUGS.filter((slug) =>
+  ['accounts_payable.view', 'accounts_payable.create', 'accounts_payable.block'].includes(
+    slug,
+  ),
+);
+
 /**
  * Processamento liberado para o operador financeiro.
  *
@@ -1495,6 +1566,7 @@ const ROLES: {
       ...DOCUMENT_INTAKE_SLUGS,
       ...DOCUMENT_PROCESSING_SLUGS,
       ...APPROVAL_SLUGS,
+      ...ACCOUNTS_PAYABLE_SLUGS,
       'financial.view',
       'financial.documents',
       'financial.process',
@@ -1564,6 +1636,7 @@ const ROLES: {
       'receipt_method.view',
       ...DOCUMENT_INTAKE_OPERATOR_SLUGS,
       ...DOCUMENT_PROCESSING_OPERATOR_SLUGS,
+      ...ACCOUNTS_PAYABLE_OPERATOR_SLUGS,
       'approvals.view',
       'financial.view',
       'financial.documents',
@@ -1621,6 +1694,8 @@ const ROLES: {
       'document_processing.view',
       'approvals.view',
       'approvals.audit',
+      'accounts_payable.view',
+      'accounts_payable.audit',
       ...BI_SLUGS,
     ],
   },
@@ -2165,6 +2240,7 @@ async function main() {
     churrasqueiraCostCenter.id,
   );
   await seedDemoApprovals(organization.id, company.id);
+  await seedDemoAccountsPayable(organization.id, company.id);
 
   console.log('Seed concluído com sucesso.');
   console.log(
@@ -3398,6 +3474,202 @@ async function seedDemoApprovals(organizationId: string, companyId: string) {
 
   console.log(
     'Autorizações de demonstração criadas: 2 fluxos (alçadas e compra de alimentos) e 1 solicitação aguardando o Diretor.',
+  );
+}
+
+/**
+ * Contas a pagar de demonstração.
+ *
+ * Cria dois títulos que mostram o módulo funcionando de verdade: um parcelado com baixa
+ * parcial (o R$ 10.000 com R$ 3.000 pagos e R$ 7.000 de saldo, exatamente o exemplo da
+ * seção 8) e um bloqueado por pendência documental, que é o caso em que o bloqueio impede
+ * o título de seguir para pagamento.
+ */
+async function seedDemoAccountsPayable(organizationId: string, companyId: string) {
+  console.log('Aplicando seed de contas a pagar de demonstração...');
+
+  await prisma.accountsPayableSettings.upsert({
+    where: { companyId },
+    update: {},
+    create: {
+      organizationId,
+      companyId,
+      defaultMonthlyInterestRate: 1,
+      defaultPenaltyRate: 2,
+      reopenWindowDays: 90,
+    },
+  });
+
+  const entry = await prisma.financialEntry.findUnique({
+    where: { id: '00000000-0000-0000-0000-000000002001' },
+    select: { id: true, supplierId: true, categoryId: true, costCenterId: true },
+  });
+
+  if (!entry) return;
+
+  const supplierId = entry.supplierId;
+  const year = new Date().getUTCFullYear();
+
+  // ── Título parcelado com baixa parcial ────────────────────────────────────
+  const payableId = '00000000-0000-0000-0000-000000004001';
+
+  await prisma.accountsPayable.upsert({
+    where: { id: payableId },
+    update: {},
+    create: {
+      id: payableId,
+      organizationId,
+      companyId,
+      code: `CP-${year}-000001`,
+      supplierId,
+      documentNumber: 'NF-4820',
+      documentSeries: '1',
+      issueDate: new Date(Date.UTC(2026, 6, 2)),
+      competenceDate: new Date(Date.UTC(2026, 6, 1)),
+      dueDate: new Date(Date.UTC(2026, 7, 10)),
+      description: 'Reforma da cozinha — 1ª medição',
+      status: 'PARTIALLY_PAID',
+      priority: 'HIGH',
+      originalAmount: 10000,
+      netAmount: 10000,
+      paidAmount: 3000,
+      balanceAmount: 7000,
+      categoryId: entry.categoryId,
+      costCenterId: entry.costCenterId,
+      installments: {
+        create: [
+          {
+            id: '00000000-0000-0000-0000-000000004011',
+            installmentNumber: 1,
+            totalInstallments: 2,
+            dueDate: new Date(Date.UTC(2026, 7, 10)),
+            originalDueDate: new Date(Date.UTC(2026, 7, 10)),
+            originalAmount: 5000,
+            netAmount: 5000,
+            paidAmount: 3000,
+            balanceAmount: 2000,
+            status: 'PARTIALLY_PAID',
+          },
+          {
+            id: '00000000-0000-0000-0000-000000004012',
+            installmentNumber: 2,
+            totalInstallments: 2,
+            dueDate: new Date(Date.UTC(2026, 8, 10)),
+            originalDueDate: new Date(Date.UTC(2026, 8, 10)),
+            originalAmount: 5000,
+            netAmount: 5000,
+            balanceAmount: 5000,
+            status: 'OPEN',
+          },
+        ],
+      },
+      partialPayments: {
+        create: {
+          installmentId: '00000000-0000-0000-0000-000000004011',
+          amount: 3000,
+          settledAmount: 3000,
+          paidAt: new Date(Date.UTC(2026, 7, 5)),
+          receiptNumber: 'TED-88213',
+        },
+      },
+      history: {
+        create: [
+          {
+            action: 'CREATED',
+            newStatus: 'OPEN',
+            justification: 'Título gerado a partir do lançamento aprovado.',
+          },
+          {
+            action: 'PARTIAL_PAYMENT',
+            previousStatus: 'OPEN',
+            newStatus: 'PARTIALLY_PAID',
+            field: 'balanceAmount',
+            previousValue: '10000',
+            newValue: '7000',
+            justification: 'Pagamento parcial acordado com o fornecedor.',
+          },
+        ],
+      },
+    },
+  });
+
+  // ── Título bloqueado por pendência documental ─────────────────────────────
+  const blockedId = '00000000-0000-0000-0000-000000004002';
+
+  await prisma.accountsPayable.upsert({
+    where: { id: blockedId },
+    update: {},
+    create: {
+      id: blockedId,
+      organizationId,
+      companyId,
+      code: `CP-${year}-000002`,
+      supplierId,
+      documentNumber: 'NF-4901',
+      dueDate: new Date(Date.UTC(2026, 7, 20)),
+      description: 'Manutenção preventiva — sem nota anexada',
+      status: 'OPEN',
+      priority: 'NORMAL',
+      originalAmount: 2450,
+      netAmount: 2450,
+      balanceAmount: 2450,
+      categoryId: entry.categoryId,
+      costCenterId: entry.costCenterId,
+      blockedAt: new Date(Date.UTC(2026, 6, 25)),
+      installments: {
+        create: {
+          installmentNumber: 1,
+          totalInstallments: 1,
+          dueDate: new Date(Date.UTC(2026, 7, 20)),
+          originalDueDate: new Date(Date.UTC(2026, 7, 20)),
+          originalAmount: 2450,
+          netAmount: 2450,
+          balanceAmount: 2450,
+          status: 'OPEN',
+        },
+      },
+      blocks: {
+        create: {
+          reason: 'DOCUMENT_PENDING',
+          description: 'Documento de origem sem a nota fiscal anexada.',
+        },
+      },
+      history: {
+        create: [
+          { action: 'CREATED', newStatus: 'OPEN' },
+          {
+            action: 'BLOCKED',
+            field: 'blockedAt',
+            newValue: 'DOCUMENT_PENDING',
+            justification: 'Documento de origem sem a nota fiscal anexada.',
+          },
+        ],
+      },
+    },
+  });
+
+  // ── Adiantamento com saldo para abater ────────────────────────────────────
+  if (supplierId) {
+    await prisma.supplierAdvance.upsert({
+      where: { id: '00000000-0000-0000-0000-000000004021' },
+      update: {},
+      create: {
+        id: '00000000-0000-0000-0000-000000004021',
+        organizationId,
+        companyId,
+        supplierId,
+        type: 'CONTRACT',
+        amount: 4000,
+        remainingAmount: 4000,
+        reference: 'ADT-2026-014',
+        grantedAt: new Date(Date.UTC(2026, 6, 15)),
+        notes: 'Adiantamento previsto no contrato da reforma.',
+      },
+    });
+  }
+
+  console.log(
+    'Contas a pagar de demonstração criado: 1 título parcelado com R$ 7.000 de saldo, 1 bloqueado por pendência e 1 adiantamento de R$ 4.000 disponível.',
   );
 }
 

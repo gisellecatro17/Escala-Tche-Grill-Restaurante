@@ -120,6 +120,12 @@ function buildService(
     approvalRequest: {
       findFirst: jest.fn().mockResolvedValue(options.liveRequest ?? null),
       findFirstOrThrow: jest.fn().mockResolvedValue(storedRequest),
+      // Lido depois da transação, para saber se a solicitação inteira foi aprovada e o
+      // título a pagar deve nascer.
+      findUnique: jest.fn().mockResolvedValue({
+        status: 'IN_PROGRESS',
+        entryId: storedRequest.entryId,
+      }),
       findMany: jest.fn().mockResolvedValue([]),
       count: jest.fn().mockResolvedValue(options.previousAttempts ?? 0),
       update: jest.fn().mockResolvedValue(storedRequest),
@@ -128,6 +134,7 @@ function buildService(
     approvalStepApproval: {
       findFirst: jest.fn().mockResolvedValue(options.existingApproval ?? null),
     },
+    financialEntry: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
     approvalComment: {
       create: jest.fn().mockResolvedValue({ id: 'comment-1' }),
       findMany: jest.fn().mockResolvedValue([]),
@@ -172,14 +179,28 @@ function buildService(
     }),
   };
 
+  // O título a pagar é gerado fora deste serviço; aqui só interessa que a aprovação
+  // concluída chame a geração exatamente uma vez.
+  const payables = { generateFromEntry: jest.fn().mockResolvedValue(null) };
+
   const service = new ApprovalRequestsService(
     prisma as never,
     audit as never,
     flows as never,
     approvers as never,
+    payables as never,
   );
 
-  return { service, prisma, tx, audit, flows, approvers, storedRequest };
+  return {
+    service,
+    prisma,
+    tx,
+    audit,
+    flows,
+    approvers,
+    payables,
+    storedRequest,
+  };
 }
 
 function buildFlow(steps: Record<string, unknown>[]) {

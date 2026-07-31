@@ -80,12 +80,16 @@ function buildService(entry: Record<string, unknown> = {}) {
     hasPendingApproval: jest.fn().mockResolvedValue(false),
   };
 
+  const payables = { generateFromEntry: jest.fn().mockResolvedValue(null) };
+
   return {
     approvals,
+    payables,
     service: new FinancialEntriesService(
       prisma as never,
       audit as never,
       approvals as never,
+      payables as never,
     ),
     prisma,
     tx,

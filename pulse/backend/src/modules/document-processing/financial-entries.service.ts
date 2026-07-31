@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import {
+  FinancialEntryDirection,
   FinancialEntryInstallmentStatus,
   FinancialEntryStatus,
   FinancialEntryWithholdingStatus,
@@ -12,6 +13,7 @@ import { maskPixKeyValue } from '../../common/utils/mask.util';
 import type { RequestUser } from '../../common/types/authenticated-request';
 import { AuditService } from '../audit/audit.service';
 import { ApprovalRequestsService } from '../approvals/approval-requests.service';
+import { PayableGenerationService } from '../accounts-payable/payable-generation.service';
 import type {
   FinancialEntryQueryDto,
   ManualWithholdingDto,
@@ -58,6 +60,7 @@ export class FinancialEntriesService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly approvals: ApprovalRequestsService,
+    private readonly payables: PayableGenerationService,
   ) {}
 
   /** Organização e empresa do lançamento, para o controlador validar a permissão. */
@@ -359,7 +362,7 @@ export class FinancialEntriesService {
       );
     }
 
-    return this.changeStatus(
+    const opened = await this.changeStatus(
       current.id,
       current.status,
       FinancialEntryStatus.OPEN,
@@ -367,6 +370,15 @@ export class FinancialEntriesService {
       actor,
       { openedAt: new Date() },
     );
+
+    // Abrir o lançamento é o instante em que ele vira obrigação — então é aqui que o
+    // título a pagar nasce. Quando houve fluxo de aprovação, o título já foi gerado na
+    // conclusão da última etapa; `generateFromEntry` é idempotente e devolve o existente.
+    if (current.direction === FinancialEntryDirection.PAYABLE) {
+      await this.payables.generateFromEntry(current.id, actor);
+    }
+
+    return opened;
   }
 
   /**

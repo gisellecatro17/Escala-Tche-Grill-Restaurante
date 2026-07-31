@@ -920,6 +920,10 @@ model Organization {
   approvalDelegations ApprovalDelegation[]
   approvalSettings    ApprovalSettings[]
 
+  accountsPayable         AccountsPayable[]
+  accountsPayableSettings AccountsPayableSettings[]
+  supplierAdvances        SupplierAdvance[]
+
   @@map("organizations")
 }
 
@@ -1056,6 +1060,10 @@ model Company {
   approvalRequests    ApprovalRequest[]
   approvalDelegations ApprovalDelegation[]
   approvalSettings    ApprovalSettings?
+
+  accountsPayable         AccountsPayable[]
+  accountsPayableSettings AccountsPayableSettings?
+  supplierAdvances        SupplierAdvance[]
 
   @@unique([organizationId, internalCode])
   @@index([organizationId])
@@ -1621,6 +1629,8 @@ model Supplier {
   receiptMethodsAsAcquirer ReceiptMethod[]           @relation("ReceiptMethodAcquirer")
   intakeDocuments          IntakeDocument[]
   financialEntries         FinancialEntry[]
+  accountsPayable          AccountsPayable[]
+  advances                 SupplierAdvance[]
 
   @@index([organizationId])
   @@index([systemStatus])
@@ -2013,6 +2023,9 @@ model SupplierContract {
 
   link            SupplierCompanyLink @relation(fields: [supplierCompanyLinkId], references: [id], onDelete: Cascade)
   supplierContact SupplierContact?    @relation(fields: [supplierContactId], references: [id])
+
+  accountsPayable AccountsPayable[]
+  advances        SupplierAdvance[]
 
   @@index([supplierCompanyLinkId])
   @@map("supplier_contracts")
@@ -3067,6 +3080,7 @@ model FinancialTag {
 
   links       FinancialTagLink[]
   ruleActions ClassificationRuleAction[] @relation("RuleActionTag")
+  payableTags AccountsPayableTag[]
 
   @@unique([organizationId, companyId, slug])
   @@index([organizationId])
@@ -4680,9 +4694,9 @@ model IntakeDocument {
   businessUnitId    String? @map("business_unit_id") @db.Uuid
   financialNatureId String? @map("financial_nature_id") @db.Uuid
 
-  documentType    IntakeDocumentType      @default(OTHER) @map("document_type")
+  documentType      IntakeDocumentType      @default(OTHER) @map("document_type")
   documentDirection IntakeDocumentDirection @default(UNKNOWN) @map("document_direction")
-  sourceChannel   IntakeSourceChannel     @default(MANUAL_UPLOAD) @map("source_channel")
+  sourceChannel     IntakeSourceChannel     @default(MANUAL_UPLOAD) @map("source_channel")
 
   originalFileName String? @map("original_file_name")
   displayName      String? @map("display_name")
@@ -4704,25 +4718,25 @@ model IntakeDocument {
   dueDate        DateTime? @map("due_date")
   paymentDate    DateTime? @map("payment_date")
 
-  grossAmount      Decimal? @map("gross_amount") @db.Decimal(18, 2)
-  discountAmount   Decimal? @map("discount_amount") @db.Decimal(18, 2)
-  interestAmount   Decimal? @map("interest_amount") @db.Decimal(18, 2)
-  penaltyAmount    Decimal? @map("penalty_amount") @db.Decimal(18, 2)
+  grossAmount       Decimal? @map("gross_amount") @db.Decimal(18, 2)
+  discountAmount    Decimal? @map("discount_amount") @db.Decimal(18, 2)
+  interestAmount    Decimal? @map("interest_amount") @db.Decimal(18, 2)
+  penaltyAmount     Decimal? @map("penalty_amount") @db.Decimal(18, 2)
   withholdingAmount Decimal? @map("withholding_amount") @db.Decimal(18, 2)
-  netAmount        Decimal? @map("net_amount") @db.Decimal(18, 2)
-  currencyCode     String   @default("BRL") @map("currency_code") @db.VarChar(3)
+  netAmount         Decimal? @map("net_amount") @db.Decimal(18, 2)
+  currencyCode      String   @default("BRL") @map("currency_code") @db.VarChar(3)
 
-  barcode                String? @map("barcode")
+  barcode                 String? @map("barcode")
   /// Só dígitos, para comparação: `1234.5` e `12345` precisam colidir na duplicidade.
-  normalizedBarcode      String? @map("normalized_barcode")
-  digitableLine          String? @map("digitable_line")
+  normalizedBarcode       String? @map("normalized_barcode")
+  digitableLine           String? @map("digitable_line")
   normalizedDigitableLine String? @map("normalized_digitable_line")
-  pixKey                 String? @map("pix_key")
+  pixKey                  String? @map("pix_key")
 
   /// Documento do emissor lido do arquivo, antes de qualquer vínculo — guardado para
   /// que a identificação possa ser reexecutada sem reler o documento.
-  issuerDocument String? @map("issuer_document")
-  issuerName     String? @map("issuer_name")
+  issuerDocument    String? @map("issuer_document")
+  issuerName        String? @map("issuer_name")
   /// Documento do destinatário/tomador/pagador: é por aqui que a empresa é identificada.
   recipientDocument String? @map("recipient_document")
   recipientName     String? @map("recipient_name")
@@ -4745,11 +4759,11 @@ model IntakeDocument {
 
   /// Texto extraído do documento, usado pela classificação e pela busca. Fica aqui para
   /// que reclassificar não exija reprocessar o arquivo.
-  extractedText String? @map("extracted_text")
+  extractedText    String?                 @map("extracted_text")
   extractionMethod IntakeExtractionMethod? @map("extraction_method")
 
-  assignedUserId String? @map("assigned_user_id") @db.Uuid
-  assignedTeamId String? @map("assigned_team_id") @db.Uuid
+  assignedUserId String?   @map("assigned_user_id") @db.Uuid
+  assignedTeamId String?   @map("assigned_team_id") @db.Uuid
   reviewDueAt    DateTime? @map("review_due_at")
 
   rejectionReason IntakeRejectionReason? @map("rejection_reason")
@@ -4769,29 +4783,30 @@ model IntakeDocument {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  company      Company?     @relation(fields: [companyId], references: [id])
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company        Company?           @relation(fields: [companyId], references: [id])
   /// Sem cascade: excluir o pai não pode apagar as parcelas derivadas em silêncio.
-  parentDocument IntakeDocument?  @relation("IntakeDocumentInstallments", fields: [parentDocumentId], references: [id])
-  installments   IntakeDocument[] @relation("IntakeDocumentInstallments")
-  supplier     Supplier?     @relation(fields: [supplierId], references: [id])
-  customer     Customer?     @relation(fields: [customerId], references: [id])
-  batchImport  IntakeBatchImport? @relation(fields: [batchImportId], references: [id])
+  parentDocument IntakeDocument?    @relation("IntakeDocumentInstallments", fields: [parentDocumentId], references: [id])
+  installments   IntakeDocument[]   @relation("IntakeDocumentInstallments")
+  supplier       Supplier?          @relation(fields: [supplierId], references: [id])
+  customer       Customer?          @relation(fields: [customerId], references: [id])
+  batchImport    IntakeBatchImport? @relation(fields: [batchImportId], references: [id])
 
-  files          IntakeDocumentFile[]
-  extractedFields IntakeDocumentExtractedField[]
-  processingJobs IntakeDocumentProcessingJob[]
-  issues         IntakeDocumentIssue[]
-  duplicateMatches IntakeDocumentDuplicateMatch[] @relation("IntakeDuplicateSource")
-  matchedAgainst   IntakeDocumentDuplicateMatch[] @relation("IntakeDuplicateTarget")
-  outgoingRelations IntakeDocumentRelation[] @relation("IntakeRelationSource")
-  incomingRelations IntakeDocumentRelation[] @relation("IntakeRelationTarget")
+  files             IntakeDocumentFile[]
+  extractedFields   IntakeDocumentExtractedField[]
+  processingJobs    IntakeDocumentProcessingJob[]
+  issues            IntakeDocumentIssue[]
+  duplicateMatches  IntakeDocumentDuplicateMatch[] @relation("IntakeDuplicateSource")
+  matchedAgainst    IntakeDocumentDuplicateMatch[] @relation("IntakeDuplicateTarget")
+  outgoingRelations IntakeDocumentRelation[]       @relation("IntakeRelationSource")
+  incomingRelations IntakeDocumentRelation[]       @relation("IntakeRelationTarget")
 
   /// O lançamento gerado por este documento. Um para um: reprocessar não duplica.
-  financialEntry FinancialEntry?
-  assignments    IntakeDocumentAssignment[]
-  statusHistory  IntakeDocumentStatusHistory[]
-  batchItems     IntakeBatchImportItem[]
+  financialEntry  FinancialEntry?
+  accountsPayable AccountsPayable[]
+  assignments     IntakeDocumentAssignment[]
+  statusHistory   IntakeDocumentStatusHistory[]
+  batchItems      IntakeBatchImportItem[]
 
   @@index([organizationId, companyId])
   @@index([companyId, processingStatus])
@@ -4810,8 +4825,8 @@ model IntakeDocument {
 /// Arquivos do documento e suas versões (seção 57). O arquivo `ORIGINAL` nunca é
 /// sobrescrito: substituir cria uma nova versão e marca a anterior como não corrente.
 model IntakeDocumentFile {
-  id         String  @id @default(uuid()) @db.Uuid
-  documentId String  @map("document_id") @db.Uuid
+  id           String  @id @default(uuid()) @db.Uuid
+  documentId   String  @map("document_id") @db.Uuid
   /// Vínculo com a tabela genérica de anexos já existente — o módulo não recria
   /// armazenamento próprio.
   attachmentId String? @map("attachment_id") @db.Uuid
@@ -4855,7 +4870,7 @@ model IntakeDocumentExtractedField {
 
   sourceMethod     IntakeExtractionMethod      @map("source_method")
   confidence       Decimal?                    @db.Decimal(5, 2)
-  validationStatus IntakeFieldValidationStatus  @default(NOT_VALIDATED) @map("validation_status")
+  validationStatus IntakeFieldValidationStatus @default(NOT_VALIDATED) @map("validation_status")
 
   isManuallyChanged Boolean   @default(false) @map("is_manually_changed")
   changedBy         String?   @map("changed_by") @db.Uuid
@@ -4896,11 +4911,11 @@ model IntakeDocumentProcessingJob {
   status IntakeJobStatus @default(PENDING)
 
   /// Chave de idempotência: o mesmo job lógico não roda duas vezes por descuido.
-  idempotencyKey String? @map("idempotency_key")
+  idempotencyKey String?   @map("idempotency_key")
   /// Quando o job pode ser pego pelo worker. O backoff apenas empurra esta data.
-  availableAt DateTime  @default(now()) @map("available_at")
-  startedAt   DateTime? @map("started_at")
-  completedAt DateTime? @map("completed_at")
+  availableAt    DateTime  @default(now()) @map("available_at")
+  startedAt      DateTime? @map("started_at")
+  completedAt    DateTime? @map("completed_at")
 
   errorCode    String? @map("error_code")
   errorMessage String? @map("error_message")
@@ -4924,9 +4939,9 @@ model IntakeDocumentIssue {
   id         String @id @default(uuid()) @db.Uuid
   documentId String @map("document_id") @db.Uuid
 
-  issueType IntakeIssueType     @map("issue_type")
-  severity  IntakeIssueSeverity @default(WARNING)
-  fieldName String?             @map("field_name")
+  issueType   IntakeIssueType     @map("issue_type")
+  severity    IntakeIssueSeverity @default(WARNING)
+  fieldName   String?             @map("field_name")
   description String
 
   status         IntakeIssueStatus @default(OPEN)
@@ -4964,11 +4979,11 @@ model IntakeDocumentDuplicateMatch {
   /// Quais campos coincidiram, para a tela comparativa.
   matchingFields  Json?                    @map("matching_fields")
 
-  status   IntakeDuplicateStatus   @default(POSSIBLE_DUPLICATE)
-  decision IntakeDuplicateDecision @default(PENDING)
-  decisionReason String?           @map("decision_reason")
-  decidedBy      String?           @map("decided_by") @db.Uuid
-  decidedAt      DateTime?         @map("decided_at")
+  status         IntakeDuplicateStatus   @default(POSSIBLE_DUPLICATE)
+  decision       IntakeDuplicateDecision @default(PENDING)
+  decisionReason String?                 @map("decision_reason")
+  decidedBy      String?                 @map("decided_by") @db.Uuid
+  decidedAt      DateTime?               @map("decided_at")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -5115,18 +5130,18 @@ model DocumentIntakeSettings {
   organizationId String @map("organization_id") @db.Uuid
   companyId      String @unique @map("company_id") @db.Uuid
 
-  maximumFileSize      Int      @default(20971520) @map("maximum_file_size")
-  maximumFilesPerUpload Int     @default(20) @map("maximum_files_per_upload")
-  allowedExtensions    String[] @default(["pdf", "jpg", "jpeg", "png", "xml", "xlsx", "xls", "csv"]) @map("allowed_extensions")
+  maximumFileSize       Int      @default(20971520) @map("maximum_file_size")
+  maximumFilesPerUpload Int      @default(20) @map("maximum_files_per_upload")
+  allowedExtensions     String[] @default(["pdf", "jpg", "jpeg", "png", "xml", "xlsx", "xls", "csv"]) @map("allowed_extensions")
 
-  ocrEnabled                Boolean @default(true) @map("ocr_enabled")
-  barcodeReadingEnabled     Boolean @default(true) @map("barcode_reading_enabled")
+  ocrEnabled                 Boolean @default(true) @map("ocr_enabled")
+  barcodeReadingEnabled      Boolean @default(true) @map("barcode_reading_enabled")
   duplicateValidationEnabled Boolean @default(true) @map("duplicate_validation_enabled")
 
-  minimumConfidence Decimal @default(75) @map("minimum_confidence") @db.Decimal(5, 2)
+  minimumConfidence       Decimal @default(75) @map("minimum_confidence") @db.Decimal(5, 2)
   highConfidenceThreshold Decimal @default(95) @map("high_confidence_threshold") @db.Decimal(5, 2)
 
-  mandatoryReview        Boolean @default(true) @map("mandatory_review")
+  mandatoryReview           Boolean @default(true) @map("mandatory_review")
   autoForwardHighConfidence Boolean @default(false) @map("auto_forward_high_confidence")
 
   quickSupplierCreationEnabled Boolean @default(true) @map("quick_supplier_creation_enabled")
@@ -5273,13 +5288,13 @@ model FinancialEntry {
   history     String?
   notes       String?
 
-  grossAmount       Decimal  @map("gross_amount") @db.Decimal(18, 2)
-  discountAmount    Decimal  @default(0) @map("discount_amount") @db.Decimal(18, 2)
-  interestAmount    Decimal  @default(0) @map("interest_amount") @db.Decimal(18, 2)
-  penaltyAmount     Decimal  @default(0) @map("penalty_amount") @db.Decimal(18, 2)
-  withholdingAmount Decimal  @default(0) @map("withholding_amount") @db.Decimal(18, 2)
-  netAmount         Decimal  @map("net_amount") @db.Decimal(18, 2)
-  currencyCode      String   @default("BRL") @map("currency_code") @db.VarChar(3)
+  grossAmount       Decimal @map("gross_amount") @db.Decimal(18, 2)
+  discountAmount    Decimal @default(0) @map("discount_amount") @db.Decimal(18, 2)
+  interestAmount    Decimal @default(0) @map("interest_amount") @db.Decimal(18, 2)
+  penaltyAmount     Decimal @default(0) @map("penalty_amount") @db.Decimal(18, 2)
+  withholdingAmount Decimal @default(0) @map("withholding_amount") @db.Decimal(18, 2)
+  netAmount         Decimal @map("net_amount") @db.Decimal(18, 2)
+  currencyCode      String  @default("BRL") @map("currency_code") @db.VarChar(3)
 
   // ── Classificação. Colunas simples, como em `intake_documents`: as dimensões vivem
   //    nos cadastros da Estrutura Financeira e são resolvidas pela aplicação.
@@ -5341,6 +5356,7 @@ model FinancialEntry {
   statusHistory FinancialEntryStatusHistory[]
 
   approvalRequests ApprovalRequest[]
+  accountsPayable  AccountsPayable?
 
   @@index([organizationId, companyId, status])
   @@index([companyId, direction, status])
@@ -5688,9 +5704,9 @@ model ApprovalFlowStep {
   stepOrder Int    @map("step_order")
   name      String
 
-  approverType ApprovalApproverType @default(ROLE) @map("approver_type")
-  approverUserId  String?           @map("approver_user_id") @db.Uuid
-  approverRoleId  String?           @map("approver_role_id") @db.Uuid
+  approverType   ApprovalApproverType @default(ROLE) @map("approver_type")
+  approverUserId String?              @map("approver_user_id") @db.Uuid
+  approverRoleId String?              @map("approver_role_id") @db.Uuid
 
   /// Quantas aprovações distintas esta etapa exige. `2` é a dupla aprovação.
   requiredApprovals Int @default(1) @map("required_approvals")
@@ -5748,12 +5764,12 @@ model ApprovalRequest {
   currentStepOrder Int? @map("current_step_order")
 
   /// Data limite da solicitação inteira, derivada dos prazos das etapas.
-  dueAt       DateTime? @map("due_at")
-  startedAt   DateTime? @map("started_at")
-  decidedAt   DateTime? @map("decided_at")
+  dueAt           DateTime? @map("due_at")
+  startedAt       DateTime? @map("started_at")
+  decidedAt       DateTime? @map("decided_at")
   /// Tempo total até a decisão, em segundos. Gravado para o indicador de tempo médio não
   /// depender de recalcular a diferença em toda consulta.
-  decisionSeconds Int?  @map("decision_seconds")
+  decisionSeconds Int?      @map("decision_seconds")
 
   requestedBy String? @map("requested_by") @db.Uuid
 
@@ -5773,6 +5789,8 @@ model ApprovalRequest {
   comments ApprovalComment[]
   history  ApprovalHistory[]
 
+  accountsPayable AccountsPayable[]
+
   @@unique([entryId, attempt])
   @@index([organizationId, companyId, status])
   @@index([companyId, status, dueAt])
@@ -5785,8 +5803,8 @@ model ApprovalRequest {
 /// É cópia do que a etapa do fluxo dizia **no momento da abertura**. Editar o fluxo depois
 /// não muda uma solicitação em andamento: quem aprovou aprovou sob as regras vigentes.
 model ApprovalRequestStep {
-  id        String @id @default(uuid()) @db.Uuid
-  requestId String @map("request_id") @db.Uuid
+  id         String  @id @default(uuid()) @db.Uuid
+  requestId  String  @map("request_id") @db.Uuid
   /// Etapa de origem. Nula se a etapa do fluxo foi excluída depois.
   flowStepId String? @map("flow_step_id") @db.Uuid
 
@@ -5835,15 +5853,15 @@ model ApprovalRequestStep {
 /// `decidedBy` perderia quem foi o segundo — e é exatamente o segundo que a governança
 /// quer poder auditar.
 model ApprovalStepApproval {
-  id           String @id @default(uuid()) @db.Uuid
+  id            String @id @default(uuid()) @db.Uuid
   requestStepId String @map("request_step_id") @db.Uuid
 
-  approvedBy      String    @map("approved_by") @db.Uuid
+  approvedBy   String   @map("approved_by") @db.Uuid
   /// Preenchido quando a aprovação foi dada por delegação.
-  onBehalfOf      String?   @map("on_behalf_of") @db.Uuid
-  delegationId    String?   @map("delegation_id") @db.Uuid
-  comment         String?
-  approvedAt      DateTime  @default(now()) @map("approved_at")
+  onBehalfOf   String?  @map("on_behalf_of") @db.Uuid
+  delegationId String?  @map("delegation_id") @db.Uuid
+  comment      String?
+  approvedAt   DateTime @default(now()) @map("approved_at")
 
   requestStep ApprovalRequestStep @relation(fields: [requestStepId], references: [id], onDelete: Cascade)
 
@@ -5926,7 +5944,7 @@ model ApprovalHistory {
   requestId String @map("request_id") @db.Uuid
 
   action    ApprovalActionType
-  stepOrder Int?    @map("step_order")
+  stepOrder Int?               @map("step_order")
 
   actorId    String? @map("actor_id") @db.Uuid
   onBehalfOf String? @map("on_behalf_of") @db.Uuid
@@ -5981,4 +5999,784 @@ model ApprovalSettings {
   company      Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@map("approval_settings")
+}
+
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║  CONTAS A PAGAR                                                          ║
+// ║  Onde o pré-lançamento aprovado vira obrigação de verdade: com saldo,    ║
+// ║  parcelas liquidáveis, juros, multa, desconto, bloqueio e renegociação.  ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+
+/// Situação do título (seção 4).
+///
+/// **Vencido** e **Bloqueado** não estão aqui de propósito. Vencido é uma data que já
+/// passou — guardar como situação exigiria um job para virar o passado, e entre duas
+/// execuções o relatório mentiria. Bloqueado é uma condição que **convive** com a etapa de
+/// pagamento: um título pago pela metade e bloqueado continua pago pela metade. Se o
+/// bloqueio virasse situação, desbloquear precisaria adivinhar para onde voltar.
+///
+/// As duas continuam existindo para quem lê a API: `situation` chega calculado, com as
+/// onze situações da seção 4. O que não existe é uma coluna que possa discordar dos fatos.
+enum AccountsPayableStatus {
+  /// Em aberto: a obrigação existe e ninguém programou o pagamento.
+  OPEN
+  /// Programado: alguém definiu data, conta e forma de pagamento — ainda dentro do Pulse.
+  SCHEDULED
+  /// Agendado: aceito pelo banco. Quem escreve isto é o Agendamento Bancário.
+  BANK_SCHEDULED
+  /// Aguardando pagamento: remessa enviada, sem retorno. Também do módulo seguinte.
+  AWAITING_PAYMENT
+  /// Pago parcialmente: houve baixa, sobrou saldo.
+  PARTIALLY_PAID
+  /// Pago: saldo zerado.
+  PAID
+  /// Renegociado: substituído por um novo cronograma. O título antigo permanece legível.
+  RENEGOTIATED
+  /// Cancelado com motivo.
+  CANCELLED
+  /// Estornado: os pagamentos foram desfeitos e o título voltou a dever.
+  REVERSED
+
+  @@map("accounts_payable_status")
+}
+
+/// Situação da parcela. Espelha a do título porque a seção 7 exige que cada parcela tenha
+/// situação, histórico e liquidação próprios.
+enum AccountsPayableInstallmentStatus {
+  OPEN
+  SCHEDULED
+  BANK_SCHEDULED
+  AWAITING_PAYMENT
+  PARTIALLY_PAID
+  PAID
+  RENEGOTIATED
+  CANCELLED
+  REVERSED
+
+  @@map("accounts_payable_installment_status")
+}
+
+/// Prioridade do título, usada na fila de pagamento e no indicador de urgentes.
+enum AccountsPayablePriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+
+  @@map("accounts_payable_priority")
+}
+
+/// O que um ajuste faz com o valor do título.
+enum AccountsPayableAdjustmentType {
+  /// Juros por atraso.
+  INTEREST
+  /// Multa por atraso.
+  PENALTY
+  /// Desconto concedido (antecipação, negociação, acordo comercial).
+  DISCOUNT
+  /// Correção de valor com justificativa — não é juro nem desconto.
+  CORRECTION
+
+  @@map("accounts_payable_adjustment_type")
+}
+
+/// Quem produziu o ajuste. Distinguir importa: um juro calculado pela regra da empresa e
+/// um juro digitado por alguém têm o mesmo efeito no saldo e responsabilidades diferentes.
+enum AccountsPayableAdjustmentSource {
+  AUTOMATIC
+  MANUAL
+  RENEGOTIATION
+
+  @@map("accounts_payable_adjustment_source")
+}
+
+/// Ajustes e pagamentos não são apagados: são estornados. `REVERSED` deixa o fato antigo
+/// legível e tira o valor da conta.
+enum AccountsPayableEntryStatus {
+  ACTIVE
+  REVERSED
+
+  @@map("accounts_payable_entry_status")
+}
+
+/// Motivo do bloqueio (seção 12).
+enum AccountsPayableBlockReason {
+  DOCUMENT_PENDING
+  FINANCIAL_DIVERGENCE
+  CONTRACT_BLOCK
+  MANAGEMENT_DECISION
+  AUDIT
+  OTHER
+
+  @@map("accounts_payable_block_reason")
+}
+
+/// Ações registradas no histórico (seções 13 e 18).
+enum AccountsPayableHistoryAction {
+  CREATED
+  UPDATED
+  RENEGOTIATED
+  PARTIAL_PAYMENT
+  PAID
+  CANCELLED
+  REOPENED
+  REVERSED
+  DUE_DATE_CHANGED
+  AMOUNT_CHANGED
+  SUPPLIER_CHANGED
+  COST_CENTER_CHANGED
+  PROJECT_CHANGED
+  WITHHOLDING_CHANGED
+  INSTALLMENT_CHANGED
+  BLOCKED
+  UNBLOCKED
+  SCHEDULED
+  ADVANCE_APPLIED
+  ADJUSTMENT_ADDED
+  DELETED
+
+  @@map("accounts_payable_history_action")
+}
+
+/// Natureza do adiantamento (seção 10).
+enum SupplierAdvanceType {
+  /// Adiantamento a fornecedor, sem contrato específico.
+  SUPPLIER
+  /// Adiantamento previsto em contrato.
+  CONTRACT
+  /// Adiantamento de despesas (viagem, reembolso, caixa).
+  EXPENSE
+
+  @@map("supplier_advance_type")
+}
+
+/// Situação do adiantamento conforme vai sendo abatido.
+enum SupplierAdvanceStatus {
+  OPEN
+  PARTIALLY_APPLIED
+  APPLIED
+  CANCELLED
+
+  @@map("supplier_advance_status")
+}
+
+/// Título a pagar.
+///
+/// Nasce de um lançamento aprovado (`entryId`) e é **outra coisa** que ele: o lançamento é
+/// o pré-lançamento, editável enquanto ninguém aprovou; o título é a obrigação, que a
+/// partir daqui só muda por ato registrado — pagamento, ajuste, renegociação, bloqueio,
+/// cancelamento ou estorno.
+///
+/// Por isso os valores e a classificação são **copiados** e não lidos do lançamento: um
+/// título é um fato histórico, e o fato de ontem não pode mudar porque alguém corrigiu um
+/// cadastro hoje. É a mesma razão pela qual o rateio já era materializado no lançamento.
+model AccountsPayable {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  companyId      String @map("company_id") @db.Uuid
+
+  /// Código legível do título, sequencial por empresa (ex.: `CP-2026-000042`).
+  code String
+
+  /// Lançamento de origem. Único: um pré-lançamento aprovado gera **um** título, e a
+  /// garantia é do banco — duas requisições simultâneas não criam dois.
+  ///
+  /// Nulo no título criado à mão. Fabricar um pré-lançamento só para preencher a coluna
+  /// colocaria na fila "A Processar" um lançamento que ninguém processou nem aprovou.
+  entryId String? @unique @map("entry_id") @db.Uuid
+
+  /// Vínculos da seção 14. Guardados no título para que ele responda sozinho de onde veio,
+  /// sem depender de o lançamento continuar existindo intacto.
+  sourceIntakeDocumentId String? @map("source_intake_document_id") @db.Uuid
+  approvalRequestId      String? @map("approval_request_id") @db.Uuid
+  supplierContractId     String? @map("supplier_contract_id") @db.Uuid
+  /// Número do pedido de compra. Texto porque não existe módulo de pedidos ainda — e
+  /// inventar a tabela agora seria decidir por um módulo que não foi especificado.
+  purchaseOrderNumber    String? @map("purchase_order_number")
+
+  supplierId            String? @map("supplier_id") @db.Uuid
+  supplierCompanyLinkId String? @map("supplier_company_link_id") @db.Uuid
+
+  documentType   String?   @map("document_type")
+  documentNumber String?   @map("document_number")
+  documentSeries String?   @map("document_series")
+  accessKey      String?   @map("access_key")
+  issueDate      DateTime? @map("issue_date")
+  competenceDate DateTime? @map("competence_date")
+
+  /// Próximo vencimento em aberto, recalculado junto com o saldo.
+  ///
+  /// Redundante com as parcelas — e é essa redundância que permite a tela principal
+  /// ordenar e filtrar por vencimento sem varrer as parcelas de cada linha.
+  dueDate DateTime @map("due_date")
+
+  description String?
+  notes       String?
+
+  status   AccountsPayableStatus   @default(OPEN)
+  priority AccountsPayablePriority @default(NORMAL)
+
+  // ── Valores. Todos derivados e recalculados por `recompute`; nenhum deles é digitado
+  //    direto. Critério de aceite 7: o saldo nunca é responsabilidade de quem chama.
+  originalAmount    Decimal @map("original_amount") @db.Decimal(18, 2)
+  interestAmount    Decimal @default(0) @map("interest_amount") @db.Decimal(18, 2)
+  penaltyAmount     Decimal @default(0) @map("penalty_amount") @db.Decimal(18, 2)
+  discountAmount    Decimal @default(0) @map("discount_amount") @db.Decimal(18, 2)
+  withholdingAmount Decimal @default(0) @map("withholding_amount") @db.Decimal(18, 2)
+  /// Original + juros + multa − desconto − retenções confirmadas.
+  netAmount         Decimal @map("net_amount") @db.Decimal(18, 2)
+  /// Soma dos pagamentos parciais ativos.
+  paidAmount        Decimal @default(0) @map("paid_amount") @db.Decimal(18, 2)
+  /// Soma dos adiantamentos abatidos.
+  advanceAmount     Decimal @default(0) @map("advance_amount") @db.Decimal(18, 2)
+  /// Líquido − pago − adiantado. Nunca negativo.
+  balanceAmount     Decimal @map("balance_amount") @db.Decimal(18, 2)
+
+  currencyCode String @default("BRL") @map("currency_code") @db.VarChar(3)
+
+  // ── Classificação copiada do lançamento.
+  categoryId        String? @map("category_id") @db.Uuid
+  subcategoryId     String? @map("subcategory_id") @db.Uuid
+  accountPlanId     String? @map("account_plan_id") @db.Uuid
+  financialNatureId String? @map("financial_nature_id") @db.Uuid
+  costCenterId      String? @map("cost_center_id") @db.Uuid
+  resultCenterId    String? @map("result_center_id") @db.Uuid
+  projectId         String? @map("project_id") @db.Uuid
+  businessUnitId    String? @map("business_unit_id") @db.Uuid
+
+  // ── Programação de pagamento. É a "programação" da seção 1, feita dentro do Pulse.
+  //    Agendar no banco é do módulo seguinte e escreve `BANK_SCHEDULED`.
+  financialAccountId   String?   @map("financial_account_id") @db.Uuid
+  paymentMethodId      String?   @map("payment_method_id") @db.Uuid
+  scheduledPaymentDate DateTime? @map("scheduled_payment_date")
+  scheduledBy          String?   @map("scheduled_by") @db.Uuid
+  scheduledAt          DateTime? @map("scheduled_at")
+
+  /// Dados de cobrança, mascarados para quem não tem a permissão de dados sensíveis.
+  barcode       String?
+  digitableLine String? @map("digitable_line")
+  pixKey        String? @map("pix_key")
+
+  responsibleUserId String? @map("responsible_user_id") @db.Uuid
+
+  /// Espelho do bloqueio ativo. A verdade está em `accounts_payable_blocks`; esta coluna é
+  /// escrita na mesma transação e existe para a listagem filtrar bloqueados sem subconsulta.
+  blockedAt DateTime? @map("blocked_at")
+
+  paidAt             DateTime? @map("paid_at")
+  cancellationReason String?   @map("cancellation_reason")
+  cancelledBy        String?   @map("cancelled_by") @db.Uuid
+  cancelledAt        DateTime? @map("cancelled_at")
+  reopenedBy         String?   @map("reopened_by") @db.Uuid
+  reopenedAt         DateTime? @map("reopened_at")
+  reversedBy         String?   @map("reversed_by") @db.Uuid
+  reversedAt         DateTime? @map("reversed_at")
+  renegotiatedAt     DateTime? @map("renegotiated_at")
+
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company      Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  entry                FinancialEntry?   @relation(fields: [entryId], references: [id])
+  sourceIntakeDocument IntakeDocument?   @relation(fields: [sourceIntakeDocumentId], references: [id])
+  approvalRequest      ApprovalRequest?  @relation(fields: [approvalRequestId], references: [id])
+  supplierContract     SupplierContract? @relation(fields: [supplierContractId], references: [id])
+  supplier             Supplier?         @relation(fields: [supplierId], references: [id])
+
+  installments    AccountsPayableInstallment[]
+  partialPayments AccountsPayablePartialPayment[]
+  adjustments     AccountsPayableAdjustment[]
+  allocations     AccountsPayableAllocation[]
+  withholdings    AccountsPayableWithholding[]
+  blocks          AccountsPayableBlock[]
+  renegotiations  AccountsPayableRenegotiation[]
+  advanceUses     AccountsPayableAdvanceApplication[]
+  history         AccountsPayableHistory[]
+  comments        AccountsPayableComment[]
+  tags            AccountsPayableTag[]
+
+  @@unique([companyId, code])
+  @@index([organizationId, companyId, status])
+  @@index([companyId, status, dueDate])
+  @@index([companyId, dueDate])
+  @@index([supplierId])
+  @@index([entryId])
+  @@map("accounts_payable")
+}
+
+/// Parcela do título. É o que efetivamente se paga.
+///
+/// Um título à vista tem uma parcela, e não um caso especial: telas, relatórios e a futura
+/// remessa bancária leem sempre a mesma estrutura.
+model AccountsPayableInstallment {
+  id        String @id @default(uuid()) @db.Uuid
+  payableId String @map("payable_id") @db.Uuid
+
+  installmentNumber Int      @map("installment_number")
+  totalInstallments Int      @map("total_installments")
+  dueDate           DateTime @map("due_date")
+  /// Vencimento com que a parcela nasceu. Preservado para que antecipar ou prorrogar não
+  /// apague a data acordada originalmente.
+  originalDueDate   DateTime @map("original_due_date")
+
+  originalAmount    Decimal @map("original_amount") @db.Decimal(18, 2)
+  interestAmount    Decimal @default(0) @map("interest_amount") @db.Decimal(18, 2)
+  penaltyAmount     Decimal @default(0) @map("penalty_amount") @db.Decimal(18, 2)
+  discountAmount    Decimal @default(0) @map("discount_amount") @db.Decimal(18, 2)
+  withholdingAmount Decimal @default(0) @map("withholding_amount") @db.Decimal(18, 2)
+  netAmount         Decimal @map("net_amount") @db.Decimal(18, 2)
+  paidAmount        Decimal @default(0) @map("paid_amount") @db.Decimal(18, 2)
+  advanceAmount     Decimal @default(0) @map("advance_amount") @db.Decimal(18, 2)
+  balanceAmount     Decimal @map("balance_amount") @db.Decimal(18, 2)
+
+  status AccountsPayableInstallmentStatus @default(OPEN)
+
+  financialAccountId   String?   @map("financial_account_id") @db.Uuid
+  paymentMethodId      String?   @map("payment_method_id") @db.Uuid
+  scheduledPaymentDate DateTime? @map("scheduled_payment_date")
+
+  barcode       String?
+  digitableLine String? @map("digitable_line")
+
+  paidAt DateTime? @map("paid_at")
+  notes  String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  payable         AccountsPayable                     @relation(fields: [payableId], references: [id], onDelete: Cascade)
+  partialPayments AccountsPayablePartialPayment[]
+  adjustments     AccountsPayableAdjustment[]
+  advanceUses     AccountsPayableAdvanceApplication[]
+  history         AccountsPayableHistory[]
+
+  @@unique([payableId, installmentNumber])
+  @@index([payableId])
+  @@index([dueDate, status])
+  @@map("accounts_payable_installments")
+}
+
+/// Baixa registrada em uma parcela.
+///
+/// Registrar não é pagar: aqui alguém informa que o pagamento aconteceu. Executar o
+/// pagamento (PIX, CNAB, portal) é do módulo de Pagamentos, que ainda não existe — e este
+/// registro é exatamente o que ele vai gravar quando existir.
+model AccountsPayablePartialPayment {
+  id            String  @id @default(uuid()) @db.Uuid
+  payableId     String  @map("payable_id") @db.Uuid
+  installmentId String? @map("installment_id") @db.Uuid
+
+  /// Valor abatido do saldo.
+  amount         Decimal @db.Decimal(18, 2)
+  /// Composição efetivamente paga, para a conciliação futura bater o extrato.
+  interestAmount Decimal @default(0) @map("interest_amount") @db.Decimal(18, 2)
+  penaltyAmount  Decimal @default(0) @map("penalty_amount") @db.Decimal(18, 2)
+  discountAmount Decimal @default(0) @map("discount_amount") @db.Decimal(18, 2)
+  /// Quanto saiu do caixa: `amount + juros + multa − desconto`.
+  settledAmount  Decimal @map("settled_amount") @db.Decimal(18, 2)
+
+  paidAt DateTime @map("paid_at")
+
+  financialAccountId String? @map("financial_account_id") @db.Uuid
+  paymentMethodId    String? @map("payment_method_id") @db.Uuid
+  /// Número do comprovante, da transação ou do documento de caixa.
+  receiptNumber      String? @map("receipt_number")
+  notes              String?
+
+  status         AccountsPayableEntryStatus @default(ACTIVE)
+  reversalReason String?                    @map("reversal_reason")
+  reversedBy     String?                    @map("reversed_by") @db.Uuid
+  reversedAt     DateTime?                  @map("reversed_at")
+
+  registeredBy String?  @map("registered_by") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  payable     AccountsPayable             @relation(fields: [payableId], references: [id], onDelete: Cascade)
+  installment AccountsPayableInstallment? @relation(fields: [installmentId], references: [id])
+
+  @@index([payableId])
+  @@index([installmentId])
+  @@index([paidAt])
+  @@map("accounts_payable_partial_payments")
+}
+
+/// Juros, multa, desconto ou correção aplicados ao título ou a uma parcela.
+///
+/// Cada ajuste é uma linha imutável. Errou, estorna — nunca edita. O valor do título é a
+/// soma das linhas ativas, e assim a pergunta "por que este título mudou de R$ 1.000 para
+/// R$ 1.083,20?" sempre tem resposta.
+model AccountsPayableAdjustment {
+  id            String  @id @default(uuid()) @db.Uuid
+  payableId     String  @map("payable_id") @db.Uuid
+  installmentId String? @map("installment_id") @db.Uuid
+
+  type   AccountsPayableAdjustmentType
+  source AccountsPayableAdjustmentSource @default(MANUAL)
+  amount Decimal                         @db.Decimal(18, 2)
+
+  /// Base e taxa quando o valor veio de um cálculo — é a memória de cálculo da tela.
+  calculationBase Decimal? @map("calculation_base") @db.Decimal(18, 2)
+  rate            Decimal? @db.Decimal(9, 4)
+  /// Dias de atraso considerados, quando o ajuste é por mora.
+  overdueDays     Int?     @map("overdue_days")
+
+  reason String?
+
+  status         AccountsPayableEntryStatus @default(ACTIVE)
+  reversalReason String?                    @map("reversal_reason")
+  reversedBy     String?                    @map("reversed_by") @db.Uuid
+  reversedAt     DateTime?                  @map("reversed_at")
+
+  appliedBy String?  @map("applied_by") @db.Uuid
+  appliedAt DateTime @default(now()) @map("applied_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  payable     AccountsPayable             @relation(fields: [payableId], references: [id], onDelete: Cascade)
+  installment AccountsPayableInstallment? @relation(fields: [installmentId], references: [id])
+
+  @@index([payableId])
+  @@index([installmentId])
+  @@map("accounts_payable_adjustments")
+}
+
+/// Rateio copiado do lançamento.
+///
+/// Existe aqui, e não só no lançamento, porque o dashboard por centro de custo e por
+/// projeto responde sobre **títulos** — e um título precisa continuar explicando sua
+/// própria distribuição mesmo que o pré-lançamento seja cancelado depois.
+model AccountsPayableAllocation {
+  id        String @id @default(uuid()) @db.Uuid
+  payableId String @map("payable_id") @db.Uuid
+
+  targetType AllocationTargetType @map("target_type")
+
+  costCenterId   String? @map("cost_center_id") @db.Uuid
+  resultCenterId String? @map("result_center_id") @db.Uuid
+  projectId      String? @map("project_id") @db.Uuid
+  businessUnitId String? @map("business_unit_id") @db.Uuid
+  categoryId     String? @map("category_id") @db.Uuid
+  accountPlanId  String? @map("account_plan_id") @db.Uuid
+
+  percentage Decimal @db.Decimal(7, 4)
+  amount     Decimal @db.Decimal(18, 2)
+
+  sortOrder Int     @default(0) @map("sort_order")
+  notes     String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  payable AccountsPayable @relation(fields: [payableId], references: [id], onDelete: Cascade)
+
+  @@index([payableId])
+  @@map("accounts_payable_allocations")
+}
+
+/// Retenção vinculada ao título (critério de aceite 6).
+///
+/// Copiada do lançamento com a memória de cálculo inteira — base, alíquota e mínimo — para
+/// que a revisão autorizada da seção 11 possa ser feita sobre o título, que é o documento
+/// que o fisco e o fornecedor enxergam.
+model AccountsPayableWithholding {
+  id        String @id @default(uuid()) @db.Uuid
+  payableId String @map("payable_id") @db.Uuid
+
+  /// Retenção do lançamento que deu origem a esta, quando veio de lá.
+  entryWithholdingId String? @map("entry_withholding_id") @db.Uuid
+
+  taxType         TaxWithholdingType @map("tax_type")
+  calculationBase Decimal            @map("calculation_base") @db.Decimal(18, 2)
+  rate            Decimal            @db.Decimal(5, 2)
+  amount          Decimal            @db.Decimal(18, 2)
+  minimumAmount   Decimal?           @map("minimum_amount") @db.Decimal(18, 2)
+
+  status FinancialEntryWithholdingStatus @default(CONFIRMED)
+
+  decisionReason String?   @map("decision_reason")
+  decidedBy      String?   @map("decided_by") @db.Uuid
+  decidedAt      DateTime? @map("decided_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  payable AccountsPayable @relation(fields: [payableId], references: [id], onDelete: Cascade)
+
+  @@unique([payableId, taxType])
+  @@index([payableId])
+  @@map("accounts_payable_withholdings")
+}
+
+/// Bloqueio do título (seção 12).
+///
+/// Enquanto houver um bloqueio sem liberação, o título não é programado nem enviado para
+/// agendamento bancário. O registro sobrevive à liberação: saber que um título **esteve**
+/// bloqueado, por quem e por quê é metade do valor do controle.
+model AccountsPayableBlock {
+  id        String @id @default(uuid()) @db.Uuid
+  payableId String @map("payable_id") @db.Uuid
+
+  reason      AccountsPayableBlockReason
+  description String?
+
+  blockedBy String?  @map("blocked_by") @db.Uuid
+  blockedAt DateTime @default(now()) @map("blocked_at")
+
+  releasedBy    String?   @map("released_by") @db.Uuid
+  releasedAt    DateTime? @map("released_at")
+  releaseReason String?   @map("release_reason")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  payable AccountsPayable @relation(fields: [payableId], references: [id], onDelete: Cascade)
+
+  @@index([payableId])
+  @@index([payableId, releasedAt])
+  @@map("accounts_payable_blocks")
+}
+
+/// Renegociação do título.
+///
+/// `previousSchedule` guarda o cronograma inteiro **antes** da mudança, em JSON. A seção 9
+/// exige nunca apagar o histórico original, e as parcelas em si são reescritas — sem esta
+/// fotografia, o acordo anterior desapareceria e ninguém conseguiria comparar o que foi
+/// negociado com o que existia.
+model AccountsPayableRenegotiation {
+  id        String @id @default(uuid()) @db.Uuid
+  payableId String @map("payable_id") @db.Uuid
+
+  reason String
+
+  /// Fotografia das parcelas anteriores: número, vencimento, valores e situação.
+  previousSchedule Json @map("previous_schedule")
+
+  previousNetAmount Decimal @map("previous_net_amount") @db.Decimal(18, 2)
+  newNetAmount      Decimal @map("new_net_amount") @db.Decimal(18, 2)
+
+  interestAdded   Decimal @default(0) @map("interest_added") @db.Decimal(18, 2)
+  penaltyAdded    Decimal @default(0) @map("penalty_added") @db.Decimal(18, 2)
+  discountGranted Decimal @default(0) @map("discount_granted") @db.Decimal(18, 2)
+
+  effectiveAt DateTime @map("effective_at")
+
+  createdBy String?  @map("created_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+
+  payable AccountsPayable @relation(fields: [payableId], references: [id], onDelete: Cascade)
+
+  @@index([payableId])
+  @@map("accounts_payable_renegotiations")
+}
+
+/// Adiantamento concedido a um fornecedor (seção 10).
+///
+/// Vive fora do título porque nasce **antes** dele: adianta-se ao fornecedor e só depois
+/// chega a nota. Prendê-lo a um título obrigaria a inventar um título fantasma para
+/// receber o adiantamento.
+model SupplierAdvance {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  companyId      String @map("company_id") @db.Uuid
+
+  supplierId         String  @map("supplier_id") @db.Uuid
+  supplierContractId String? @map("supplier_contract_id") @db.Uuid
+
+  type   SupplierAdvanceType   @default(SUPPLIER)
+  status SupplierAdvanceStatus @default(OPEN)
+
+  amount          Decimal @db.Decimal(18, 2)
+  /// Soma das aplicações ativas.
+  appliedAmount   Decimal @default(0) @map("applied_amount") @db.Decimal(18, 2)
+  /// `amount − appliedAmount`. Nunca negativo.
+  remainingAmount Decimal @map("remaining_amount") @db.Decimal(18, 2)
+
+  reference String?
+  grantedAt DateTime @map("granted_at")
+  notes     String?
+
+  financialAccountId String? @map("financial_account_id") @db.Uuid
+  paymentMethodId    String? @map("payment_method_id") @db.Uuid
+
+  cancellationReason String?   @map("cancellation_reason")
+  cancelledBy        String?   @map("cancelled_by") @db.Uuid
+  cancelledAt        DateTime? @map("cancelled_at")
+
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company      Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  supplier     Supplier          @relation(fields: [supplierId], references: [id])
+  contract     SupplierContract? @relation(fields: [supplierContractId], references: [id])
+
+  applications AccountsPayableAdvanceApplication[]
+
+  @@index([organizationId, companyId, status])
+  @@index([supplierId])
+  @@map("supplier_advances")
+}
+
+/// Abatimento de um adiantamento em um título.
+///
+/// Linha própria em vez de um campo no título: um adiantamento pode ser consumido por
+/// vários títulos e um título pode consumir vários adiantamentos. Um campo escondendo essa
+/// relação é o que transforma "sobrou saldo de adiantamento?" numa planilha paralela.
+model AccountsPayableAdvanceApplication {
+  id            String  @id @default(uuid()) @db.Uuid
+  advanceId     String  @map("advance_id") @db.Uuid
+  payableId     String  @map("payable_id") @db.Uuid
+  installmentId String? @map("installment_id") @db.Uuid
+
+  amount Decimal @db.Decimal(18, 2)
+  notes  String?
+
+  status         AccountsPayableEntryStatus @default(ACTIVE)
+  reversalReason String?                    @map("reversal_reason")
+  reversedBy     String?                    @map("reversed_by") @db.Uuid
+  reversedAt     DateTime?                  @map("reversed_at")
+
+  appliedBy String?  @map("applied_by") @db.Uuid
+  appliedAt DateTime @default(now()) @map("applied_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  advance     SupplierAdvance             @relation(fields: [advanceId], references: [id], onDelete: Cascade)
+  payable     AccountsPayable             @relation(fields: [payableId], references: [id], onDelete: Cascade)
+  installment AccountsPayableInstallment? @relation(fields: [installmentId], references: [id])
+
+  @@index([advanceId])
+  @@index([payableId])
+  @@map("accounts_payable_advance_applications")
+}
+
+/// Histórico do título (seções 13 e 18).
+///
+/// Guarda IP e dispositivo porque a seção 18 pede — e porque, em contas a pagar, a
+/// pergunta que aparece numa auditoria não é só "quem mudou o vencimento", é "de onde".
+model AccountsPayableHistory {
+  id            String  @id @default(uuid()) @db.Uuid
+  payableId     String  @map("payable_id") @db.Uuid
+  installmentId String? @map("installment_id") @db.Uuid
+
+  action AccountsPayableHistoryAction
+
+  previousStatus AccountsPayableStatus? @map("previous_status")
+  newStatus      AccountsPayableStatus? @map("new_status")
+
+  /// Campo alterado e seus valores, quando a ação é uma edição.
+  field         String?
+  previousValue String? @map("previous_value")
+  newValue      String? @map("new_value")
+
+  justification String?
+
+  actorId   String?  @map("actor_id") @db.Uuid
+  ipAddress String?  @map("ip_address")
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  payable     AccountsPayable             @relation(fields: [payableId], references: [id], onDelete: Cascade)
+  installment AccountsPayableInstallment? @relation(fields: [installmentId], references: [id])
+
+  @@index([payableId, createdAt])
+  @@map("accounts_payable_history")
+}
+
+/// Comentário no título.
+model AccountsPayableComment {
+  id        String @id @default(uuid()) @db.Uuid
+  payableId String @map("payable_id") @db.Uuid
+
+  authorId String @map("author_id") @db.Uuid
+  body     String
+
+  /// Anexos do comentário: `[{ path, fileName, mimeType, size }]` no mesmo bucket privado
+  /// da entrada de documentos.
+  attachments Json?
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  payable AccountsPayable @relation(fields: [payableId], references: [id], onDelete: Cascade)
+
+  @@index([payableId])
+  @@map("accounts_payable_comments")
+}
+
+/// Tag do título.
+///
+/// Guarda o rótulo além do vínculo com a tag cadastrada: renomear a tag no cadastro não
+/// deve reescrever como o título foi marcado no dia em que foi criado.
+model AccountsPayableTag {
+  id        String @id @default(uuid()) @db.Uuid
+  payableId String @map("payable_id") @db.Uuid
+
+  financialTagId String? @map("financial_tag_id") @db.Uuid
+  label          String
+
+  createdBy String?  @map("created_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+
+  payable      AccountsPayable @relation(fields: [payableId], references: [id], onDelete: Cascade)
+  financialTag FinancialTag?   @relation(fields: [financialTagId], references: [id])
+
+  @@unique([payableId, label])
+  @@index([payableId])
+  @@map("accounts_payable_tags")
+}
+
+/// Parâmetros do Contas a Pagar, por empresa.
+model AccountsPayableSettings {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  companyId      String @unique @map("company_id") @db.Uuid
+
+  /// Gera o título automaticamente quando o lançamento é aprovado (critério de aceite 1).
+  /// Desligado, o lançamento fica aprovado e alguém precisa gerar o título à mão.
+  autoGenerateOnApproval Boolean @default(true) @map("auto_generate_on_approval")
+
+  /// Prefixo do código do título. O sequencial é por empresa e por ano.
+  codePrefix String @default("CP") @map("code_prefix")
+
+  /// Juros ao mês e multa, em percentual, usados no cálculo sugerido de mora.
+  defaultMonthlyInterestRate Decimal? @map("default_monthly_interest_rate") @db.Decimal(9, 4)
+  defaultPenaltyRate         Decimal? @map("default_penalty_rate") @db.Decimal(9, 4)
+  /// Dias de tolerância antes de a mora começar a contar.
+  gracePeriodDays            Int      @default(0) @map("grace_period_days")
+
+  /// Permite registrar baixa parcial. Desligado, só a baixa integral da parcela.
+  allowPartialPayment Boolean @default(true) @map("allow_partial_payment")
+
+  /// Exige justificativa nas alterações que a auditoria costuma questionar.
+  requireJustificationOnDueDateChange Boolean @default(true) @map("require_justification_on_due_date_change")
+  requireJustificationOnAmountChange  Boolean @default(true) @map("require_justification_on_amount_change")
+
+  /// Bloqueia automaticamente o título gerado a partir de documento com pendência aberta.
+  autoBlockWhenDocumentPending Boolean @default(true) @map("auto_block_when_document_pending")
+
+  /// Dias após o cancelamento em que ainda se pode reabrir. Nulo = sem prazo.
+  reopenWindowDays Int? @map("reopen_window_days")
+
+  defaultPriority AccountsPayablePriority @default(NORMAL) @map("default_priority")
+
+  createdBy String?  @map("created_by") @db.Uuid
+  updatedBy String?  @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company      Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@map("accounts_payable_settings")
 }
