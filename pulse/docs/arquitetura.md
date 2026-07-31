@@ -817,6 +817,119 @@ descobrir sozinho qual deles travou o lote inteiro.
 direto pelo Prisma, e nenhum dos dois sabe que o agendamento existe. A seta segue apontando
 em um sentido só, como nos módulos anteriores.
 
+## Conciliação Bancária
+
+### O extrato é um fato, não um rascunho
+
+`bank_transactions.amount` é **sempre positivo**. O sentido mora em `direction`. Guardar
+valor negativo obrigaria cada consulta a lembrar do sinal, e a primeira que esquecesse
+somaria débito como crédito — em silêncio, num relatório que ninguém confere linha a linha.
+
+`original_description` guarda o texto exatamente como o banco mandou;
+`normalized_description` é a versão sem acento, sem pontuação e em maiúsculas, sobre a qual
+o motor compara. Duas colunas e não uma: quando a normalização melhorar, ela roda de novo
+sobre o original — coisa impossível se o original tivesse sido sobrescrito.
+
+O arquivo enviado nunca é reescrito nem apagado. Reprocessar lê de novo o mesmo arquivo do
+storage privado; é o que permite corrigir um mapeamento errado sem pedir o extrato de volta
+ao cliente.
+
+### O sinal nunca é assumido
+
+Para CSV e planilha, `bank_statement_import_templates.sign_rule` diz **como** o sentido é
+determinado: colunas separadas de crédito e débito, sinal no próprio número, ou uma coluna
+de tipo com os textos que significam cada coisa. Uma linha que não caiba na regra vira erro
+com o número da linha, não um palpite.
+
+Adivinhar acertaria na maioria dos arquivos e inverteria o extrato inteiro na minoria — e a
+minoria só apareceria na conciliação do mês seguinte, quando ninguém mais lembra qual
+arquivo foi importado.
+
+### Duplicidade em faixas, não em booleano
+
+`duplicate_status` tem quatro níveis porque hash igual e "mesmo valor no mesmo dia" exigem
+respostas diferentes. Hash igual é certeza: é o mesmo arquivo, byte a byte. Mesmo valor e
+data é suspeita — e tarifas legítimas se repetem todo mês. Um booleano forçaria as duas ao
+mesmo tratamento e faria o sistema recusar movimentação verdadeira.
+
+### O score é auditável, não mágico
+
+`reconciliation_match_suggestions.matching_criteria` guarda **quais** critérios bateram e
+quanto cada um valeu — `[{ criterion, points, detail }]`. Sem isso o score seria um número
+sem defesa: quem revisa precisa saber se a sugestão veio do valor exato ou de um nome
+parecido, porque a confiança nas duas coisas é muito diferente.
+
+Os pesos vivem em `MATCH_WEIGHTS`, nomeados, em vez de espalhados como números mágicos.
+Quando o próximo prompt tornar os pesos configuráveis, o que muda é a origem do objeto — não
+a lógica que o consome.
+
+Dois critérios são **obrigatórios e não valem ponto**: mesma conta financeira e sentido
+compatível. Um crédito conciliado contra uma conta a pagar é dinheiro inventado, e nenhuma
+soma de pontos deveria poder produzir isso.
+
+### Nada concilia sozinho
+
+O motor produz sugestão; a transação vai para `MATCH_SUGGESTED`, nunca para `MATCHED`, por
+mais alto que o score seja. `reconciliation_settings.automatic_matching_enabled` já existe,
+desligado por padrão, para o módulo seguinte ligar sem migração — mas `mandatory_review`
+continua verdadeiro nesta etapa.
+
+Uma conciliação errada fechada automaticamente é pior que uma pendência aberta: a pendência
+aparece na fila, a conciliação errada some do radar exatamente porque parece resolvida.
+
+### Um cabeçalho, muitos itens
+
+`reconciliations` é o cabeçalho; `reconciliation_items` liga **uma** transação a **uma**
+entidade do sistema, com o valor alocado. Um-para-muitos são várias linhas com a mesma
+transação; muitos-para-um são várias linhas com a mesma entidade. O modelo não precisa saber
+qual é qual — e por isso os três casos não viraram três tabelas que divergiriam na primeira
+mudança de regra.
+
+`reconciliation_type` existe para a tela e para os relatórios, não para a lógica: é um
+rótulo derivado da contagem de itens.
+
+### Desfazer preserva
+
+`unmatch` muda o status para `UNMATCHED` e grava quem desfez, quando e por quê. Apagar
+deixaria a movimentação disponível de novo sem nenhum vestígio de que já esteve conciliada —
+e a pergunta "quem desfez isso?" ficaria permanentemente sem resposta.
+
+O saldo volta pelo mesmo caminho: `reconciled_amount` é reduzido pelo que aquela conciliação
+tinha consumido, e a transação volta a `AVAILABLE` ou a `PARTIALLY_MATCHED` conforme o que
+sobrou de outras conciliações vivas.
+
+### Configuração em duas camadas
+
+`reconciliation_settings` tem `@@unique([companyId, financialAccountId])`, com
+`financialAccountId` nulo significando "a empresa inteira". A configuração da conta vence a
+da empresa. Uma conta de investimento e uma conta corrente não têm a mesma tolerância nem
+aceitam os mesmos formatos, e uma configuração só forçaria a mais restritiva às duas.
+
+### Mascaramento no back-end
+
+Número de conta e documento da contraparte saem mascarados de `BankTransactionsService`, não
+da tela. O valor cru sairia na resposta HTTP, no log do proxy e no cache do navegador —
+esconder no front seria esconder só de quem olha. `reconciliation.view_sensitive_data` é
+permissão própria e não está embutida em `view`: quase todo mundo precisa conciliar, e quase
+ninguém precisa do número completo da conta de terceiro para isso.
+
+### Movimentação digitada não se disfarça de extrato
+
+`is_manual` e `manual_reason` são obrigatórios em quem digita. Sem essa distinção, uma
+conciliação fechada contra dados inventados seria indistinguível de uma fechada contra o
+extrato de verdade — e o fechamento do mês bateria por construção, não por conferência.
+
+### O grafo continua acíclico
+
+`reconciliation` importa Prisma, Auditoria e a Entrada de Documentos (só pelo
+`FileValidationService`: MIME, hash, antivírus). Contas a Pagar e Agendamento são **lidos**
+direto pelo Prisma, e nenhum dos dois sabe que a conciliação existe. Importar o Contas a
+Pagar aqui criaria o primeiro ciclo do grafo.
+
+O `StorageService` — bucket privado, URLs assinadas — é global e foi reaproveitado inteiro.
+Um segundo caminho de upload seria um segundo conjunto de regras de segurança para manter em
+dia, e o segundo sempre atrasa.
+
 
 ## Autenticação
 

@@ -20,6 +20,7 @@ import { DocumentProcessingModule } from './modules/document-processing/document
 import { ApprovalsModule } from './modules/approvals/approvals.module';
 import { AccountsPayableModule } from './modules/accounts-payable/accounts-payable.module';
 import { PaymentSchedulingModule } from './modules/payment-scheduling/payment-scheduling.module';
+import { ReconciliationModule } from './modules/reconciliation/reconciliation.module';
 import { OrganizationsModule } from './modules/organizations/organizations.module';
 import { RolesModule } from './modules/roles/roles.module';
 import { SuppliersModule } from './modules/suppliers/suppliers.module';
@@ -49,6 +50,7 @@ import { SupabaseModule } from './supabase/supabase.module';
     ApprovalsModule,
     AccountsPayableModule,
     PaymentSchedulingModule,
+    ReconciliationModule,
     TaxonomyModule,
     FinancialInstitutionsModule,
     SuppliersModule,

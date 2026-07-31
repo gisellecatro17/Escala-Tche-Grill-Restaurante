@@ -928,6 +928,16 @@ model Organization {
   paymentBatches          PaymentBatch[]
   paymentScheduleSettings PaymentScheduleSettings[]
 
+  bankStatementImports         BankStatementImport[]
+  bankStatementImportTemplates BankStatementImportTemplate[]
+  bankTransactions             BankTransaction[]
+  reconciliationSuggestions    ReconciliationMatchSuggestion[]
+  reconciliations              Reconciliation[]
+  reconciliationHistory        ReconciliationHistory[]
+  reconciliationAssignments    ReconciliationAssignment[]
+  reconciliationComments       ReconciliationComment[]
+  reconciliationSettings       ReconciliationSettings[]
+
   @@map("organizations")
 }
 
@@ -1072,6 +1082,16 @@ model Company {
   paymentSchedules        PaymentSchedule[]
   paymentBatches          PaymentBatch[]
   paymentScheduleSettings PaymentScheduleSettings?
+
+  bankStatementImports         BankStatementImport[]
+  bankStatementImportTemplates BankStatementImportTemplate[]
+  bankTransactions             BankTransaction[]
+  reconciliationSuggestions    ReconciliationMatchSuggestion[]
+  reconciliations              Reconciliation[]
+  reconciliationHistory        ReconciliationHistory[]
+  reconciliationAssignments    ReconciliationAssignment[]
+  reconciliationComments       ReconciliationComment[]
+  reconciliationSettings       ReconciliationSettings[]
 
   @@unique([organizationId, internalCode])
   @@index([organizationId])
@@ -3907,6 +3927,12 @@ model FinancialAccount {
   treasuryCashFor    TreasurySettings[] @relation("TreasuryCashAccount")
 
   paymentBatches PaymentBatch[]
+
+  bankStatementImports         BankStatementImport[]
+  bankStatementImportTemplates BankStatementImportTemplate[]
+  bankTransactions             BankTransaction[]
+  reconciliations              Reconciliation[]
+  reconciliationSettings       ReconciliationSettings[]
 
   @@unique([companyId, internalCode])
   @@index([organizationId])
@@ -7228,4 +7254,789 @@ model PaymentScheduleSettings {
   company      Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@map("payment_schedule_settings")
+}
+
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║  CONCILIAÇÃO FINANCEIRA                                                  ║
+// ║  O extrato do banco de um lado, o que o Pulse registrou do outro, e a    ║
+// ║  ponte entre os dois — sugerida pelo sistema, confirmada por gente.      ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+
+/// De onde a movimentação veio (seção 9).
+///
+/// Os quatro primeiros funcionam nesta etapa. Os demais existem para que o módulo de
+/// integração bancária só preencha — a coluna já aceita o valor, a tela já sabe rotulá-lo.
+enum BankStatementSourceType {
+  OFX
+  CSV
+  XLSX
+  MANUAL
+  /// Retorno CNAB — estrutura preparada, leitura não implementada.
+  CNAB_RETURN
+  OPEN_FINANCE
+  BANK_API
+  EXTERNAL_INTEGRATION
+
+  @@map("bank_statement_source_type")
+}
+
+/// Situação da importação (seção 18).
+///
+/// O ciclo é longo de propósito: cada etapa é um ponto em que a importação pode parar com
+/// um motivo específico. Um `FAILED` genérico obrigaria quem importa a abrir o arquivo
+/// para descobrir se o problema foi o layout, a conta ou a duplicidade.
+enum BankStatementImportStatus {
+  UPLOADED
+  VALIDATING
+  VALIDATED
+  PARSING
+  NORMALIZING
+  CHECKING_DUPLICATES
+  READY_TO_IMPORT
+  IMPORTING
+  IMPORTED
+  PARTIALLY_IMPORTED
+  FAILED
+  CANCELLED
+  REPROCESSED
+  ARCHIVED
+
+  @@map("bank_statement_import_status")
+}
+
+/// Natureza da movimentação (seção 20).
+///
+/// Extensível por desenho: nesta etapa a classificação vem de regras simples sobre o
+/// histórico e o tipo do OFX. O Prompt 12B substitui o classificador sem tocar no enum.
+enum BankTransactionType {
+  CREDIT
+  DEBIT
+  PIX_IN
+  PIX_OUT
+  TRANSFER_IN
+  TRANSFER_OUT
+  BOLETO_PAYMENT
+  BOLETO_RECEIPT
+  TED_IN
+  TED_OUT
+  DOC_IN
+  DOC_OUT
+  BANK_FEE
+  TAX_PAYMENT
+  PAYROLL
+  CARD_SETTLEMENT
+  LOAN
+  FINANCIAL_INVESTMENT
+  FINANCIAL_REDEMPTION
+  INTEREST
+  PENALTY
+  REFUND
+  REVERSAL
+  CHARGEBACK
+  CASH_DEPOSIT
+  CHECK
+  INTERNAL_TRANSFER
+  OTHER
+  UNKNOWN
+
+  @@map("bank_transaction_type")
+}
+
+/// Entrada ou saída. Separado do tipo porque o sentido é o que **nunca** pode estar
+/// errado: um crédito conciliado contra uma conta a pagar é dinheiro inventado.
+enum BankTransactionDirection {
+  IN
+  OUT
+
+  @@map("bank_transaction_direction")
+}
+
+/// Situação da transação diante da conciliação (seção 26).
+enum BankTransactionReconciliationStatus {
+  IMPORTED
+  AVAILABLE
+  MATCH_SUGGESTED
+  PARTIALLY_MATCHED
+  MATCHED
+  MANUALLY_MATCHED
+  UNIDENTIFIED
+  IGNORED
+  DUPLICATE
+  REVERSED
+  CANCELLED
+  ERROR
+
+  @@map("bank_transaction_reconciliation_status")
+}
+
+/// Grau de certeza de que a transação já existe (seção 23).
+///
+/// Quatro faixas em vez de um booleano: "duplicidade exata" (mesmo identificador bancário)
+/// e "possível duplicidade" (mesmo valor e data) exigem respostas diferentes de quem
+/// importa, e um booleano forçaria as duas ao mesmo tratamento.
+enum DuplicateStatus {
+  NOT_DUPLICATE
+  POSSIBLE
+  HIGH_PROBABILITY
+  EXACT
+
+  @@map("duplicate_status")
+}
+
+/// Entidade interna com que a transação pode ser conciliada (seção 27).
+///
+/// As seis primeiras funcionam nesta etapa; as demais existem para que o motor de
+/// correspondência aceite novos tipos sem migração — só um resolvedor a mais.
+enum ReconcilableEntityType {
+  ACCOUNTS_PAYABLE
+  ACCOUNTS_PAYABLE_INSTALLMENT
+  PAYMENT_SCHEDULE
+  PAYMENT_BATCH
+  ACCOUNTS_PAYABLE_PAYMENT
+  INTERNAL_TRANSFER
+  MANUAL_ADJUSTMENT
+  ACCOUNTS_RECEIVABLE
+  ACCOUNTS_RECEIVABLE_INSTALLMENT
+  RECEIPT
+  BANK_FEE
+  FINANCIAL_INVESTMENT
+  SUPPLIER_ADVANCE
+  PAYROLL
+  TAX
+  OTHER
+
+  @@map("reconcilable_entity_type")
+}
+
+/// Faixa de confiança da sugestão (seção 30).
+enum MatchConfidenceLevel {
+  VERY_HIGH
+  HIGH
+  MEDIUM
+  LOW
+
+  @@map("match_confidence_level")
+}
+
+/// Situação da sugestão gerada pelo motor.
+enum MatchSuggestionStatus {
+  PENDING
+  ACCEPTED
+  DISMISSED
+  EXPIRED
+
+  @@map("match_suggestion_status")
+}
+
+/// Forma da conciliação (seções 33 a 36).
+enum ReconciliationType {
+  ONE_TO_ONE
+  ONE_TO_MANY
+  MANY_TO_ONE
+  PARTIAL
+  TRANSFER
+  ADJUSTMENT
+
+  @@map("reconciliation_type")
+}
+
+enum ReconciliationStatus {
+  ACTIVE
+  UNMATCHED
+  CANCELLED
+
+  @@map("reconciliation_status")
+}
+
+/// Ações registradas na linha do tempo (seções 42 e 49).
+enum ReconciliationHistoryAction {
+  FILE_UPLOADED
+  FILE_VALIDATED
+  FILE_IMPORTED
+  FILE_REPROCESSED
+  FILE_CANCELLED
+  FILE_ARCHIVED
+  FILE_DOWNLOADED
+  DUPLICATE_DETECTED
+  DUPLICATE_OVERRIDDEN
+  TRANSACTION_IMPORTED
+  TRANSACTION_NORMALIZED
+  TRANSACTION_MANUAL_CREATED
+  TRANSACTION_UPDATED
+  TRANSACTION_IGNORED
+  TRANSACTION_REPROCESSED
+  SUGGESTIONS_GENERATED
+  SUGGESTION_ACCEPTED
+  SUGGESTION_DISMISSED
+  MATCHED
+  PARTIALLY_MATCHED
+  UNMATCHED
+  ASSIGNED
+  ADJUSTMENT_CREATED
+  SETTINGS_CHANGED
+
+  @@map("reconciliation_history_action")
+}
+
+/// Visibilidade do comentário.
+enum ReconciliationCommentVisibility {
+  INTERNAL
+  SHARED
+
+  @@map("reconciliation_comment_visibility")
+}
+
+/// Arquivo de extrato importado (seção 51).
+///
+/// O arquivo original é **sempre** preservado no storage privado e nunca reescrito. Quando
+/// uma importação é reprocessada, nasce outra linha apontando para o mesmo anexo: o que
+/// mudou foi a leitura, não o extrato que o banco emitiu.
+model BankStatementImport {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  companyId      String @map("company_id") @db.Uuid
+
+  financialAccountId String  @map("financial_account_id") @db.Uuid
+  attachmentId       String? @map("attachment_id") @db.Uuid
+  importTemplateId   String? @map("import_template_id") @db.Uuid
+
+  sourceType BankStatementSourceType
+
+  originalFileName String? @map("original_file_name")
+  storagePath      String? @map("storage_path")
+  mimeType         String? @map("mime_type")
+  fileExtension    String? @map("file_extension")
+  fileSize         Int?    @map("file_size")
+  /// SHA-256 do conteúdo. É o primeiro critério de duplicidade de arquivo — e o único
+  /// que não depende de o banco preencher nada direito.
+  fileHash         String? @map("file_hash")
+
+  bankCode      String? @map("bank_code")
+  agencyNumber  String? @map("agency_number")
+  accountNumber String? @map("account_number")
+  currencyCode  String  @default("BRL") @map("currency_code") @db.VarChar(3)
+
+  statementStartDate DateTime? @map("statement_start_date")
+  statementEndDate   DateTime? @map("statement_end_date")
+
+  /// Saldos declarados no arquivo.
+  openingBalance           Decimal? @map("opening_balance") @db.Decimal(18, 2)
+  closingBalance           Decimal? @map("closing_balance") @db.Decimal(18, 2)
+  /// `abertura + créditos − débitos`. Divergir do declarado é sinal de leitura incompleta.
+  calculatedClosingBalance Decimal? @map("calculated_closing_balance") @db.Decimal(18, 2)
+
+  totalCredits Decimal @default(0) @map("total_credits") @db.Decimal(18, 2)
+  totalDebits  Decimal @default(0) @map("total_debits") @db.Decimal(18, 2)
+
+  transactionCount          Int @default(0) @map("transaction_count")
+  validTransactionCount     Int @default(0) @map("valid_transaction_count")
+  invalidTransactionCount   Int @default(0) @map("invalid_transaction_count")
+  duplicateTransactionCount Int @default(0) @map("duplicate_transaction_count")
+
+  status BankStatementImportStatus @default(UPLOADED)
+
+  errorCode    String? @map("error_code")
+  errorMessage String? @map("error_message")
+
+  /// Prévia, avisos, mapeamento aplicado e o diagnóstico de duplicidade. Fica em JSON
+  /// porque cada formato produz um diagnóstico diferente e transformar isso em colunas
+  /// congelaria o módulo no layout de hoje.
+  importMetadata Json? @map("import_metadata")
+
+  /// Justificativa exigida quando alguém importa por cima de uma duplicidade.
+  duplicateOverrideReason String? @map("duplicate_override_reason")
+  duplicateOfImportId     String? @map("duplicate_of_import_id") @db.Uuid
+
+  importedBy    String?   @map("imported_by") @db.Uuid
+  validatedAt   DateTime? @map("validated_at")
+  importedAt    DateTime? @map("imported_at")
+  reprocessedAt DateTime? @map("reprocessed_at")
+  cancelledAt   DateTime? @map("cancelled_at")
+  archivedAt    DateTime? @map("archived_at")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  organization     Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company          Company                      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  financialAccount FinancialAccount             @relation(fields: [financialAccountId], references: [id])
+  importTemplate   BankStatementImportTemplate? @relation(fields: [importTemplateId], references: [id])
+  duplicateOf      BankStatementImport?         @relation("ImportDuplicate", fields: [duplicateOfImportId], references: [id])
+  duplicates       BankStatementImport[]        @relation("ImportDuplicate")
+
+  transactions BankTransaction[]
+  comments     ReconciliationComment[]
+  history      ReconciliationHistory[]
+
+  @@index([organizationId, companyId, status])
+  @@index([financialAccountId, statementStartDate])
+  @@index([fileHash])
+  @@map("bank_statement_imports")
+}
+
+/// Movimentação bancária (seção 52).
+///
+/// **O dado original nunca é apagado.** `originalDescription` e `rawData` guardam o que o
+/// banco mandou; os campos normalizados são leitura, não substituição. Quando a
+/// normalização melhorar, ela roda de novo sobre o original — coisa impossível se o
+/// original tivesse sido sobrescrito na importação.
+model BankTransaction {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  companyId      String @map("company_id") @db.Uuid
+
+  financialAccountId String  @map("financial_account_id") @db.Uuid
+  statementImportId  String? @map("statement_import_id") @db.Uuid
+
+  sourceType BankStatementSourceType
+
+  /// Identificador dado pelo banco. Forte para duplicidade, mas **nunca** suficiente
+  /// sozinho: há bancos que repetem o FITID entre extratos do mesmo mês.
+  externalTransactionId String? @map("external_transaction_id")
+  fitId                 String? @map("fit_id")
+  transactionCode       String? @map("transaction_code")
+
+  transactionType BankTransactionType      @default(UNKNOWN) @map("transaction_type")
+  direction       BankTransactionDirection
+
+  transactionDate DateTime  @map("transaction_date")
+  postingDate     DateTime? @map("posting_date")
+  valueDate       DateTime? @map("value_date")
+
+  /// Sempre positivo. O sentido mora em `direction` — guardar valor negativo obrigaria
+  /// cada consulta a lembrar do sinal, e uma que esquecesse somaria débito como crédito.
+  amount         Decimal  @db.Decimal(18, 2)
+  currencyCode   String   @default("BRL") @map("currency_code") @db.VarChar(3)
+  /// Saldo após a transação, quando o arquivo traz.
+  runningBalance Decimal? @map("running_balance") @db.Decimal(18, 2)
+
+  documentNumber  String? @map("document_number")
+  checkNumber     String? @map("check_number")
+  referenceNumber String? @map("reference_number")
+
+  /// Texto exatamente como veio do banco.
+  originalDescription   String  @map("original_description")
+  /// Maiúsculas, sem acento, sem ruído — é sobre este que o motor compara.
+  normalizedDescription String? @map("normalized_description")
+
+  payerName     String? @map("payer_name")
+  payerDocument String? @map("payer_document")
+  payeeName     String? @map("payee_name")
+  payeeDocument String? @map("payee_document")
+
+  bankCode      String? @map("bank_code")
+  agencyNumber  String? @map("agency_number")
+  accountNumber String? @map("account_number")
+
+  pixEndToEndId String? @map("pix_end_to_end_id")
+  barcode       String?
+  digitableLine String? @map("digitable_line")
+
+  /// Digitada por alguém, não lida de arquivo. Destacada na tela de propósito: uma
+  /// movimentação manual não pode se passar por extrato bancário.
+  isManual     Boolean @default(false) @map("is_manual")
+  manualReason String? @map("manual_reason")
+
+  isDuplicate              Boolean         @default(false) @map("is_duplicate")
+  duplicateStatus          DuplicateStatus @default(NOT_DUPLICATE) @map("duplicate_status")
+  duplicateOfTransactionId String?         @map("duplicate_of_transaction_id") @db.Uuid
+
+  reconciliationStatus BankTransactionReconciliationStatus @default(IMPORTED) @map("reconciliation_status")
+  /// Quanto do valor já foi conciliado. Permite a conciliação parcial sem perder o total.
+  reconciledAmount     Decimal                             @default(0) @map("reconciled_amount") @db.Decimal(18, 2)
+
+  /// Classificação inicial de quem não achou correspondência (seção 39).
+  unidentifiedReason String? @map("unidentified_reason")
+  ignoredReason      String? @map("ignored_reason")
+
+  assignedUserId String? @map("assigned_user_id") @db.Uuid
+
+  /// A linha bruta do arquivo, como veio. É o que permite reprocessar sem reimportar.
+  rawData Json? @map("raw_data")
+
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  organization     Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company          Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  financialAccount FinancialAccount     @relation(fields: [financialAccountId], references: [id])
+  statementImport  BankStatementImport? @relation(fields: [statementImportId], references: [id])
+  duplicateOf      BankTransaction?     @relation("TransactionDuplicate", fields: [duplicateOfTransactionId], references: [id])
+  duplicates       BankTransaction[]    @relation("TransactionDuplicate")
+
+  suggestions         ReconciliationMatchSuggestion[]
+  reconciliationItems ReconciliationItem[]
+  assignments         ReconciliationAssignment[]
+  comments            ReconciliationComment[]
+  history             ReconciliationHistory[]
+
+  @@index([organizationId, companyId, reconciliationStatus])
+  @@index([financialAccountId, transactionDate])
+  @@index([statementImportId])
+  @@index([fitId])
+  @@index([amount, transactionDate])
+  @@map("bank_transactions")
+}
+
+/// Modelo de importação por banco e conta (seções 14 e 15).
+///
+/// Existe porque cada banco exporta CSV do seu jeito, e refazer o mapeamento a cada mês é
+/// onde o erro entra: uma coluna trocada e o crédito vira débito.
+model BankStatementImportTemplate {
+  id             String  @id @default(uuid()) @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  companyId      String? @map("company_id") @db.Uuid
+
+  financialAccountId String? @map("financial_account_id") @db.Uuid
+
+  name     String
+  bankCode String?                 @map("bank_code")
+  fileType BankStatementSourceType @map("file_type")
+
+  delimiter         String? @db.VarChar(4)
+  encoding          String? @db.VarChar(20)
+  dateFormat        String? @map("date_format") @db.VarChar(20)
+  decimalSeparator  String? @map("decimal_separator") @db.VarChar(2)
+  thousandSeparator String? @map("thousand_separator") @db.VarChar(2)
+
+  headerRow          Int? @map("header_row")
+  dataStartRow       Int? @map("data_start_row")
+  footerRowsToIgnore Int  @default(0) @map("footer_rows_to_ignore")
+
+  /// `{ campoDoPulse: nomeOuÍndiceDaColuna }`. JSON porque o conjunto de colunas varia
+  /// por banco, e uma tabela filha transformaria "editar o mapeamento" em cinco escritas.
+  columnMapping Json @map("column_mapping")
+  /// Como o sinal é determinado: coluna de crédito/débito, coluna de sinal ou valor
+  /// negativo. Nunca é assumido (seção 21).
+  signRule      Json @map("sign_rule")
+
+  isDefault Boolean @default(false) @map("is_default")
+  isActive  Boolean @default(true) @map("is_active")
+
+  lastUsedAt DateTime? @map("last_used_at")
+
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company          Company?          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  financialAccount FinancialAccount? @relation(fields: [financialAccountId], references: [id])
+
+  imports BankStatementImport[]
+
+  @@index([organizationId, companyId])
+  @@index([bankCode])
+  @@map("bank_statement_import_templates")
+}
+
+/// Sugestão de correspondência (seção 54).
+///
+/// `matchingCriteria` guarda **quais** critérios bateram e quanto cada um valeu. Sem isso,
+/// o score seria um número mágico: quem revisa precisa saber se a sugestão veio do valor
+/// exato ou de um documento igual, porque a confiança nas duas coisas é diferente.
+model ReconciliationMatchSuggestion {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  companyId      String @map("company_id") @db.Uuid
+
+  bankTransactionId String @map("bank_transaction_id") @db.Uuid
+
+  candidateEntityType ReconcilableEntityType @map("candidate_entity_type")
+  candidateEntityId   String                 @map("candidate_entity_id") @db.Uuid
+
+  score           Decimal              @db.Decimal(6, 2)
+  confidenceLevel MatchConfidenceLevel @map("confidence_level")
+
+  /// `[{ criterion, points, detail }]` — a memória de cálculo do score.
+  matchingCriteria Json @map("matching_criteria")
+
+  differenceAmount Decimal @default(0) @map("difference_amount") @db.Decimal(18, 2)
+  differenceDays   Int     @default(0) @map("difference_days")
+
+  status MatchSuggestionStatus @default(PENDING)
+
+  generatedBy     String?   @map("generated_by") @db.Uuid
+  reviewedBy      String?   @map("reviewed_by") @db.Uuid
+  reviewedAt      DateTime? @map("reviewed_at")
+  dismissalReason String?   @map("dismissal_reason")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company         Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  bankTransaction BankTransaction @relation(fields: [bankTransactionId], references: [id], onDelete: Cascade)
+
+  @@unique([bankTransactionId, candidateEntityType, candidateEntityId])
+  @@index([organizationId, companyId, status])
+  @@index([bankTransactionId, score])
+  @@map("reconciliation_match_suggestions")
+}
+
+/// Conciliação: o vínculo confirmado entre extrato e sistema (seção 55).
+///
+/// A conciliação é o **cabeçalho**; os itens dizem quais transações e quais lançamentos
+/// entraram. É esse desenho que permite um-para-um, um-para-muitos e muitos-para-um sem
+/// tabelas diferentes para cada caso.
+model Reconciliation {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  companyId      String @map("company_id") @db.Uuid
+
+  financialAccountId String @map("financial_account_id") @db.Uuid
+
+  reconciliationType ReconciliationType   @map("reconciliation_type")
+  status             ReconciliationStatus @default(ACTIVE)
+
+  totalBankAmount   Decimal @map("total_bank_amount") @db.Decimal(18, 2)
+  totalSystemAmount Decimal @map("total_system_amount") @db.Decimal(18, 2)
+  /// `bancário − sistema`. Zero é o caso normal; diferente de zero exige justificativa
+  /// ou tolerância configurada.
+  differenceAmount  Decimal @default(0) @map("difference_amount") @db.Decimal(18, 2)
+
+  isPartial Boolean @default(false) @map("is_partial")
+  isManual  Boolean @default(false) @map("is_manual")
+
+  /// Score da sugestão aceita, quando veio de uma. Nulo em conciliação manual.
+  confidenceScore Decimal? @map("confidence_score") @db.Decimal(6, 2)
+
+  /// Justificativa da diferença, exigida quando ela existe e não cabe na tolerância.
+  differenceReason String? @map("difference_reason")
+  notes            String?
+
+  reconciledBy  String?   @map("reconciled_by") @db.Uuid
+  reconciledAt  DateTime  @default(now()) @map("reconciled_at")
+  unmatchedBy   String?   @map("unmatched_by") @db.Uuid
+  unmatchedAt   DateTime? @map("unmatched_at")
+  unmatchReason String?   @map("unmatch_reason")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  organization     Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company          Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  financialAccount FinancialAccount @relation(fields: [financialAccountId], references: [id])
+
+  items    ReconciliationItem[]
+  comments ReconciliationComment[]
+  history  ReconciliationHistory[]
+
+  @@index([organizationId, companyId, status])
+  @@index([financialAccountId, reconciledAt])
+  @@map("reconciliations")
+}
+
+/// Item da conciliação (seção 56).
+///
+/// Cada linha liga **uma** transação bancária a **uma** entidade do sistema, com o valor
+/// alocado. Um-para-muitos são várias linhas com a mesma transação; muitos-para-um são
+/// várias linhas com a mesma entidade. O modelo não precisa saber qual é qual.
+model ReconciliationItem {
+  id               String @id @default(uuid()) @db.Uuid
+  reconciliationId String @map("reconciliation_id") @db.Uuid
+
+  bankTransactionId String @map("bank_transaction_id") @db.Uuid
+
+  entityType ReconcilableEntityType @map("entity_type")
+  entityId   String                 @map("entity_id") @db.Uuid
+
+  /// Valor da transação bancária considerado neste item.
+  bankAmount       Decimal @map("bank_amount") @db.Decimal(18, 2)
+  /// Valor alocado ao lançamento. Diferente do bancário em conciliação parcial.
+  allocatedAmount  Decimal @map("allocated_amount") @db.Decimal(18, 2)
+  differenceAmount Decimal @default(0) @map("difference_amount") @db.Decimal(18, 2)
+
+  /// Rótulo do papel deste item ("principal", "juros", "tarifa"), para o 12B usar.
+  relationType String? @map("relation_type")
+
+  notes String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  reconciliation  Reconciliation  @relation(fields: [reconciliationId], references: [id], onDelete: Cascade)
+  bankTransaction BankTransaction @relation(fields: [bankTransactionId], references: [id], onDelete: Cascade)
+
+  @@index([reconciliationId])
+  @@index([bankTransactionId])
+  @@index([entityType, entityId])
+  @@map("reconciliation_items")
+}
+
+/// Linha do tempo da conciliação (seções 42 e 57).
+model ReconciliationHistory {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  companyId      String @map("company_id") @db.Uuid
+
+  financialAccountId String? @map("financial_account_id") @db.Uuid
+  bankTransactionId  String? @map("bank_transaction_id") @db.Uuid
+  reconciliationId   String? @map("reconciliation_id") @db.Uuid
+  statementImportId  String? @map("statement_import_id") @db.Uuid
+
+  actionType ReconciliationHistoryAction @map("action_type")
+
+  previousStatus String? @map("previous_status")
+  newStatus      String? @map("new_status")
+
+  /// Campo alterado e o que aconteceu, em JSON — as ações são heterogêneas demais para
+  /// caberem em colunas fixas sem metade delas ficar nula.
+  details Json?
+  reason  String?
+
+  performedBy String?  @map("performed_by") @db.Uuid
+  performedAt DateTime @default(now()) @map("performed_at")
+  ipAddress   String?  @map("ip_address")
+  deviceInfo  String?  @map("device_info")
+
+  organization    Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company         Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  bankTransaction BankTransaction?     @relation(fields: [bankTransactionId], references: [id], onDelete: Cascade)
+  reconciliation  Reconciliation?      @relation(fields: [reconciliationId], references: [id], onDelete: Cascade)
+  statementImport BankStatementImport? @relation(fields: [statementImportId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, companyId, performedAt])
+  @@index([bankTransactionId, performedAt])
+  @@index([statementImportId, performedAt])
+  @@map("reconciliation_history")
+}
+
+/// Atribuição de responsável por uma transação (seções 45 e 58).
+model ReconciliationAssignment {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  companyId      String @map("company_id") @db.Uuid
+
+  bankTransactionId String @map("bank_transaction_id") @db.Uuid
+
+  assignedUserId String? @map("assigned_user_id") @db.Uuid
+  /// Equipe, setor ou fila. Texto porque o Pulse ainda não tem cadastro de equipes —
+  /// criar a tabela agora seria decidir por um módulo que não foi especificado.
+  assignedTeam   String? @map("assigned_team")
+
+  dueAt  DateTime? @map("due_at")
+  reason String?
+  status String    @default("OPEN")
+
+  assignedBy  String?   @map("assigned_by") @db.Uuid
+  assignedAt  DateTime  @default(now()) @map("assigned_at")
+  completedAt DateTime? @map("completed_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company         Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  bankTransaction BankTransaction @relation(fields: [bankTransactionId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, companyId, status])
+  @@index([bankTransactionId])
+  @@index([assignedUserId])
+  @@map("reconciliation_assignments")
+}
+
+/// Comentário em arquivo, transação ou conciliação (seções 46 e 59).
+model ReconciliationComment {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  companyId      String @map("company_id") @db.Uuid
+
+  bankTransactionId String? @map("bank_transaction_id") @db.Uuid
+  reconciliationId  String? @map("reconciliation_id") @db.Uuid
+  statementImportId String? @map("statement_import_id") @db.Uuid
+
+  comment    String
+  visibility ReconciliationCommentVisibility @default(INTERNAL)
+
+  /// Anexos já enviados ao bucket privado: `[{ path, fileName, mimeType, size }]`.
+  attachments Json?
+
+  createdBy String?   @map("created_by") @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  organization    Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company         Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  bankTransaction BankTransaction?     @relation(fields: [bankTransactionId], references: [id], onDelete: Cascade)
+  reconciliation  Reconciliation?      @relation(fields: [reconciliationId], references: [id], onDelete: Cascade)
+  statementImport BankStatementImport? @relation(fields: [statementImportId], references: [id], onDelete: Cascade)
+
+  @@index([bankTransactionId])
+  @@index([reconciliationId])
+  @@index([statementImportId])
+  @@map("reconciliation_comments")
+}
+
+/// Parâmetros da conciliação (seções 47 e 60).
+///
+/// `financialAccountId` nulo é a configuração **da empresa**; preenchido é a exceção
+/// daquela conta. Uma conta de investimento e uma conta corrente não têm a mesma
+/// tolerância nem os mesmos formatos aceitos.
+model ReconciliationSettings {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  companyId      String @map("company_id") @db.Uuid
+
+  financialAccountId String? @map("financial_account_id") @db.Uuid
+
+  isEnabled Boolean @default(true) @map("is_enabled")
+
+  /// Formatos aceitos nesta conta. Os canais de integração aparecem na tela como "não
+  /// configurado" enquanto o módulo de integração não existir.
+  allowedImportTypes BankStatementSourceType[] @map("allowed_import_types")
+  maximumFileSize    Int                       @default(15728640) @map("maximum_file_size")
+
+  duplicateCheckEnabled Boolean @default(true) @map("duplicate_check_enabled")
+  blockDuplicates       Boolean @default(true) @map("block_duplicates")
+
+  /// Diferença aceita sem justificativa, em valor absoluto e em percentual.
+  amountTolerance     Decimal @default(0) @map("amount_tolerance") @db.Decimal(18, 2)
+  percentageTolerance Decimal @default(0) @map("percentage_tolerance") @db.Decimal(6, 2)
+  /// Dias de folga entre a data bancária e a data do lançamento.
+  dateToleranceDays   Int     @default(3) @map("date_tolerance_days")
+
+  /// Abaixo disto o motor nem sugere. Sugestão fraca demais só gera ruído.
+  minimumSuggestionScore Decimal @default(60) @map("minimum_suggestion_score") @db.Decimal(6, 2)
+
+  /// Nesta etapa a revisão humana é **obrigatória** e a conciliação automática não
+  /// existe. O campo já está aqui para o 12B ligar sem migração.
+  mandatoryReview          Boolean @default(true) @map("mandatory_review")
+  automaticMatchingEnabled Boolean @default(false) @map("automatic_matching_enabled")
+
+  partialMatchEnabled      Boolean @default(true) @map("partial_match_enabled")
+  multipleMatchEnabled     Boolean @default(true) @map("multiple_match_enabled")
+  manualAdjustmentEnabled  Boolean @default(true) @map("manual_adjustment_enabled")
+  manualTransactionEnabled Boolean @default(true) @map("manual_transaction_enabled")
+  unmatchEnabled           Boolean @default(true) @map("unmatch_enabled")
+
+  reconciliationDeadlineDays Int?    @map("reconciliation_deadline_days")
+  defaultAssignedUserId      String? @map("default_assigned_user_id") @db.Uuid
+  defaultAssignedTeam        String? @map("default_assigned_team")
+
+  automaticReprocessingEnabled Boolean @default(false) @map("automatic_reprocessing_enabled")
+  notificationsEnabled         Boolean @default(false) @map("notifications_enabled")
+  /// Exigir fechamento do período. O fechamento em si é do Prompt 12D.
+  closingRequired              Boolean @default(false) @map("closing_required")
+
+  createdBy String?  @map("created_by") @db.Uuid
+  updatedBy String?  @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company          Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  financialAccount FinancialAccount? @relation(fields: [financialAccountId], references: [id])
+
+  @@unique([companyId, financialAccountId])
+  @@index([organizationId, companyId])
+  @@map("reconciliation_settings")
 }

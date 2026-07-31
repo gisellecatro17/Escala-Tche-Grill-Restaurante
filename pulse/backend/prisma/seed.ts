@@ -1,5 +1,6 @@
 import { PrismaPg } from '@prisma/adapter-pg';
 import {
+  BankTransactionType,
   PrismaClient,
   type AccountPlanType,
   type FinancialNatureKind,
@@ -1124,7 +1125,8 @@ const PERMISSIONS: PermissionSeed[] = [
   {
     slug: 'document_intake.override_duplicate',
     module: 'financeiro',
-    description: 'Liberar documento com alta semelhança, mediante justificativa',
+    description:
+      'Liberar documento com alta semelhança, mediante justificativa',
   },
   {
     slug: 'document_intake.download',
@@ -1278,6 +1280,98 @@ const PERMISSIONS: PermissionSeed[] = [
     slug: 'payment_schedule.audit',
     module: 'financeiro',
     description: 'Consultar o histórico completo das programações e dos lotes',
+  },
+
+  // Financeiro — Conciliação bancária
+  {
+    slug: 'reconciliation.view',
+    module: 'financeiro',
+    description:
+      'Visualizar extratos, movimentações bancárias, sugestões e conciliações',
+  },
+  {
+    slug: 'reconciliation.import',
+    module: 'financeiro',
+    description:
+      'Enviar, confirmar, reprocessar, cancelar e arquivar arquivos de extrato',
+  },
+  {
+    slug: 'reconciliation.download',
+    module: 'financeiro',
+    description:
+      'Baixar o arquivo original do extrato por URL assinada e temporária',
+  },
+  {
+    slug: 'reconciliation.reconcile',
+    module: 'financeiro',
+    description:
+      'Gerar sugestões, aceitar, descartar e conciliar manualmente (a confirmação é sempre humana)',
+  },
+  {
+    slug: 'reconciliation.unmatch',
+    module: 'financeiro',
+    description: 'Desfazer uma conciliação, com justificativa registrada',
+  },
+  {
+    slug: 'reconciliation.create_manual_transaction',
+    module: 'financeiro',
+    description:
+      'Registrar movimentação bancária digitada, marcada como manual e com motivo',
+  },
+  {
+    slug: 'reconciliation.edit_transaction',
+    module: 'financeiro',
+    description:
+      'Corrigir a leitura da movimentação (tipo, documento, contraparte) — nunca valor nem data',
+  },
+  {
+    slug: 'reconciliation.ignore',
+    module: 'financeiro',
+    description: 'Tirar uma movimentação da fila sem conciliá-la, com motivo',
+  },
+  {
+    slug: 'reconciliation.assign',
+    module: 'financeiro',
+    description: 'Atribuir movimentações a um responsável ou a uma equipe',
+  },
+  {
+    slug: 'reconciliation.comment',
+    module: 'financeiro',
+    description: 'Comentar extratos, movimentações e conciliações',
+  },
+  {
+    slug: 'reconciliation.manage_templates',
+    module: 'financeiro',
+    description: 'Criar, alterar e arquivar modelos de leitura de extrato',
+  },
+  {
+    slug: 'reconciliation.view_settings',
+    module: 'financeiro',
+    description:
+      'Consultar os parâmetros da conciliação da empresa e das contas',
+  },
+  {
+    slug: 'reconciliation.manage_settings',
+    module: 'financeiro',
+    description:
+      'Alterar tolerâncias, score mínimo e o que é permitido em cada conta',
+  },
+  {
+    /**
+     * Ver conta e documento sem máscara.
+     *
+     * Permissão própria e não embutida em `view`: quase todo mundo precisa conciliar, e
+     * quase ninguém precisa do número completo da conta de terceiro para isso.
+     */
+    slug: 'reconciliation.view_sensitive_data',
+    module: 'financeiro',
+    description:
+      'Ver número de conta e documento da contraparte sem mascaramento',
+  },
+  {
+    slug: 'reconciliation.audit',
+    module: 'financeiro',
+    description: 'Consultar a linha do tempo completa da conciliação',
   },
 
   // Financeiro — Processamento de documentos
@@ -1547,6 +1641,27 @@ const PAYMENT_SCHEDULE_SLUGS = PERMISSIONS.filter((p) =>
   p.slug.startsWith('payment_schedule.'),
 ).map((p) => p.slug);
 
+const RECONCILIATION_SLUGS = PERMISSIONS.filter((p) =>
+  p.slug.startsWith('reconciliation.'),
+).map((p) => p.slug);
+
+/**
+ * Conciliação liberada para o operador financeiro.
+ *
+ * Ele importa, concilia e comenta — é o trabalho do dia. Ficam de fora desfazer
+ * conciliação, alterar parâmetros e ver dado bancário sem máscara: as três desfazem ou
+ * expõem o que a conciliação existe para proteger.
+ */
+const RECONCILIATION_OPERATOR_SLUGS = RECONCILIATION_SLUGS.filter(
+  (slug) =>
+    ![
+      'reconciliation.unmatch',
+      'reconciliation.manage_settings',
+      'reconciliation.manage_templates',
+      'reconciliation.view_sensitive_data',
+    ].includes(slug),
+);
+
 /**
  * Agendamento liberado para o operador financeiro.
  *
@@ -1570,9 +1685,11 @@ const PAYMENT_SCHEDULE_OPERATOR_SLUGS = PAYMENT_SCHEDULE_SLUGS.filter((slug) =>
  * suspeito é justamente a alçada de quem opera o dia a dia.
  */
 const ACCOUNTS_PAYABLE_OPERATOR_SLUGS = ACCOUNTS_PAYABLE_SLUGS.filter((slug) =>
-  ['accounts_payable.view', 'accounts_payable.create', 'accounts_payable.block'].includes(
-    slug,
-  ),
+  [
+    'accounts_payable.view',
+    'accounts_payable.create',
+    'accounts_payable.block',
+  ].includes(slug),
 );
 
 /**
@@ -1631,6 +1748,7 @@ const ROLES: {
       ...APPROVAL_SLUGS,
       ...ACCOUNTS_PAYABLE_SLUGS,
       ...PAYMENT_SCHEDULE_SLUGS,
+      ...RECONCILIATION_SLUGS,
       'financial.view',
       'financial.documents',
       'financial.process',
@@ -1702,6 +1820,7 @@ const ROLES: {
       ...DOCUMENT_PROCESSING_OPERATOR_SLUGS,
       ...ACCOUNTS_PAYABLE_OPERATOR_SLUGS,
       ...PAYMENT_SCHEDULE_OPERATOR_SLUGS,
+      ...RECONCILIATION_OPERATOR_SLUGS,
       'approvals.view',
       'financial.view',
       'financial.documents',
@@ -1763,6 +1882,9 @@ const ROLES: {
       'accounts_payable.audit',
       'payment_schedule.view',
       'payment_schedule.audit',
+      'reconciliation.view',
+      'reconciliation.audit',
+      'reconciliation.view_settings',
       ...BI_SLUGS,
     ],
   },
@@ -2309,6 +2431,7 @@ async function main() {
   await seedDemoApprovals(organization.id, company.id);
   await seedDemoAccountsPayable(organization.id, company.id);
   await seedDemoPaymentScheduling(organization.id, company.id);
+  await seedDemoReconciliation(organization.id, company.id);
 
   console.log('Seed concluído com sucesso.');
   console.log(
@@ -2582,7 +2705,6 @@ async function seedDemoStructure(organizationId: string, companyId: string) {
   );
 }
 
-
 /**
  * Tesouraria de demonstração do restaurante (seção 78). Dados fictícios: os números de
  * agência, conta e cartão não correspondem a nenhuma conta real. Idempotente.
@@ -2740,11 +2862,41 @@ async function seedDemoTreasury(organizationId: string, companyId: string) {
 
   // Formas de pagamento e recebimento padrão, compartilhadas pela organização.
   const PAYMENT_METHODS = [
-    { id: '00000000-0000-0000-0000-000000000941', code: 'PIX', name: 'PIX', type: 'PIX', beneficiary: true },
-    { id: '00000000-0000-0000-0000-000000000942', code: 'BOLETO', name: 'Boleto', type: 'BOLETO', digitable: true },
-    { id: '00000000-0000-0000-0000-000000000943', code: 'TRANSFERENCIA', name: 'Transferência bancária', type: 'BANK_TRANSFER', bankData: true, beneficiary: true },
-    { id: '00000000-0000-0000-0000-000000000944', code: 'CARTAO-CORP', name: 'Cartão corporativo', type: 'CREDIT_CARD', installments: true },
-    { id: '00000000-0000-0000-0000-000000000945', code: 'DINHEIRO', name: 'Dinheiro', type: 'CASH' },
+    {
+      id: '00000000-0000-0000-0000-000000000941',
+      code: 'PIX',
+      name: 'PIX',
+      type: 'PIX',
+      beneficiary: true,
+    },
+    {
+      id: '00000000-0000-0000-0000-000000000942',
+      code: 'BOLETO',
+      name: 'Boleto',
+      type: 'BOLETO',
+      digitable: true,
+    },
+    {
+      id: '00000000-0000-0000-0000-000000000943',
+      code: 'TRANSFERENCIA',
+      name: 'Transferência bancária',
+      type: 'BANK_TRANSFER',
+      bankData: true,
+      beneficiary: true,
+    },
+    {
+      id: '00000000-0000-0000-0000-000000000944',
+      code: 'CARTAO-CORP',
+      name: 'Cartão corporativo',
+      type: 'CREDIT_CARD',
+      installments: true,
+    },
+    {
+      id: '00000000-0000-0000-0000-000000000945',
+      code: 'DINHEIRO',
+      name: 'Dinheiro',
+      type: 'CASH',
+    },
   ] as const;
 
   for (const [index, method] of PAYMENT_METHODS.entries()) {
@@ -2757,10 +2909,12 @@ async function seedDemoTreasury(organizationId: string, companyId: string) {
         code: method.code,
         name: method.name,
         methodType: method.type,
-        requiresBeneficiary: 'beneficiary' in method ? method.beneficiary : false,
+        requiresBeneficiary:
+          'beneficiary' in method ? method.beneficiary : false,
         requiresBankData: 'bankData' in method ? method.bankData : false,
         requiresDigitableLine: 'digitable' in method ? method.digitable : false,
-        allowsInstallments: 'installments' in method ? method.installments : false,
+        allowsInstallments:
+          'installments' in method ? method.installments : false,
         sortOrder: index,
         isSystem: true,
       },
@@ -2768,11 +2922,46 @@ async function seedDemoTreasury(organizationId: string, companyId: string) {
   }
 
   const RECEIPT_METHODS = [
-    { id: '00000000-0000-0000-0000-000000000951', code: 'PIX', name: 'PIX', type: 'PIX', days: 0, fee: null },
-    { id: '00000000-0000-0000-0000-000000000952', code: 'CARTAO-CREDITO', name: 'Cartão de crédito', type: 'CREDIT_CARD', days: 30, fee: 3.49 },
-    { id: '00000000-0000-0000-0000-000000000953', code: 'CARTAO-DEBITO', name: 'Cartão de débito', type: 'DEBIT_CARD', days: 1, fee: 1.99 },
-    { id: '00000000-0000-0000-0000-000000000954', code: 'DINHEIRO', name: 'Dinheiro', type: 'CASH', days: 0, fee: null },
-    { id: '00000000-0000-0000-0000-000000000955', code: 'TRANSFERENCIA', name: 'Transferência', type: 'BANK_TRANSFER', days: 0, fee: null },
+    {
+      id: '00000000-0000-0000-0000-000000000951',
+      code: 'PIX',
+      name: 'PIX',
+      type: 'PIX',
+      days: 0,
+      fee: null,
+    },
+    {
+      id: '00000000-0000-0000-0000-000000000952',
+      code: 'CARTAO-CREDITO',
+      name: 'Cartão de crédito',
+      type: 'CREDIT_CARD',
+      days: 30,
+      fee: 3.49,
+    },
+    {
+      id: '00000000-0000-0000-0000-000000000953',
+      code: 'CARTAO-DEBITO',
+      name: 'Cartão de débito',
+      type: 'DEBIT_CARD',
+      days: 1,
+      fee: 1.99,
+    },
+    {
+      id: '00000000-0000-0000-0000-000000000954',
+      code: 'DINHEIRO',
+      name: 'Dinheiro',
+      type: 'CASH',
+      days: 0,
+      fee: null,
+    },
+    {
+      id: '00000000-0000-0000-0000-000000000955',
+      code: 'TRANSFERENCIA',
+      name: 'Transferência',
+      type: 'BANK_TRANSFER',
+      days: 0,
+      fee: null,
+    },
   ] as const;
 
   for (const [index, method] of RECEIPT_METHODS.entries()) {
@@ -2944,10 +3133,30 @@ async function seedDemoDocumentIntake(
   });
 
   await seedIntakeFields(energyDocument.id, [
-    { fieldName: 'digitableLine', value: energyBoleto.digitableLine, method: 'DIGITABLE_LINE', confidence: 98 },
-    { fieldName: 'dueDate', value: '2026-08-10', method: 'DIGITABLE_LINE', confidence: 98 },
-    { fieldName: 'grossAmount', value: '2450.00', method: 'DIGITABLE_LINE', confidence: 98 },
-    { fieldName: 'issuerDocument', value: '31500900000106', method: 'PDF_TEXT', confidence: 90 },
+    {
+      fieldName: 'digitableLine',
+      value: energyBoleto.digitableLine,
+      method: 'DIGITABLE_LINE',
+      confidence: 98,
+    },
+    {
+      fieldName: 'dueDate',
+      value: '2026-08-10',
+      method: 'DIGITABLE_LINE',
+      confidence: 98,
+    },
+    {
+      fieldName: 'grossAmount',
+      value: '2450.00',
+      method: 'DIGITABLE_LINE',
+      confidence: 98,
+    },
+    {
+      fieldName: 'issuerDocument',
+      value: '31500900000106',
+      method: 'PDF_TEXT',
+      confidence: 90,
+    },
   ]);
 
   await seedIntakeIssue(energyDocument.id, {
@@ -2958,9 +3167,18 @@ async function seedDemoDocumentIntake(
   });
 
   await seedIntakeHistory(energyDocument.id, [
-    { newProcessingStatus: 'UPLOADED', changedAt: new Date(Date.UTC(2026, 6, 27, 13, 12)) },
-    { newProcessingStatus: 'EXTRACTING', changedAt: new Date(Date.UTC(2026, 6, 27, 13, 12, 20)) },
-    { newProcessingStatus: 'PENDING_REVIEW', changedAt: new Date(Date.UTC(2026, 6, 27, 13, 13)) },
+    {
+      newProcessingStatus: 'UPLOADED',
+      changedAt: new Date(Date.UTC(2026, 6, 27, 13, 12)),
+    },
+    {
+      newProcessingStatus: 'EXTRACTING',
+      changedAt: new Date(Date.UTC(2026, 6, 27, 13, 12, 20)),
+    },
+    {
+      newProcessingStatus: 'PENDING_REVIEW',
+      changedAt: new Date(Date.UTC(2026, 6, 27, 13, 13)),
+    },
   ]);
 
   // 2. Nota fiscal de carnes, pronta para o processamento.
@@ -3009,15 +3227,41 @@ async function seedDemoDocumentIntake(
   });
 
   await seedIntakeFields(meatDocument.id, [
-    { fieldName: 'accessKey', value: '29260722333444000155550010000044711000044718', method: 'XML_PARSE', confidence: 100 },
-    { fieldName: 'documentNumber', value: '4471', method: 'XML_PARSE', confidence: 100 },
-    { fieldName: 'grossAmount', value: '8900.00', method: 'XML_PARSE', confidence: 100 },
-    { fieldName: 'issuerDocument', value: '22333444000155', method: 'XML_PARSE', confidence: 100 },
+    {
+      fieldName: 'accessKey',
+      value: '29260722333444000155550010000044711000044718',
+      method: 'XML_PARSE',
+      confidence: 100,
+    },
+    {
+      fieldName: 'documentNumber',
+      value: '4471',
+      method: 'XML_PARSE',
+      confidence: 100,
+    },
+    {
+      fieldName: 'grossAmount',
+      value: '8900.00',
+      method: 'XML_PARSE',
+      confidence: 100,
+    },
+    {
+      fieldName: 'issuerDocument',
+      value: '22333444000155',
+      method: 'XML_PARSE',
+      confidence: 100,
+    },
   ]);
 
   await seedIntakeHistory(meatDocument.id, [
-    { newProcessingStatus: 'UPLOADED', changedAt: new Date(Date.UTC(2026, 6, 24, 9, 40)) },
-    { newProcessingStatus: 'PENDING_REVIEW', changedAt: new Date(Date.UTC(2026, 6, 24, 9, 41)) },
+    {
+      newProcessingStatus: 'UPLOADED',
+      changedAt: new Date(Date.UTC(2026, 6, 24, 9, 40)),
+    },
+    {
+      newProcessingStatus: 'PENDING_REVIEW',
+      changedAt: new Date(Date.UTC(2026, 6, 24, 9, 41)),
+    },
     {
       newProcessingStatus: 'READY_FOR_PROCESSING',
       newReviewStatus: 'REVIEWED',
@@ -3133,8 +3377,14 @@ async function seedDemoDocumentIntake(
   });
 
   await seedIntakeHistory(internetDuplicate.id, [
-    { newProcessingStatus: 'UPLOADED', changedAt: new Date(Date.UTC(2026, 6, 28, 16, 5)) },
-    { newProcessingStatus: 'MATCHING', changedAt: new Date(Date.UTC(2026, 6, 28, 16, 6)) },
+    {
+      newProcessingStatus: 'UPLOADED',
+      changedAt: new Date(Date.UTC(2026, 6, 28, 16, 5)),
+    },
+    {
+      newProcessingStatus: 'MATCHING',
+      changedAt: new Date(Date.UTC(2026, 6, 28, 16, 6)),
+    },
     {
       newProcessingStatus: 'PENDING_REVIEW',
       reason: 'Possível duplicidade encontrada.',
@@ -3164,7 +3414,9 @@ async function seedIntakeFields(
 ) {
   for (const field of fields) {
     await prisma.intakeDocumentExtractedField.upsert({
-      where: { documentId_fieldName: { documentId, fieldName: field.fieldName } },
+      where: {
+        documentId_fieldName: { documentId, fieldName: field.fieldName },
+      },
       update: {},
       create: {
         documentId,
@@ -3213,7 +3465,6 @@ async function seedIntakeHistory(
     data: entries.map((entry) => ({ documentId, ...entry })),
   });
 }
-
 
 /**
  * Lançamento de demonstração do processamento.
@@ -3311,7 +3562,6 @@ async function seedDemoDocumentProcessing(
   );
 }
 
-
 /**
  * Fluxos, alçadas e uma solicitação de demonstração (seções 5, 6 e 11).
  *
@@ -3336,7 +3586,9 @@ async function seedDemoApprovals(organizationId: string, companyId: string) {
 
   const roles = await prisma.role.findMany({
     where: {
-      slug: { in: ['financial_operator', 'financial', 'approver', 'company_admin'] },
+      slug: {
+        in: ['financial_operator', 'financial', 'approver', 'company_admin'],
+      },
     },
     select: { id: true, slug: true },
   });
@@ -3553,7 +3805,10 @@ async function seedDemoApprovals(organizationId: string, companyId: string) {
  * seção 8) e um bloqueado por pendência documental, que é o caso em que o bloqueio impede
  * o título de seguir para pagamento.
  */
-async function seedDemoAccountsPayable(organizationId: string, companyId: string) {
+async function seedDemoAccountsPayable(
+  organizationId: string,
+  companyId: string,
+) {
   console.log('Aplicando seed de contas a pagar de demonstração...');
 
   await prisma.accountsPayableSettings.upsert({
@@ -3570,7 +3825,12 @@ async function seedDemoAccountsPayable(organizationId: string, companyId: string
 
   const entry = await prisma.financialEntry.findUnique({
     where: { id: '00000000-0000-0000-0000-000000002001' },
-    select: { id: true, supplierId: true, categoryId: true, costCenterId: true },
+    select: {
+      id: true,
+      supplierId: true,
+      categoryId: true,
+      costCenterId: true,
+    },
   });
 
   if (!entry) return;
@@ -3748,7 +4008,10 @@ async function seedDemoAccountsPayable(organizationId: string, companyId: string
  * o suficiente para a fila, o lote e a simulação terem o que mostrar assim que alguém
  * abrir o sistema.
  */
-async function seedDemoPaymentScheduling(organizationId: string, companyId: string) {
+async function seedDemoPaymentScheduling(
+  organizationId: string,
+  companyId: string,
+) {
   console.log('Aplicando seed de agendamento bancário de demonstração...');
 
   await prisma.paymentScheduleSettings.upsert({
@@ -3869,6 +4132,175 @@ async function seedDemoPaymentScheduling(organizationId: string, companyId: stri
 
   console.log(
     'Agendamento de demonstração criado: 1 programação de R$ 5.000 em lote aberto para setembro.',
+  );
+}
+
+/**
+ * Conciliação de demonstração.
+ *
+ * **Dados bancários fictícios, sempre** (seção 72 do prompt): a conta, o histórico e os
+ * identificadores são inventados. Um seed com extrato real vazaria dado de cliente para
+ * dentro do repositório, e nenhuma vantagem de realismo compensa isso.
+ *
+ * Monta o cenário que o painel precisa para não nascer vazio: um extrato importado com
+ * quatro movimentações — uma que casa com a parcela já baixada do Contas a Pagar, uma
+ * tarifa, um PIX não identificado e uma saída sem correspondência.
+ */
+async function seedDemoReconciliation(
+  organizationId: string,
+  companyId: string,
+) {
+  console.log('Aplicando seed de conciliação de demonstração...');
+
+  const account = await prisma.financialAccount.findFirst({
+    where: { companyId, deletedAt: null, status: 'ACTIVE' },
+    orderBy: { isPrimary: 'desc' },
+    select: { id: true },
+  });
+
+  if (!account) return;
+
+  // A configuração da empresa é a linha com `financialAccountId` nulo. Prisma não aceita
+  // nulo dentro de uma chave única composta, então a busca é por `findFirst`.
+  const existingSettings = await prisma.reconciliationSettings.findFirst({
+    where: { companyId, financialAccountId: null },
+    select: { id: true },
+  });
+
+  if (!existingSettings) {
+    await prisma.reconciliationSettings.create({
+      data: {
+        organizationId,
+        companyId,
+        allowedImportTypes: ['OFX', 'CSV', 'XLSX', 'MANUAL'],
+        amountTolerance: 0.05,
+        dateToleranceDays: 3,
+        minimumSuggestionScore: 60,
+      },
+    });
+  }
+
+  const year = new Date().getUTCFullYear();
+  const start = new Date(Date.UTC(year, 6, 1));
+  const end = new Date(Date.UTC(year, 6, 31));
+  const importId = '00000000-0000-0000-0000-000000006001';
+
+  const statementImport = await prisma.bankStatementImport.upsert({
+    where: { id: importId },
+    update: {},
+    create: {
+      id: importId,
+      organizationId,
+      companyId,
+      financialAccountId: account.id,
+      sourceType: 'OFX',
+      originalFileName: `extrato-demonstracao-${year}-07.ofx`,
+      // Hash fictício: nenhum arquivo real foi versionado.
+      fileHash:
+        'demo0000000000000000000000000000000000000000000000000000000007',
+      storagePath: `organizations/${organizationId}/companies/${companyId}/reconciliation/${account.id}/${year}/07/demo.ofx`,
+      bankCode: '999',
+      statementStartDate: start,
+      statementEndDate: end,
+      openingBalance: 20000,
+      closingBalance: 14876.1,
+      calculatedClosingBalance: 14876.1,
+      totalCredits: 1200,
+      totalDebits: 6323.9,
+      transactionCount: 4,
+      validTransactionCount: 4,
+      status: 'IMPORTED',
+      importedAt: new Date(Date.UTC(year, 7, 1)),
+      history: {
+        create: [
+          { organizationId, companyId, actionType: 'FILE_UPLOADED' },
+          { organizationId, companyId, actionType: 'FILE_IMPORTED' },
+        ],
+      },
+    },
+  });
+
+  const transactions = [
+    {
+      id: '00000000-0000-0000-0000-000000006011',
+      day: 10,
+      direction: 'OUT' as const,
+      amount: 5000,
+      transactionType: BankTransactionType.PIX_OUT,
+      description: 'PIX ENVIADO FRIGORIFICO SAO JOSE NF 8842',
+      documentNumber: '8842',
+      status: 'AVAILABLE' as const,
+    },
+    {
+      id: '00000000-0000-0000-0000-000000006012',
+      day: 10,
+      direction: 'OUT' as const,
+      amount: 23.9,
+      transactionType: BankTransactionType.BANK_FEE,
+      description: 'TARIFA PACOTE DE SERVICOS',
+      documentNumber: null,
+      status: 'UNIDENTIFIED' as const,
+    },
+    {
+      id: '00000000-0000-0000-0000-000000006013',
+      day: 15,
+      direction: 'IN' as const,
+      amount: 1200,
+      transactionType: BankTransactionType.PIX_IN,
+      description: 'PIX RECEBIDO CLIENTE NAO IDENTIFICADO',
+      documentNumber: null,
+      status: 'UNIDENTIFIED' as const,
+    },
+    {
+      id: '00000000-0000-0000-0000-000000006014',
+      day: 20,
+      direction: 'OUT' as const,
+      amount: 1300,
+      transactionType: BankTransactionType.TED_OUT,
+      description: 'TED ENVIADA FORNECEDOR SEM LANCAMENTO',
+      documentNumber: null,
+      status: 'AVAILABLE' as const,
+    },
+  ];
+
+  for (const item of transactions) {
+    await prisma.bankTransaction.upsert({
+      where: { id: item.id },
+      update: {},
+      create: {
+        id: item.id,
+        organizationId,
+        companyId,
+        financialAccountId: account.id,
+        statementImportId: statementImport.id,
+        sourceType: 'OFX',
+        transactionType: item.transactionType,
+        direction: item.direction,
+        transactionDate: new Date(Date.UTC(year, 6, item.day)),
+        amount: item.amount,
+        originalDescription: item.description,
+        normalizedDescription: item.description,
+        documentNumber: item.documentNumber,
+        reconciliationStatus: item.status,
+        unidentifiedReason:
+          item.status === 'UNIDENTIFIED'
+            ? 'Nenhum lançamento correspondente foi encontrado dentro dos critérios configurados.'
+            : null,
+        history: {
+          create: {
+            organizationId,
+            companyId,
+            financialAccountId: account.id,
+            actionType: 'TRANSACTION_IMPORTED',
+            newStatus: item.status,
+          },
+        },
+      },
+    });
+  }
+
+  console.log(
+    'Conciliação de demonstração criada: 1 extrato fictício com 4 movimentações (2 a conciliar, 2 não identificadas).',
   );
 }
 

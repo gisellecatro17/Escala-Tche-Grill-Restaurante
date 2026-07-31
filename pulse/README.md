@@ -1160,6 +1160,126 @@ bancária, fluxo de caixa e inteligência financeira. As colunas de remessa
 (`bank_status_code`, `bank_message`) existem nas tabelas para que o módulo seguinte apenas
 preencha — sem migração nem refatoração.
 
+## Conciliação Bancária
+
+O ponto em que o que o banco diz encontra o que o Pulse registrou. Nenhuma conciliação
+acontece sozinha: o sistema lê o extrato, sugere correspondências com a memória de cálculo
+aberta e espera alguém confirmar.
+
+```
+Extrato do banco (OFX/CSV/planilha) → Importação validada → Movimentações
+       → Sugestões (score + critérios) → Confirmação humana → Conciliação
+```
+
+Telas em `/financeiro/conciliacao`:
+
+| Rota | O que faz |
+| --- | --- |
+| `/financeiro/conciliacao` | Painel: dez cartões, doze indicadores e saldo por conta |
+| `/financeiro/conciliacao/importar` | Envio do extrato, prévia e confirmação |
+| `/financeiro/conciliacao/extratos` | Extratos importados |
+| `/financeiro/conciliacao/extratos/[id]` | Detalhe do arquivo, download assinado, reprocessamento |
+| `/financeiro/conciliacao/transacoes` | Todas as movimentações, com filtros e digitação manual |
+| `/financeiro/conciliacao/transacoes/[id]` | Detalhe, sugestões com critérios e linha do tempo |
+| `/financeiro/conciliacao/a-conciliar` | Fila de trabalho e busca de correspondências em lote |
+| `/financeiro/conciliacao/sugestoes` | Sugestões aguardando revisão, lado a lado |
+| `/financeiro/conciliacao/conciliadas` | Conciliações registradas e desconciliação |
+| `/financeiro/conciliacao/nao-identificadas` | Extrato sem lançamento correspondente |
+| `/financeiro/conciliacao/lancamentos-sem-extrato` | O espelho: lançamentos sem movimentação bancária |
+| `/financeiro/conciliacao/transferencias` | Pares candidatos a transferência interna |
+| `/financeiro/conciliacao/modelos` | Modelos de leitura de CSV e planilha |
+| `/financeiro/conciliacao/configuracoes` | Tolerâncias, score mínimo e o que é permitido |
+
+### Permissões
+
+| Slug | O que libera |
+| --- | --- |
+| `reconciliation.view` | Consultar extratos, movimentações, sugestões e conciliações |
+| `reconciliation.import` | Enviar, confirmar, reprocessar, cancelar e arquivar extratos |
+| `reconciliation.download` | Baixar o arquivo original por URL assinada |
+| `reconciliation.reconcile` | Gerar sugestões, aceitar, descartar e conciliar manualmente |
+| `reconciliation.unmatch` | Desfazer conciliação, com justificativa |
+| `reconciliation.create_manual_transaction` | Registrar movimentação digitada |
+| `reconciliation.edit_transaction` | Corrigir a leitura (tipo, documento, contraparte) |
+| `reconciliation.ignore` | Tirar movimentação da fila sem conciliá-la |
+| `reconciliation.assign` | Atribuir movimentações a alguém ou a uma equipe |
+| `reconciliation.comment` | Comentar extratos, movimentações e conciliações |
+| `reconciliation.manage_templates` | Criar e arquivar modelos de importação |
+| `reconciliation.view_settings` | Consultar os parâmetros |
+| `reconciliation.manage_settings` | Alterar tolerâncias, score e o que é permitido |
+| `reconciliation.view_sensitive_data` | Ver conta e documento sem máscara |
+| `reconciliation.audit` | Consultar a linha do tempo completa |
+
+### Formatos lidos
+
+**OFX, CSV e XLSX**, mais a digitação manual. Retorno CNAB, Open Finance e API bancária
+estão no enum e aparecem na tela como "não configurado" — a estrutura existe para o módulo
+de integração ligar sem migração, mas a leitura não foi implementada.
+
+O OFX brasileiro é lido como **SGML, não XML**: os bancos omitem as tags de fechamento, e um
+parser de XML falha na maioria dos arquivos reais.
+
+### O sinal nunca é assumido
+
+Para CSV e planilha, o modelo de importação declara como o sentido é decidido: colunas
+separadas de crédito e débito, sinal no próprio número, ou coluna de tipo com os textos que
+significam cada coisa. Linha que não caiba na regra vira erro com o número da linha.
+
+Adivinhar acertaria na maioria dos arquivos e inverteria o extrato inteiro na minoria — e a
+minoria só apareceria no fechamento do mês seguinte.
+
+### Como o score é calculado
+
+| Critério | Pontos |
+| --- | --- |
+| Valor exato | 40 |
+| Valor dentro da tolerância | 25 |
+| Data exata | 20 |
+| Data dentro da tolerância | 10 |
+| Documento igual (ou citado no histórico) | 20 |
+| Identificador de pagamento (PIX ponta a ponta) | 15 |
+| Fornecedor compatível | 10 |
+| Forma de pagamento compatível | 5 |
+
+Cada ponto atribuído fica gravado com o motivo. Mesma conta financeira e sentido compatível
+são **obrigatórios** e não valem ponto: nenhuma soma de pontos concilia um crédito contra
+uma conta a pagar.
+
+O score mínimo padrão é 60. Valor igual sozinho vale 40 — ou seja, **valor parecido nunca é
+suficiente** para virar sugestão.
+
+### Migration
+
+`20260731200000_reconciliation_module` — dez tabelas e treze enums novos. Nenhum `DROP`,
+nenhuma coluna alterada: a migration só acrescenta.
+
+### Teste manual
+
+1. Rode o seed. Ele cria um extrato **fictício** de julho com quatro movimentações.
+2. Abra `/financeiro/conciliacao` — o painel mostra 4 movimentações, 2 pendentes e 2 não
+   identificadas.
+3. Vá em `/financeiro/conciliacao/a-conciliar` e clique em "Buscar correspondências" na
+   saída de R$ 5.000. Ela vira "Sugestão encontrada" — **não** "Conciliada".
+4. Abra a movimentação. Confira os critérios: valor exato, data e o documento 8842.
+5. Aceite a sugestão. A conciliação nasce em `/financeiro/conciliacao/conciliadas`.
+6. Desfaça com uma justificativa. A conciliação vira "Desfeita" — não some — e a
+   movimentação volta para a fila.
+7. Em `/financeiro/conciliacao/nao-identificadas`, veja a tarifa e o PIX recebido.
+8. Em `/financeiro/conciliacao/lancamentos-sem-extrato`, veja o outro lado da pergunta.
+9. Em `/financeiro/conciliacao/configuracoes`, mude o score mínimo para 90 e gere as
+   sugestões de novo: a sugestão de 90 pontos passa, uma de 60 não.
+10. Entre com um usuário sem `reconciliation.view_sensitive_data` e confira que o número da
+    conta chega mascarado **na resposta da API**, não só na tela.
+11. Tente importar o mesmo arquivo duas vezes: a segunda é barrada como duplicidade exata.
+
+### O que ainda não existe neste módulo
+
+Regras inteligentes avançadas, autoaprendizagem, IA autônoma, conciliação automática
+definitiva, regras detalhadas de PIX, boletos e cartões, gestão avançada de divergências,
+aprovação de ajustes e fechamento diário ou mensal. Os campos que o próximo módulo vai usar
+(`automatic_matching_enabled`, `closing_required`, `relation_type` nos itens) já existem
+desligados — sem migração nem refatoração.
+
 
 ## Banco de dados e migrations
 

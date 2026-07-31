@@ -49,6 +49,10 @@ import {
     BoletoValidationService,
     IntakePipelineService,
     PartyIdentificationService,
+    // A Conciliação valida o extrato pelo mesmo caminho (MIME, hash, antivírus). Exportar
+    // é o oposto de duplicar: um segundo validador seria um segundo lugar para esquecer de
+    // corrigir quando uma regra de segurança mudasse.
+    FileValidationService,
   ],
 })
 export class DocumentIntakeModule {}
