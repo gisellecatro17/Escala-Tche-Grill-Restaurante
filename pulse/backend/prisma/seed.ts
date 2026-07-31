@@ -15,8 +15,16 @@ import {
 // verificadores são calculados, então o boleto de demonstração passa na validação real.
 import { buildValidBoleto } from '../src/modules/document-intake/utils/boleto-fixture.util';
 
+/**
+ * Scripts administrativos preferem a conexão direta quando ela existe.
+ *
+ * O pooler do Supabase corta transação longa, e o seed roda várias em sequência. Em
+ * Postgres local só `DATABASE_URL` está definido e nada muda.
+ */
 const prisma = new PrismaClient({
-  adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
+  adapter: new PrismaPg({
+    connectionString: process.env.DIRECT_URL ?? process.env.DATABASE_URL,
+  }),
 });
 
 interface PermissionSeed {
